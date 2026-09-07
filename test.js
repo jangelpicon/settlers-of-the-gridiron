@@ -575,6 +575,33 @@ async function run() {
   assert(st22.config.teamNames[0] === "PapasCabezas" && st22.config.teamNames[7] === "I'll be white!!" && st22.config.numTeams === 9, "draft starts with the interactive order as the real draft order");
   assert(dom22.window.__sotgTest.getMyTeamIndex() === 7, "my team index in the draft = my slot in the list");
 
+  console.log("\n== Test 23: Injury field — badges, and IR/OUT players are never recommended ==");
+  const dom23 = new JSDOM(html, { runScripts: "dangerously", resources: "usable", url: "http://localhost/" });
+  await new Promise(r => setTimeout(r, 50));
+  const doc23 = dom23.window.document;
+  doc23.getElementById("numTeams").value = 2;
+  doc23.getElementById("numRounds").value = 2;
+  doc23.getElementById("teamNames").value = "Alpha, Bravo";
+  doc23.getElementById("needRound").value = 10;
+  doc23.getElementById("playerInput").value = [
+    "HurtGuy,RB,AAA,1,1,6,IR,Foot · back ~10/11", "OutGuy,WR,BBB,2,1,7,O", "ShakyGuy,WR,CCC,3,1,8,Q,Knee", "FineGuy,RB,DDD,4,1,9", "Filler,TE,EEE"
+  ].join("\n");
+  doc23.getElementById("startDraftBtn").click();
+  await new Promise(r => setTimeout(r, 20));
+  const st23 = dom23.window.__sotgTest.getState();
+  assert(st23.players[0].inj === "IR" && st23.players[1].inj === "O" && st23.players[2].inj === "Q" && st23.players[3].inj === null, "7th CSV field parses into player.inj (IR / O / Q / none)");
+  const rows23 = [...doc23.querySelectorAll("#player-list .player-row")];
+  const rowFor = n => rows23.find(r => r.querySelector(".player-info b").textContent === n);
+  assert(rowFor("HurtGuy").querySelector(".inj-tag.inj-hard") && /IR · Foot · back ~10\/11/.test(rowFor("HurtGuy").textContent), "IR player shows a red badge with body part + estimated return");
+  assert(st23.players[0].injNote === "Foot · back ~10/11" && st23.players[1].injNote === null, "8th CSV field parses into injNote, absent = null");
+  assert(rowFor("ShakyGuy").querySelector(".inj-tag.inj-soft") && /QUESTIONABLE/.test(rowFor("ShakyGuy").textContent), "questionable player shows a yellow badge");
+  assert(!rowFor("FineGuy").querySelector(".inj-tag"), "healthy player has no injury badge");
+  const rec23 = dom23.window.__sotgTest.computeRecommendation();
+  assert(rec23.player.name === "ShakyGuy", "rec skips the rank-1 IR player and rank-2 OUT player, lands on rank-3 (questionable) player");
+  assert(/questionable on ESPN's injury report \(Knee\)/.test(rec23.reason), "rec carries a heads-up with the injury note when the pick is listed questionable");
+  assert(!rec23.alternates.some(a => ["HurtGuy","OutGuy"].includes((a.player || a).name)), "IR/OUT players aren't offered as alternates either");
+  assert(rowFor("HurtGuy").querySelector(".draft-btn"), "IR player can still be drafted by hand (someone else in the room might take him)");
+
   console.log("\n=========================");
   if (failures === 0) {
     console.log("ALL TESTS PASSED");

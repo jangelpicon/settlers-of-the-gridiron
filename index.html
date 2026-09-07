@@ -86,6 +86,9 @@
   .value-tag{font-size:.66rem;color:var(--muted);margin-left:4px;white-space:nowrap;}
   .value-tag.value-good{color:var(--good);}
   .value-tag.value-hot{color:var(--brick);}
+  .inj-tag{font-size:.62rem;font-weight:800;letter-spacing:.4px;margin-left:6px;padding:0 5px;border-radius:4px;white-space:nowrap;}
+  .inj-tag.inj-hard{background:var(--brick);color:#fff;}
+  .inj-tag.inj-soft{background:#5a4a12;color:#ffd977;}
   .tier-tag{font-size:.66rem;color:var(--muted);margin-left:6px;white-space:nowrap;border:1px solid #38424d;border-radius:4px;padding:0 4px;}
   @media (max-width: 900px){
     #draft{flex-direction:column;height:auto;overflow-x:visible;padding:10px;}
@@ -136,7 +139,7 @@
 
 <header>
   <h1><span id="leagueTitle">🐑 I got <span>sheep</span> FF</span><span class="league">2026 Draft Board</span></h1>
-  <div class="sub">Draft-day board &amp; cheat sheet — no login, no server, saves as you go<br>Rankings refreshed: <b>2026-09-07 1:17 PM CDT</b> (FantasyPros PPR ECR/ADP/Tier)</div>
+  <div class="sub">Draft-day board &amp; cheat sheet — no login, no server, saves as you go<br>Rankings refreshed: <b>2026-09-07 1:17 PM CDT</b> (FantasyPros PPR ECR/ADP/Tier) · <span id="injStamp">Injuries refreshed: <b>2026-09-07 3:10 PM CT</b> (ESPN)</span></div>
 </header>
 
 <!-- SETUP SCREEN -->
@@ -177,17 +180,17 @@
 
   <div class="card">
     <h2>2. Player pool (cheat sheet)</h2>
-    <label for="playerInput">Paste your rankings — one per line: <code>Name, POS, NFL Team, ADP, Tier, Bye</code> (everything but Name is optional). Order = your rank order.</label>
+    <label for="playerInput">Paste your rankings — one per line: <code>Name, POS, NFL Team, ADP, Tier, Bye, Injury, Injury note</code> (everything but Name is optional; Injury = IR / O / D / Q / SUSP). Order = your rank order.</label>
     <textarea id="playerInput" placeholder="Ja'Marr Chase, WR, CIN, 3, 1, 6
 Bijan Robinson, RB, ATL, 2, 1, 11
 CeeDee Lamb, WR, DAL, 10, 2, 14
-...">Ja'Marr Chase, WR, CIN, 3, 1, 6
+...">Ja'Marr Chase, WR, CIN, 3, 1, 6, Q, Knee · back ~9/13
 Jahmyr Gibbs, RB, DET, 1, 1, 6
-Puka Nacua, WR, LAR, 4, 1, 11
+Puka Nacua, WR, LAR, 4, 1, 11, Q, Groin · back ~9/10
 Bijan Robinson, RB, ATL, 2, 1, 11
 Jaxon Smith-Njigba, WR, SEA, 7, 1, 11
 Amon-Ra St. Brown, WR, DET, 8, 1, 6
-Christian McCaffrey, RB, SF, 5, 2, 8
+Christian McCaffrey, RB, SF, 5, 2, 8, Q, Undisclosed · back ~9/10
 Justin Jefferson, WR, MIN, 12, 2, 6
 CeeDee Lamb, WR, DAL, 10, 2, 14
 Jonathan Taylor, RB, IND, 6, 2, 13
@@ -203,13 +206,13 @@ George Pickens, WR, DAL, 23, 3, 14
 De'Von Achane, RB, MIA, 11, 3, 6
 DeVonta Smith, WR, PHI, 32, 3, 10
 Saquon Barkley, RB, PHI, 14, 3, 10
-Malik Nabers, WR, NYG, 28, 3, 8
+Malik Nabers, WR, NYG, 28, 3, 8, Q, Knee - ACL · back ~9/13
 Kenneth Walker III, RB, KC, 17, 3, 5
 Omarion Hampton, RB, LAC, 15, 3, 7
 Josh Allen, QB, BUF, 22, 4, 7
 Rashee Rice, WR, KC, 31, 4, 5
-Ashton Jeanty, RB, LV, 19, 4, 13
-Zay Flowers, WR, BAL, 35, 4, 13
+Ashton Jeanty, RB, LV, 19, 4, 13, Q, Ankle · back ~9/13
+Zay Flowers, WR, BAL, 35, 4, 13, Q, Lower Body · back ~9/13
 Garrett Wilson, WR, NYJ, 40, 4, 13
 Lamar Jackson, QB, BAL, 38, 4, 13
 Jaylen Waddle, WR, DEN, 46, 4, 10
@@ -217,21 +220,21 @@ Ladd McConkey, WR, LAC, 43, 4, 7
 Derrick Henry, RB, BAL, 16, 4, 13
 Drake Maye, QB, NE, 52, 4, 11
 Tetairoa McMillan, WR, CAR, 36, 4, 5
-Tee Higgins, WR, CIN, 41, 4, 6
+Tee Higgins, WR, CIN, 41, 4, 6, Q, Heel · back ~9/13
 Colston Loveland, TE, CHI, 39, 4, 10
-Breece Hall, RB, NYJ, 33, 5, 13
-Jeremiyah Love, RB, ARI, 30, 5, 14
-Emeka Egbuka, WR, TB, 42, 5, 10
+Breece Hall, RB, NYJ, 33, 5, 13, Q, Groin · back ~9/13
+Jeremiyah Love, RB, ARI, 30, 5, 14, Q, Ankle · back ~9/13
+Emeka Egbuka, WR, TB, 42, 5, 10, Q, Toe · back ~9/13
 Kyren Williams, RB, LAR, 29, 5, 11
 Javonte Williams, RB, DAL, 27, 5, 14
 Joe Burrow, QB, CIN, 54, 5, 6
 Travis Etienne Jr., RB, NO, 34, 5, 8
-Luther Burden III, WR, CHI, 53, 5, 10
+Luther Burden III, WR, CHI, 53, 5, 10, Q, Groin · back ~9/13
 Terry McLaurin, WR, WAS, 57, 5, 7
 DJ Moore, WR, BUF, 48, 5, 7
 Davante Adams, WR, LAR, 50, 5, 11
 D'Andre Swift, RB, CHI, 44, 5, 10
-Tyler Warren, TE, IND, 51, 5, 13
+Tyler Warren, TE, IND, 51, 5, 13, Q, Groin · back ~9/13
 Bucky Irving, RB, TB, 47, 5, 10
 Jameson Williams, WR, DET, 58, 5, 6
 Jalen Hurts, QB, PHI, 61, 5, 10
@@ -241,14 +244,14 @@ Jayden Daniels, QB, WAS, 63, 6, 7
 Parker Washington, WR, JAC, 62, 6, 7
 David Montgomery, RB, HOU, 49, 6, 8
 Quinshon Judkins, RB, CLE, 45, 6, 11
-Rome Odunze, WR, CHI, 59, 6, 10
-Mike Evans, WR, SF, 67, 6, 8
+Rome Odunze, WR, CHI, 59, 6, 10, Q, Leg · back ~9/13
+Mike Evans, WR, SF, 67, 6, 8, Q, Groin · back ~9/10
 Caleb Williams, QB, CHI, 77, 6, 10
-Bhayshul Tuten, RB, JAC, 55, 6, 7
+Bhayshul Tuten, RB, JAC, 55, 6, 7, Q, Illness · back ~9/13
 Jadarian Price, RB, SEA, 56, 6, 11
-Carnell Tate, WR, TEN, 75, 6, 9
+Carnell Tate, WR, TEN, 75, 6, 9, Q, Undisclosed · back ~9/13
 Marvin Harrison Jr., WR, ARI, 70, 6, 14
-TreVeyon Henderson, RB, NE, 60, 6, 11
+TreVeyon Henderson, RB, NE, 60, 6, 11, Q, Ankle · back ~9/9
 Justin Herbert, QB, LAC, 84, 6, 7
 Rhamondre Stevenson, RB, NE, 64, 6, 11
 Jaylen Warren, RB, PIT, 68, 6, 9
@@ -257,58 +260,58 @@ Trevor Lawrence, QB, JAC, 88, 6, 7
 Dak Prescott, QB, DAL, 73, 6, 14
 Harold Fannin Jr., TE, CLE, 66, 6, 11
 Kyle Pitts Sr., TE, ATL, 72, 6, 11
-DK Metcalf, WR, PIT, 80, 6, 9
-Tucker Kraft, TE, GB, 69, 7, 11
-Michael Pittman Jr., WR, PIT, 95, 7, 9
+DK Metcalf, WR, PIT, 80, 6, 9, Q, Undisclosed · back ~9/13
+Tucker Kraft, TE, GB, 69, 7, 11, Q, Knee - ACL · back ~9/13
+Michael Pittman Jr., WR, PIT, 95, 7, 9, Q, Hamstring · back ~9/13
 Brian Thomas Jr., WR, JAC, 85, 7, 7
 Tony Pollard, RB, TEN, 74, 7, 9
 Rico Dowdle, RB, PIT, 78, 7, 9
 Courtland Sutton, WR, DEN, 76, 7, 10
-Wan'Dale Robinson, WR, TEN, 102, 7, 9
-Sam LaPorta, TE, DET, 71, 7, 6
-Josh Downs, WR, IND, 118, 7, 13
+Wan'Dale Robinson, WR, TEN, 102, 7, 9, Q, Head · back ~9/13
+Sam LaPorta, TE, DET, 71, 7, 6, Q, Hip · back ~9/13
+Josh Downs, WR, IND, 118, 7, 13, Q, Calf · back ~9/13
 Michael Wilson, WR, ARI, 83, 7, 14
-Jonathon Brooks, RB, CAR, 82, 7, 5
+Jonathon Brooks, RB, CAR, 82, 7, 5, Q, General Soreness · back ~9/13
 Quentin Johnston, WR, LAC, 104, 7, 7
 Stefon Diggs, WR, WAS, 100, 7, 7
 RJ Harvey, RB, DEN, 86, 7, 10
-George Kittle, TE, SF, 81, 7, 8
+George Kittle, TE, SF, 81, 7, 8, Q, Achilles · back ~9/10
 Kenny Gainwell, RB, TB, 93, 7, 10
 Brock Purdy, QB, SF, 114, 7, 8
 Bo Nix, QB, DEN, 113, 7, 10
-Chuba Hubbard, RB, CAR, 90, 7, 5
+Chuba Hubbard, RB, CAR, 90, 7, 5, Q, Hamstring · back ~9/13
 Jaxson Dart, QB, NYG, 99, 7, 8
 Travis Kelce, TE, KC, 94, 7, 5
 Alec Pierce, WR, IND, 92, 7, 13
 Jayden Reed, WR, GB, 119, 7, 11
-Patrick Mahomes II, QB, KC, 108, 7, 5
+Patrick Mahomes II, QB, KC, 108, 7, 5, Q, Knee - ACL · back ~9/14
 J.K. Dobbins, RB, DEN, 87, 7, 10
 Jared Goff, QB, DET, 126, 7, 6
 Matthew Stafford, QB, LAR, 98, 8, 11
 Jordan Addison, WR, MIN, 109, 8, 6
 KC Concepcion, WR, CLE, 125, 8, 11
 Blake Corum, RB, LAR, 97, 8, 11
-Jakobi Meyers, WR, JAC, 124, 8, 7
+Jakobi Meyers, WR, JAC, 124, 8, 7, Q, Hand · back ~9/13
 MarShawn Lloyd, RB, GB, 91, 8, 11
-Rachaad White, RB, WAS, 117, 8, 7
+Rachaad White, RB, WAS, 117, 8, 7, Q, Hamstring · back ~9/13
 Makai Lemon, WR, PHI, 116, 8, 10
 Jordan Mason, RB, MIN, 101, 8, 6
 Kyler Murray, QB, MIN, 138, 8, 6
 Dalton Kincaid, TE, BUF, 121, 8, 7
-Jacory Croskey-Merritt, RB, WAS, 110, 8, 7
+Jacory Croskey-Merritt, RB, WAS, 110, 8, 7, Q, Lower Body · back ~9/13
 Jordan Love, QB, GB, 148, 8, 11
 Aaron Jones Sr., RB, MIN, 120, 8, 6
 Baker Mayfield, QB, TB, 141, 8, 10
 Dallas Goedert, TE, PHI, 112, 8, 10
 De'Zhaun Stribling, WR, SF, 111, 8, 8
 Isaiah Likely, TE, NYG, 105, 8, 8
-Kyle Monangai, RB, CHI, 107, 8, 10
+Kyle Monangai, RB, CHI, 107, 8, 10, Q, Knee · back ~9/13
 Jake Ferguson, TE, DAL, 122, 8, 14
 Tyler Shough, QB, NO, 154, 8, 8
 Jalen Coker, WR, CAR, 142, 8, 5
 Matthew Golden, WR, GB, 127, 8, 11
 Romeo Doubs, WR, NE, 130, 8, 11
-Khalil Shakir, WR, BUF, 146, 8, 7
+Khalil Shakir, WR, BUF, 146, 8, 7, Q, Undisclosed · back ~9/13
 Juwan Johnson, TE, NO, 149, 8, 8
 Malik Willis, QB, MIA, 165, 8, 6
 Xavier Worthy, WR, KC, 131, 8, 5
@@ -319,17 +322,17 @@ Chris Rodriguez Jr., RB, JAC, 137, 8, 7
 Sam Darnold, QB, SEA, 184, 8, 11
 Tyjae Spears, RB, TEN, 143, 9, 9
 C.J. Stroud, QB, HOU, 182, 9, 8
-Jordyn Tyson, WR, NO, 144, 9, 8
+Jordyn Tyson, WR, NO, 144, 9, 8, IR, Hamstring · back ~10/11
 Daniel Jones, QB, IND, 178, 9, 13
 Jonah Coleman, RB, DEN, 152, 9, 10
 Deebo Samuel Sr., WR, SF, 134, 9, 8
 Rashid Shaheed, WR, SEA, 147, 9, 11
 Dylan Sampson, RB, CLE, 172, 9, 11
 Mike Washington Jr., RB, LV, 129, 9, 13
-Zach Charbonnet, RB, SEA, 145, 9, 11
-Keaton Mitchell, RB, LAC, 161, 9, 7
+Zach Charbonnet, RB, SEA, 145, 9, 11, O, Knee - ACL · back ~10/11
+Keaton Mitchell, RB, LAC, 161, 9, 7, Q, Undisclosed · back ~9/13
 Denzel Boston, WR, CLE, 166, 9, 11
-Josh Jacobs, RB, GB, 79, 9, 11
+Josh Jacobs, RB, GB, 79, 9, 11, O, Personal · back ~9/27
 Tre Tucker, WR, LV, 171, 9, 13
 Cam Ward, QB, TEN, 214, 9, 9
 Dalton Schultz, TE, HOU, 170, 9, 8
@@ -339,23 +342,23 @@ Houston Texans, DST, HOU, 103, 9, 8
 Bryce Young, QB, CAR, 212, 9, 5
 Hunter Henry, TE, NE, 156, 9, 11
 Tank Bigsby, RB, PHI, 167, 9, 10
-Alvin Kamara, RB, NO, 158, 9, 8
+Alvin Kamara, RB, NO, 158, 9, 8, Q, Knee - MCL · back ~9/13
 Adonai Mitchell, WR, NYJ, 235, 9, 13
 Kayshon Boutte, WR, HOU, 196, 9, 8
 Jerry Jeudy, WR, CLE, 181, 9, 11
 Los Angeles Rams, DST, LAR, 106, 9, 11
 Denver Broncos, DST, DEN, 115, 9, 10
-Jalen McMillan, WR, TB, 201, 9, 10
+Jalen McMillan, WR, TB, 201, 9, 10, Q, Knee · back ~9/13
 Brian Robinson Jr., RB, ATL, 163, 9, 11
 Seattle Seahawks, DST, SEA, 123, 9, 11
-Tyrone Tracy Jr., RB, NYG, 193, 9, 8
+Tyrone Tracy Jr., RB, NYG, 193, 9, 8, Q, Neck · back ~9/13
 Braelon Allen, RB, NYJ, 197, 9, 13
 Emmett Johnson, RB, KC, 185, 9, 5
 Jauan Jennings, WR, MIN, 202, 10, 6
 Dontayvion Wicks, WR, PHI, 259, 10, 10
 Philadelphia Eagles, DST, PHI, 139, 10, 10
 T.J. Hockenson, TE, MIN, 168, 10, 6
-Tre' Harris, WR, LAC, 239, 10, 7
+Tre' Harris, WR, LAC, 239, 10, 7, Q, Undisclosed · back ~9/13
 Omar Cooper Jr., WR, NYJ, 225, 10, 13
 Keenan Allen, WR, IND, 177, 10, 13
 Pat Bryant, WR, DEN, 245, 10, 10
@@ -369,7 +372,7 @@ Pittsburgh Steelers, DST, PIT, 151, 10, 9
 Minnesota Vikings, DST, MIN, 159, 10, 6
 New England Patriots, DST, NE, 153, 10, 11
 Jacksonville Jaguars, DST, JAC, 164, 10, 7
-Cameron Dicker, K, LAC, 135, 10, 7
+Cameron Dicker, K, LAC, 135, 10, 7, Q, Undisclosed · back ~9/13
 Ka'imi Fairbairn, K, HOU, 133, 10, 8
 Baltimore Ravens, DST, BAL, 155, 10, 13
 Los Angeles Chargers, DST, LAC, 169, 10, 7
@@ -378,7 +381,7 @@ AJ Barner, TE, SEA, 209, 10, 11
 Jason Myers, K, SEA, 136, 10, 11
 Terrance Ferguson, TE, LAR, 198, 10, 11
 Kimani Vidal, RB, LAC, 241, 10, 7
-Isiah Pacheco, RB, DET, 174, 10, 6
+Isiah Pacheco, RB, DET, 174, 10, 6, IR, Back · back ~10/11
 Aaron Rodgers, QB, PIT, 237, 10, 9
 Calvin Ridley, WR, TEN, 194, 10, 9
 Jaylin Noel, WR, HOU, 279, 10, 8
@@ -386,8 +389,8 @@ Ja'Kobi Lane, WR, BAL, 173, 10, 13
 Travis Hunter, WR, JAC, 258, 10, 7
 Eddy Pineiro, K, SF, 179, 10, 8
 Kansas City Chiefs, DST, KC, 191, 10, 5
-Kenyon Sadiq, TE, NYJ, 175, 10, 13
-Sean Tucker, RB, TB, 248, 10, 10
+Kenyon Sadiq, TE, NYJ, 175, 10, 13, Q, Abdomen · back ~9/13
+Sean Tucker, RB, TB, 248, 10, 10, Q, Undisclosed · back ~9/13
 Tyler Loop, K, BAL, 183, 10, 13
 Geno Smith, QB, NYJ, 392, 10, 13
 Green Bay Packers, DST, GB, 189, 10, 11
@@ -419,10 +422,10 @@ Najee Harris, RB, NYG, 234, 11, 8
 Germie Bernard, WR, PIT, 286, 11, 9
 Jaylen Wright, RB, MIA, 254, 11, 6
 Justice Hill, RB, BAL, 224, 11, 13
-James Conner, RB, ARI, 273, 11, 14
+James Conner, RB, ARI, 273, 11, 14, IR, Foot · back ~10/11
 Greg Dulcich, TE, MIA, 217, 11, 6
 Cleveland Browns, DST, CLE, 199, 11, 11
-Tank Dell, WR, HOU, 205, 11, 8
+Tank Dell, WR, HOU, 205, 11, 8, IR, Knee - ACL + MCL · back ~10/11
 Troy Franklin, WR, DEN, 295, 11, 10
 George Holani, RB, SEA, 263, 11, 11
 Antonio Williams, WR, WAS, 272, 11, 7
@@ -550,7 +553,8 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
   const DEFAULT_ROSTER = { QB:1, RB:2, WR:2, TE:1, FLEX:1, DST:1, K:1 };
   const FLEX_ELIGIBLE = ["RB","WR","TE"];
   const MY_TEAM_DEFAULT = "I'll be white!!"; // Jose's team in "I got sheep FF" — auto-selected by name, survives reordering
-  const LATE_POSITIONS = ["K","DST"]; // only ever recommended as a need-fill in the reserved final rounds
+  const LATE_POSITIONS = ["K","DST"];
+  const INJ_UNDRAFTABLE = ["IR","O","SUSP"]; // never recommended; still draftable by hand // only ever recommended as a need-fill in the reserved final rounds
   // Snake-draft timing thresholds (in picks, against ADP). ADP is a market average with real
   // spread, so we only call it when the margin is comfortable and there are enough picks
   // between now and my next turn for someone to actually take the player.
@@ -580,6 +584,7 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
       const adpNum = parseFloat(parts[3]);
       const tierNum = parseInt(parts[4],10);
       const byeNum = parseInt(parts[5],10);
+      const injRaw = (parts[6] || "").toUpperCase();
       return {
         id: "p"+i+"_"+parts[0].replace(/\s+/g,"_"),
         name: parts[0] || ("Player "+(i+1)),
@@ -589,6 +594,8 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
         adp: Number.isFinite(adpNum) ? adpNum : null, // optional 4th field: real draft-market ADP
         tier: Number.isFinite(tierNum) ? tierNum : null, // optional 5th field: expert-consensus tier (draft cliffs)
         bye: Number.isFinite(byeNum) ? byeNum : null, // optional 6th field: bye week
+        inj: ["IR","O","D","Q","SUSP"].includes(injRaw) ? injRaw : null, // optional 7th field: injury status (ESPN)
+        injNote: (parts[7] || "").trim() || null, // optional 8th field: body part / est. return (ESPN)
         drafted: false,
         draftedBy: null,
         price: null,
@@ -871,6 +878,13 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
     return "<span class='value-tag' title='"+title+"'>ADP "+p.adp+"</span>";
   }
 
+  const INJ_LABEL = { IR:"IR", O:"OUT", D:"DOUBTFUL", Q:"QUESTIONABLE", SUSP:"SUSPENDED" };
+  function injuryBadge(p){
+    if (!p.inj) return "";
+    const hard = INJ_UNDRAFTABLE.includes(p.inj);
+    return "<span class='inj-tag "+(hard?"inj-hard":"inj-soft")+"' title='ESPN injury report'>"+INJ_LABEL[p.inj]+(p.injNote?" · "+escapeHtml(p.injNote):"")+"</span>";
+  }
+
   function tierByeBadge(p){
     const bits = [];
     if (p.tier != null) bits.push("T"+p.tier);
@@ -906,7 +920,7 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
     available.forEach(p=>{
       const row = document.createElement("div");
       row.className = "player-row";
-      row.innerHTML = "<div class='player-info'><span class='pos-tag pos-"+ (p.pos==="DST"?"DEF":p.pos) +"'>"+escapeHtml(p.pos)+"</span><b>"+escapeHtml(p.name)+"</b> <span style='color:var(--muted);font-size:.75rem'>"+escapeHtml(p.team||"")+"</span>"+tierByeBadge(p)+adpDeltaBadge(p)+availabilityBadge(p)+"</div>";
+      row.innerHTML = "<div class='player-info'><span class='pos-tag pos-"+ (p.pos==="DST"?"DEF":p.pos) +"'>"+escapeHtml(p.pos)+"</span><b>"+escapeHtml(p.name)+"</b> <span style='color:var(--muted);font-size:.75rem'>"+escapeHtml(p.team||"")+"</span>"+injuryBadge(p)+tierByeBadge(p)+adpDeltaBadge(p)+availabilityBadge(p)+"</div>";
       const btn = document.createElement("button");
       btn.className = "draft-btn";
       btn.textContent = "Draft";
@@ -964,6 +978,7 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
   // when the pick could be a usable RB/WR instead.
   function benchEligible(p, teamIndex){
     if (LATE_POSITIONS.includes(p.pos)) return false;
+    if (INJ_UNDRAFTABLE.includes(p.inj)) return false;
     if (p.pos==="QB" || p.pos==="TE"){
       const have = myPlayers(teamIndex).filter(x=>x.pos===p.pos).length;
       if (have >= (getRoster()[p.pos]||0) + 1) return false;
@@ -1082,7 +1097,7 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
   }
 
   function bestByPosition(){
-    const avail = bestAvailable();
+    const avail = bestAvailable().filter(p=>!INJ_UNDRAFTABLE.includes(p.inj));
     const map = {};
     ["QB","RB","WR","TE","DST","K"].forEach(pos=>{
       map[pos] = avail.find(p=>p.pos===pos) || null;
@@ -1105,7 +1120,8 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
     const myIdx = getMyTeamIndex();
     const needRound = (state.config && state.config.needRound) || 1;
     const currentRound = roundForOverall(Math.min(state.currentOverall, totalPicks()));
-    const allowed = p => isLatePositionAllowed(p.pos, currentRound);
+    const healthy = p => !INJ_UNDRAFTABLE.includes(p.inj);
+    const allowed = p => isLatePositionAllowed(p.pos, currentRound) && healthy(p);
     const bpaPool = avail.filter(allowed);
     const bestOverall = bpaPool[0] || avail[0];
 
@@ -1173,6 +1189,7 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
       result.reason += " ⚠ Last Tier "+result.player.tier+" "+result.player.pos+" left — next "+result.player.pos+" available is a tier drop.";
     }
     result.reason += byeClashNote(result.player, myIdx);
+    if (result.player.inj==="Q" || result.player.inj==="D") result.reason += " ⚠ Listed "+INJ_LABEL[result.player.inj].toLowerCase()+" on ESPN's injury report"+(result.player.injNote?" ("+result.player.injNote+")":"")+" — check the latest news before you commit.";
     return result;
   }
 
@@ -1230,7 +1247,7 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
     const p = rec.player;
     const posClass = p.pos==="DST" ? "DEF" : p.pos;
     card.innerHTML =
-      "<div class='rec-player'><span class='pos-tag pos-"+posClass+"'>"+escapeHtml(p.pos)+"</span><b>"+escapeHtml(p.name)+"</b> <span class='muted'>"+escapeHtml(p.team||"")+"</span>"+tierByeBadge(p)+adpDeltaBadge(p)+availabilityBadge(p)+"</div>" +
+      "<div class='rec-player'><span class='pos-tag pos-"+posClass+"'>"+escapeHtml(p.pos)+"</span><b>"+escapeHtml(p.name)+"</b> <span class='muted'>"+escapeHtml(p.team||"")+"</span>"+injuryBadge(p)+tierByeBadge(p)+adpDeltaBadge(p)+availabilityBadge(p)+"</div>" +
       "<div class='rec-reason'>"+escapeHtml(rec.reason)+"</div>";
     const btn = document.createElement("button");
     btn.className = "draft-btn";
@@ -1244,7 +1261,7 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
       const row = document.createElement("div");
       row.className = "alt-row";
       const apClass = ap.pos==="DST" ? "DEF" : ap.pos;
-      row.innerHTML = "<span class='pos-tag pos-"+apClass+"'>"+escapeHtml(ap.pos)+"</span><span style='flex:1'>"+escapeHtml(ap.name)+"</span>"+tierByeBadge(ap)+adpDeltaBadge(ap)+availabilityBadge(ap);
+      row.innerHTML = "<span class='pos-tag pos-"+apClass+"'>"+escapeHtml(ap.pos)+"</span><span style='flex:1'>"+escapeHtml(ap.name)+"</span>"+injuryBadge(ap)+tierByeBadge(ap)+adpDeltaBadge(ap)+availabilityBadge(ap);
       const b = document.createElement("button");
       b.className = "btn-secondary btn-small";
       b.textContent = "Draft";
@@ -1374,10 +1391,10 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
   // waiver-wire pool. This exports it as a ranked cheat sheet for post-draft
   // pickups — no ESPN login or API access, just the same data already in the pool.
   document.getElementById("exportWaiverBtn").addEventListener("click", ()=>{
-    let csv = "ConsensusRank,Tier,Position,Player,NFLTeam,ADP,Bye\n";
+    let csv = "ConsensusRank,Tier,Position,Player,NFLTeam,ADP,Bye,Injury,InjuryNote\n";
     state.players.filter(p=>!p.drafted).forEach(p=>{
       csv += [p.ecrRank, p.tier!=null?p.tier:"", p.pos, p.name, p.team,
-        p.adp!=null?p.adp:"", p.bye!=null?p.bye:""]
+        p.adp!=null?p.adp:"", p.bye!=null?p.bye:"", p.inj||"", p.injNote||""]
         .map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(",") + "\n";
     });
     const blob = new Blob([csv], {type:"text/csv"});

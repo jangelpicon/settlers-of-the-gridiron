@@ -109,11 +109,15 @@ further later, drop in your own board using the same field format.
   tiers are the proxy. A projections feed would let the tool compute how much
   a QB/TE is actually worth over the waiver-wire replacement in a 9-team
   league (less than ECR implies); not built.
-- **No live injury data.** Checked the FantasyPros feed directly — it doesn't
-  carry an injury-status field on this endpoint. A player who gets hurt after
-  this pool was fetched won't show it. Cross-check anyone you're about to
-  draft against a live injury report if the draft is more than a few hours
-  out.
+- **Injury status comes from ESPN's public injury report**, merged into the
+  pool as the optional 7th field (status) and 8th field (body part + ESPN's
+  estimated return date) by `tools/merge_injuries.py` (re-run it any
+  time; it stamps "Injuries refreshed" in the header). IR / OUT / SUSPENDED
+  players get a red badge and are never recommended or offered as alternates
+  (still draftable by hand). QUESTIONABLE / DOUBTFUL get a yellow badge and a
+  heads-up on the recommendation; only designations reported in the last 10
+  days are kept, because preseason "questionable" tags linger for weeks.
+  It's still a snapshot — news after the last refresh won't show.
 - **The pool is a frozen snapshot**, not a live feed. This is a static,
   client-only page with no backend — it can't re-scrape FantasyPros itself.
   ADP drifts slowly (days, not hours) so this is low-risk for same-day
@@ -152,6 +156,7 @@ further later, drop in your own board using the same field format.
   wait/take swap when on the clock, no swap when not on the clock, and no swap
   when the only "gone" option is a real tier drop
 - Bye-week clash warning
+- Injury field parsing, badges, and IR/OUT exclusion from recommendations
 - Bench balance (no 3rd bench WR while there's no backup RB, and back to BPA
   once there is)
 
@@ -162,4 +167,4 @@ npm install jsdom --no-save   # one-time, ~26MB, only needed to run tests
 node test.js
 ```
 
-All 114 assertions currently pass.
+All 123 assertions currently pass.
