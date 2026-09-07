@@ -259,6 +259,32 @@ async function run() {
   const tierTag = rbLastRow.querySelector(".tier-tag");
   assert(tierTag && tierTag.textContent === "T1 · Bye 7", "queue row shows a combined tier + bye badge");
 
+  console.log("\n== Test 13: Waiver board export lists only undrafted players ==");
+  const dom6 = new JSDOM(html, { runScripts: "dangerously", resources: "usable", url: "http://localhost/" });
+  await new Promise(r => setTimeout(r, 50));
+  const doc6 = dom6.window.document;
+  doc6.getElementById("numTeams").value = 2;
+  doc6.getElementById("numRounds").value = 1;
+  doc6.getElementById("teamNames").value = "Alpha, Bravo";
+  doc6.getElementById("playerInput").value = [
+    "Drafted Guy,RB,AAA,1,1,7",
+    "Waiver Guy,WR,BBB,2,1,9"
+  ].join("\n");
+  doc6.getElementById("startDraftBtn").click();
+  await new Promise(r => setTimeout(r, 20));
+  dom6.window.__sotgTest.draftFirstAvailable(); // Alpha takes Drafted Guy, pick1
+  await new Promise(r => setTimeout(r, 10));
+
+  let waiverBlob = null;
+  dom6.window.URL.createObjectURL = (blob) => { waiverBlob = blob; return "blob:fake"; };
+  dom6.window.URL.revokeObjectURL = () => {};
+  doc6.getElementById("exportWaiverBtn").click();
+  assert(waiverBlob !== null, "waiver export click produced a CSV Blob");
+  const waiverText = await waiverBlob.text();
+  assert(waiverText.includes("Waiver Guy"), "waiver board includes the still-undrafted player");
+  assert(!waiverText.includes("Drafted Guy"), "waiver board excludes the already-drafted player");
+  assert(waiverText.includes("ConsensusRank,Tier,Position,Player,NFLTeam,ADP,Bye"), "waiver board has the expected header row");
+
   console.log("\n=========================");
   if (failures === 0) {
     console.log("ALL TESTS PASSED");

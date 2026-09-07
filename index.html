@@ -449,6 +449,7 @@ Evan Engram, TE, DEN, 370, 11, 10</textarea>
     <div id="bottom-actions">
       <button class="btn-secondary" id="undoBtn">↶ Undo last pick</button>
       <button class="btn-secondary" id="exportBtn">⬇ Export CSV</button>
+      <button class="btn-secondary" id="exportWaiverBtn">⬇ Export Waiver Board</button>
       <button class="btn-danger" id="resetBtn">Reset draft</button>
     </div>
   </div>
@@ -1083,6 +1084,24 @@ Evan Engram, TE, DEN, 370, 11, 10</textarea>
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = "settlers-of-the-gridiron-draft.csv";
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  // Everyone left undrafted when the draft ends is your league's free-agent /
+  // waiver-wire pool. This exports it as a ranked cheat sheet for post-draft
+  // pickups — no ESPN login or API access, just the same data already in the pool.
+  document.getElementById("exportWaiverBtn").addEventListener("click", ()=>{
+    let csv = "ConsensusRank,Tier,Position,Player,NFLTeam,ADP,Bye\n";
+    state.players.filter(p=>!p.drafted).forEach(p=>{
+      csv += [p.ecrRank, p.tier!=null?p.tier:"", p.pos, p.name, p.team,
+        p.adp!=null?p.adp:"", p.bye!=null?p.bye:""]
+        .map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(",") + "\n";
+    });
+    const blob = new Blob([csv], {type:"text/csv"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "settlers-of-the-gridiron-waiver-board.csv";
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
   });

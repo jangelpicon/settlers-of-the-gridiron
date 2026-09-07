@@ -39,8 +39,11 @@ client-side — nothing to install, nothing to deploy.
    slots are filled and which are still open, live.
 4. The board auto-fills in the correct snake slot and the clock advances to
    the next team. **Undo** reverses the last pick if you misclick. **Export
-   CSV** downloads the full draft results. **Reset draft** clears everything
-   and starts over.
+   CSV** downloads the full draft results. **Export Waiver Board** downloads
+   everyone still undrafted when the draft ends — that's your free-agent pool,
+   ranked by consensus with tier/ADP/bye, ready to reference for waiver claims
+   after the draft (no ESPN login involved, it's just the leftover pool from
+   the same data). **Reset draft** clears everything and starts over.
 5. State autosaves to your browser's localStorage, so a refresh won't lose
    your draft — "Load saved draft" on the setup screen picks it back up.
 
@@ -103,6 +106,7 @@ further later, drop in your own board using the same field format.
   and bench-fallback cases, hand-traced through a scripted mini-draft)
 - Optional 4th/5th/6th CSV fields (ADP, Tier, Bye) parsing and the resulting
   value/reach badge and tier-cliff warning
+- Waiver board export (undrafted players only, excludes anyone already picked)
 
 Run it:
 
@@ -111,4 +115,4 @@ npm install jsdom --no-save   # one-time, ~26MB, only needed to run tests
 node test.js
 ```
 
-All 45 assertions currently pass.
+All 49 assertions currently pass.
