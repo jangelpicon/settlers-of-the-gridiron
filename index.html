@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Settlers of the Gridiron — Draft Day Tool</title>
+<title>I got sheep FF — 2026 Draft</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%91%3C/text%3E%3C/svg%3E">
 <style>
@@ -18,7 +18,7 @@
   header > *{position:relative;}
   header h1{margin:0;font-size:1.45rem;letter-spacing:.5px;}
   header h1 span{color:var(--wheat);}
-  header h1 .league{display:block;font-size:.85rem;font-weight:500;color:var(--sheep);letter-spacing:1px;text-transform:uppercase;margin-top:2px;}
+  header h1 .league{display:block;font-size:.8rem;font-weight:500;color:var(--sheep);letter-spacing:1.5px;text-transform:uppercase;margin-top:3px;}
   .you-pill{display:inline-block;background:var(--sheep);color:#0d1a0d;font-size:.62rem;font-weight:800;letter-spacing:.5px;padding:1px 6px;border-radius:10px;margin-left:5px;vertical-align:middle;}
   table#board th.my-col{background:#1f3a22;color:#bfe8bf;border-bottom:2px solid var(--sheep);}
   table#board td.my-col{background:#162316;border-left:1px solid #2f5a33;border-right:1px solid #2f5a33;}
@@ -125,7 +125,7 @@
 <body>
 
 <header>
-  <h1><span id="leagueTitle" class="league">🐑 I got sheep FF · 2026 Draft</span>Settlers of <span>the Gridiron</span></h1>
+  <h1><span id="leagueTitle">🐑 I got <span>sheep</span> FF</span><span class="league">2026 Draft Board</span></h1>
   <div class="sub">Draft-day board &amp; cheat sheet — no login, no server, saves as you go<br>Rankings refreshed: <b>2026-09-07 1:17 PM CDT</b> (FantasyPros PPR ECR/ADP/Tier)</div>
 </header>
 
@@ -716,7 +716,7 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
   // ---------- Draft screen render ----------
   function enterDraftScreen(){
     const lt = document.getElementById("leagueTitle");
-    if (lt) lt.textContent = "🐑 " + ((state.config && state.config.leagueName) || "I got sheep FF") + " · 2026 Draft";
+    if (lt) lt.textContent = "🐑 " + ((state.config && state.config.leagueName) || "I got sheep FF");
     document.getElementById("setup").classList.add("hidden");
     document.getElementById("draft").classList.remove("hidden");
     renderBoard();
@@ -1302,7 +1302,7 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
     const blob = new Blob([csv], {type:"text/csv"});
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = "settlers-of-the-gridiron-draft.csv";
+    a.href = url; a.download = "i-got-sheep-ff-draft.csv";
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
   });
@@ -1320,7 +1320,7 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
     const blob = new Blob([csv], {type:"text/csv"});
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = "settlers-of-the-gridiron-waiver-board.csv";
+    a.href = url; a.download = "i-got-sheep-ff-waiver-board.csv";
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
   });

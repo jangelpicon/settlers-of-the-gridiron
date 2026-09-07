@@ -1,4 +1,4 @@
-# Settlers of the Gridiron
+# I got sheep FF — Draft Day Tool
 
 A single-file, no-login, no-server draft-day tool for fantasy football.
 

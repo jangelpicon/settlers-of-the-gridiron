@@ -1,4 +1,4 @@
-// Headless smoke test for Settlers of the Gridiron draft tool.
+// Headless smoke test for the I got sheep FF draft-day tool.
 // Loads the real index.html in jsdom and drives it like a user would.
 const fs = require("fs");
 const path = require("path");
