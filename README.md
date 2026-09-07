@@ -18,8 +18,9 @@ client-side — nothing to install, nothing to deploy.
    directly from FantasyPros' public cheat sheet:
    - **Expert Consensus Ranking (ECR)** — the aggregate of 100+ individual
      expert rankings (list order = ECR rank).
-   - **ADP (Average Draft Position)** — real draft-market behavior across
-     actual platforms, as the optional 4th field.
+   - **ADP (Average Draft Position)** — from ESPN's public player feed, i.e.
+     the same ADP the ESPN draft room shows (this league drafts on ESPN), as
+     the optional 4th field.
    - **Tier** — FantasyPros' expert-consensus talent clusters, as the
      optional 5th field. Bye week is the 6th.
 
@@ -118,11 +119,10 @@ further later, drop in your own board using the same field format.
   heads-up on the recommendation; only designations reported in the last 10
   days are kept, because preseason "questionable" tags linger for weeks.
   It's still a snapshot — news after the last refresh won't show.
-- **The pool is a frozen snapshot**, not a live feed. This is a static,
-  client-only page with no backend — it can't re-scrape FantasyPros itself.
-  ADP drifts slowly (days, not hours) so this is low-risk for same-day
-  drafts, but if you're drafting more than ~24h after this was generated,
-  consider asking for a refresh.
+- **The pool is a snapshot**, refreshed by `tools/refresh_rankings.py`
+  (FantasyPros ECR/tier/bye joined to ESPN ADP; dry-run with `--dry-run`)
+  followed by `tools/merge_injuries.py`. Both stamp the header. Re-run
+  before a draft or a weekly waiver check; the page itself can't re-fetch.
 - **Strength-of-schedule/matchup data exists in the feed but isn't wired in.**
   Deprioritized — it matters more for in-season streaming/trade decisions
   than for a single draft-night snake/auction pick.
