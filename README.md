@@ -62,14 +62,51 @@ and more ways for the tool to silently break right before a live draft, for
 marginal signal gain — not worth it for a draft-day helper. If you want to go
 further later, drop in your own board using the same field format.
 
+### Draft-day brain (what the recommendation actually does)
+
+1. **Before the need round** (default 5): pure best-player-available, K/DST
+   excluded. Shallow leagues fill bench needs on waivers; early picks are for
+   talent.
+2. **From the need round on**: best-ranked player who fills one of your open
+   starting slots. **K and DST are never recommended before the reserved
+   final rounds** (default: last 2). The gap between the best and 10th-best
+   kicker/defense is noise, so an early K/DST pick costs you a real bench
+   player. Before then, once your skill starters are full, it falls back to
+   best bench player (never a K/DST, never a 3rd QB/TE, and never a 3rd
+   bench RB/WR while the other has no backup — RBs are scarce on the wire and
+   both positions get hurt).
+3. **Snake timing (the wait/take call)**: the rec panel always shows your
+   next pick number and how many picks stand between you and it. Every player
+   with ADP gets a tag — "should last to #N" or "likely gone by #N" — based on
+   whether the market's average draft slot lands comfortably after or before
+   your next turn. When you're on the clock and the top recommendation should
+   still be there next time around while a **same-tier** alternative won't be,
+   it recommends the one that won't last and tells you why, keeping the other
+   as the first alternate. It stays quiet when the margin is thin (ADP within
+   a few picks of your slot, or fewer than 3 picks between turns), because ADP
+   is an average with real spread and a false "he'll be there" is worse than
+   no call.
+4. **Tier cliff** and **bye-week clash** warnings ride along on the
+   recommendation: last player of their tier at the position, or same bye week
+   as a player you already hold at that position.
+5. The pick clock rolls straight into the next pick once it's been started —
+   no re-clicking Start every pick.
+
 ### Known gaps (2026-09-07 audit)
 
-- **Your real league settings were never confirmed.** Everything defaults to
-  12 teams, PPR scoring, and a standard 1QB/2RB/2WR/1TE/1FLEX/1DST/1K lineup.
-  If your actual league differs — team count, scoring format, roster
-  construction, keeper/dynasty rules — the rankings and recommendations are
-  only as good as that match. This is the single highest-leverage thing to
-  fix before you actually draft; everything else is downstream of it.
+- **League settings confirmed from ESPN** (9 teams, full PPR, 14 rounds,
+  QB1/RB2/WR2/TE1/FLEX1/DST1/K1) and baked in as defaults. Draft slot (which
+  team is yours) still has to be picked on the setup screen once the order is
+  known.
+- **ADP is a cross-platform average, mostly 12-team drafts.** In a 9-team
+  league the wait/take tags compare ADP against your actual pick numbers,
+  which works because both are "how many players go before this one", but a
+  room full of homers or one person drafting off a different list will
+  deviate. Treat the tags as a strong prior, not a guarantee.
+- **No projected points, so no true value-over-replacement.** Rankings and
+  tiers are the proxy. A projections feed would let the tool compute how much
+  a QB/TE is actually worth over the waiver-wire replacement in a 9-team
+  league (less than ECR implies); not built.
 - **No live injury data.** Checked the FantasyPros feed directly — it doesn't
   carry an injury-status field on this endpoint. A player who gets hurt after
   this pool was fetched won't show it. Cross-check anyone you're about to
@@ -107,6 +144,14 @@ further later, drop in your own board using the same field format.
 - Optional 4th/5th/6th CSV fields (ADP, Tier, Bye) parsing and the resulting
   value/reach badge and tier-cliff warning
 - Waiver board export (undrafted players only, excludes anyone already picked)
+- K/DST late-round guard (never recommended or offered as an alternate before
+  the reserved final rounds, then recommended as a need fill)
+- Snake timing: next-pick math, should-last/likely-gone tags, the same-tier
+  wait/take swap when on the clock, no swap when not on the clock, and no swap
+  when the only "gone" option is a real tier drop
+- Bye-week clash warning
+- Bench balance (no 3rd bench WR while there's no backup RB, and back to BPA
+  once there is)
 
 Run it:
 
@@ -115,4 +160,4 @@ npm install jsdom --no-save   # one-time, ~26MB, only needed to run tests
 node test.js
 ```
 
-All 49 assertions currently pass.
+All 87 assertions currently pass.

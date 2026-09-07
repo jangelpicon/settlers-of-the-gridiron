@@ -337,6 +337,173 @@ async function run() {
   assert(rec7.player.name === "TargetQB", "round 3 (needRound reached): now recommends the QB to fill Alpha's open slot, even though Filler5 outranks it");
   assert(/QB slot/.test(rec7.reason), "round 3 reason explains it's filling the QB need, not just best player available");
 
+  console.log("\n== Test 15: K/DST are never recommended before the reserved final rounds ==");
+  const dom12 = new JSDOM(html, { runScripts: "dangerously", resources: "usable", url: "http://localhost/" });
+  await new Promise(r => setTimeout(r, 50));
+  const doc12 = dom12.window.document;
+  doc12.getElementById("numTeams").value = 2;
+  doc12.getElementById("numRounds").value = 4;
+  doc12.getElementById("teamNames").value = "Alpha, Bravo";
+  ["rosterRB","rosterWR","rosterTE","rosterFLEX","rosterDST"].forEach(id => { doc12.getElementById(id).value = 0; });
+  doc12.getElementById("rosterQB").value = 1;
+  doc12.getElementById("rosterK").value = 1;
+  doc12.getElementById("needRound").value = 1;   // need mode from the very first pick
+  doc12.getElementById("lateRounds").value = 1;  // K allowed only in round 4 of 4
+  doc12.getElementById("playerInput").value = [
+    "QB1,QB,AAA", "K1,K,BBB", "WR1,WR,CCC", "WR2,WR,DDD",
+    "WR3,WR,EEE", "WR4,WR,FFF", "WR5,WR,GGG", "WR6,WR,HHH"
+  ].join("\n");
+  doc12.getElementById("startDraftBtn").click();
+  await new Promise(r => setTimeout(r, 20));
+  function draftByName12(name) {
+    const st = dom12.window.__sotgTest.getState();
+    const p = st.players.find(x => x.name === name && !x.drafted);
+    const rows = [...doc12.querySelectorAll("#player-list .player-row")];
+    const row = rows.find(r => r.querySelector(".player-info b").textContent === p.name);
+    row.querySelector(".draft-btn").click();
+  }
+  // 2-team snake over 8 picks: A,B,B,A,A,B,B,A. Alpha owns 1,4,5,8.
+  let rec12 = dom12.window.__sotgTest.computeRecommendation();
+  assert(rec12.player.name === "QB1", "pick 1: open QB + open K, rec fills QB (K is rank 2 but reserved for the last round)");
+  draftByName12("QB1"); await new Promise(r => setTimeout(r, 10)); // 1 A
+  draftByName12("WR1"); await new Promise(r => setTimeout(r, 10)); // 2 B
+  draftByName12("WR2"); await new Promise(r => setTimeout(r, 10)); // 3 B
+  rec12 = dom12.window.__sotgTest.computeRecommendation();
+  assert(rec12.player.name === "WR3", "pick 4 (round 2): only K slot open, but rec is best bench WR, NOT the kicker");
+  assert(/K waits for the last 1 round/.test(rec12.reason), "reason says K waits for the reserved final round(s)");
+  assert(!rec12.alternates.some(a => (a.player || a).name === "K1"), "kicker is not offered as an alternate either");
+  draftByName12("WR3"); await new Promise(r => setTimeout(r, 10)); // 4 A
+  draftByName12("WR4"); await new Promise(r => setTimeout(r, 10)); // 5 A
+  draftByName12("WR5"); await new Promise(r => setTimeout(r, 10)); // 6 B
+  draftByName12("WR6"); await new Promise(r => setTimeout(r, 10)); // 7 B
+  rec12 = dom12.window.__sotgTest.computeRecommendation();
+  assert(dom12.window.__sotgTest.getState().currentOverall === 8, "we're at pick 8 (round 4, the reserved round)");
+  assert(rec12.player.name === "K1" && /K slot/.test(rec12.reason), "final round: kicker is now recommended to fill the open K slot");
+
+  console.log("\n== Test 16: Snake timing — take the near-equal player who won't last to your next pick ==");
+  const dom13 = new JSDOM(html, { runScripts: "dangerously", resources: "usable", url: "http://localhost/" });
+  await new Promise(r => setTimeout(r, 50));
+  const doc13 = dom13.window.document;
+  doc13.getElementById("numTeams").value = 3;
+  doc13.getElementById("numRounds").value = 3;
+  doc13.getElementById("teamNames").value = "Alpha, Bravo, Charlie";
+  doc13.getElementById("needRound").value = 10; // pure BPA the whole way
+  // 3-team snake: 1 A, 2 B, 3 C, 4 C, 5 B, 6 A, 7 A, 8 B, 9 C. Alpha's next pick after #1 is #6.
+  // X1 rank 1 but ADP 12 (market lets him slide -> should last to #6); X2 rank 2 ADP 2 (gone), same tier.
+  doc13.getElementById("playerInput").value = [
+    "X1,RB,AAA,12,1", "X2,WR,BBB,2,1", "X3,WR,CCC,3,2", "X4,RB,DDD,5,2",
+    "X5,WR,EEE", "X6,RB,FFF", "X7,TE,GGG", "X8,QB,HHH", "X9,WR,III"
+  ].join("\n");
+  doc13.getElementById("startDraftBtn").click();
+  await new Promise(r => setTimeout(r, 20));
+  const t13 = dom13.window.__sotgTest;
+  const st13 = t13.getState();
+  const X1 = st13.players.find(p => p.name === "X1"), X2 = st13.players.find(p => p.name === "X2"), X3 = st13.players.find(p => p.name === "X3");
+  assert(t13.isMyTurn() === true, "Alpha (slot 1) is on the clock at pick 1");
+  assert(t13.myNextPickAfter(1) === 6, "Alpha's next pick after #1 is #6 in a 3-team snake");
+  assert(t13.availabilityAtNextPick(X1) === "there", "X1 (ADP 12) should still be there at #6");
+  assert(t13.availabilityAtNextPick(X2) === "gone", "X2 (ADP 2) is likely gone by #6");
+  assert(t13.availabilityAtNextPick(X3) === "gone", "X3 (ADP 3) is also likely gone by #6");
+  let rec13 = t13.computeRecommendation();
+  assert(rec13.player.name === "X2", "rec swaps from rank-1 X1 to same-tier X2 because X1 will last and X2 won't");
+  assert(/likely gone before your next pick at #6/.test(rec13.reason) && /X1 \(ADP 12\) should still be there/.test(rec13.reason), "reason explains the wait/take trade-off with both ADPs and the next pick number");
+  assert((rec13.alternates[0].player || rec13.alternates[0]).name === "X1", "the player we chose to wait on is the first alternate");
+  assert(/You're on the clock \(#1\)/.test(doc13.getElementById("nextPickInfo").textContent) && /#6/.test(doc13.getElementById("nextPickInfo").textContent), "next-pick line shows on-the-clock + next pick #6");
+  const x1Row = [...doc13.querySelectorAll("#player-list .player-row")].find(r => r.querySelector(".player-info b").textContent === "X1");
+  assert(x1Row && /should last to #6/.test(x1Row.textContent), "queue row for X1 carries the 'should last to #6' tag");
+  const x2Row = [...doc13.querySelectorAll("#player-list .player-row")].find(r => r.querySelector(".player-info b").textContent === "X2");
+  assert(x2Row && /likely gone by #6/.test(x2Row.textContent), "queue row for X2 carries the 'likely gone by #6' tag");
+  x2Row.querySelector(".draft-btn").click(); // Alpha takes X2 at #1
+  await new Promise(r => setTimeout(r, 10));
+  assert(t13.isMyTurn() === false, "after Alpha's pick, Bravo is on the clock");
+  rec13 = t13.computeRecommendation();
+  assert(rec13.player.name === "X1", "when it's not my turn, no swap: rec is plain best-available (X1) as a preview of who to want at #6");
+  assert(/You're up at #6/.test(doc13.getElementById("nextPickInfo").textContent), "next-pick line now says when Alpha is up next");
+
+  console.log("\n== Test 17: Bye-week clash warning on the recommendation ==");
+  const dom14 = new JSDOM(html, { runScripts: "dangerously", resources: "usable", url: "http://localhost/" });
+  await new Promise(r => setTimeout(r, 50));
+  const doc14 = dom14.window.document;
+  doc14.getElementById("numTeams").value = 2;
+  doc14.getElementById("numRounds").value = 2;
+  doc14.getElementById("teamNames").value = "Alpha, Bravo";
+  ["rosterRB","rosterWR","rosterTE","rosterFLEX","rosterDST","rosterK"].forEach(id => { doc14.getElementById(id).value = 0; });
+  doc14.getElementById("rosterQB").value = 1;
+  doc14.getElementById("needRound").value = 1;
+  doc14.getElementById("playerInput").value = ["QB1,QB,AAA,,,7", "WR1,WR,BBB", "WR2,WR,CCC", "QB2,QB,DDD,,,7"].join("\n");
+  doc14.getElementById("startDraftBtn").click();
+  await new Promise(r => setTimeout(r, 20));
+  function draftByName14(name) {
+    const rows = [...doc14.querySelectorAll("#player-list .player-row")];
+    rows.find(r => r.querySelector(".player-info b").textContent === name).querySelector(".draft-btn").click();
+  }
+  draftByName14("QB1"); await new Promise(r => setTimeout(r, 10)); // 1 A
+  draftByName14("WR1"); await new Promise(r => setTimeout(r, 10)); // 2 B
+  draftByName14("WR2"); await new Promise(r => setTimeout(r, 10)); // 3 B
+  const rec14 = dom14.window.__sotgTest.computeRecommendation();
+  assert(rec14.player.name === "QB2", "pick 4: only QB2 is left, it's the rec");
+  assert(/Same bye \(wk 7\) as your QB QB1/.test(rec14.reason), "rec warns that QB2 shares QB1's bye week");
+
+  console.log("\n== Test 18: Snake timing does NOT swap for a player who isn't near-equal ==");
+  const dom18 = new JSDOM(html, { runScripts: "dangerously", resources: "usable", url: "http://localhost/" });
+  await new Promise(r => setTimeout(r, 50));
+  const doc18 = dom18.window.document;
+  doc18.getElementById("numTeams").value = 3;
+  doc18.getElementById("numRounds").value = 3;
+  doc18.getElementById("teamNames").value = "Alpha, Bravo, Charlie";
+  doc18.getElementById("needRound").value = 10;
+  // Y1 rank 1 tier 1 ADP 12 (will last). Y2 is 'gone' by ADP but tier 3 — a real talent drop, so no swap.
+  doc18.getElementById("playerInput").value = [
+    "Y1,RB,AAA,12,1", "Y2,WR,BBB,2,3", "Y3,WR,CCC,20,3", "Y4,RB,DDD,25,3",
+    "Y5,WR,EEE", "Y6,RB,FFF", "Y7,TE,GGG", "Y8,QB,HHH", "Y9,WR,III"
+  ].join("\n");
+  doc18.getElementById("startDraftBtn").click();
+  await new Promise(r => setTimeout(r, 20));
+  const rec18 = dom18.window.__sotgTest.computeRecommendation();
+  assert(rec18.player.name === "Y1", "top player lasts to #6 but the only 'gone' option is two tiers worse: rec stays on Y1, no swap");
+  assert(!/likely gone before your next pick/.test(rec18.reason), "no wait/take reasoning shown when no near-equal swap exists");
+
+  console.log("\n== Test 19: Bench balance — no 3rd bench WR while there's no backup RB ==");
+  const dom19 = new JSDOM(html, { runScripts: "dangerously", resources: "usable", url: "http://localhost/" });
+  await new Promise(r => setTimeout(r, 50));
+  const doc19 = dom19.window.document;
+  doc19.getElementById("numTeams").value = 2;
+  doc19.getElementById("numRounds").value = 5;
+  doc19.getElementById("teamNames").value = "Alpha, Bravo";
+  ["rosterQB","rosterRB","rosterTE","rosterFLEX","rosterDST","rosterK"].forEach(id => { doc19.getElementById(id).value = 0; });
+  doc19.getElementById("rosterWR").value = 1; // one WR starter, everything else is bench
+  doc19.getElementById("needRound").value = 1;
+  doc19.getElementById("lateRounds").value = 0;
+  doc19.getElementById("playerInput").value = [
+    "W1,WR,AAA","W2,WR,BBB","W3,WR,CCC","W4,WR,DDD","R1,RB,EEE","W5,WR,FFF","F1,WR,GGG","F2,WR,HHH","F3,WR,III","F4,WR,JJJ"
+  ].join("\n");
+  doc19.getElementById("startDraftBtn").click();
+  await new Promise(r => setTimeout(r, 20));
+  const t19 = dom19.window.__sotgTest;
+  function draftByName19(name) {
+    const rows = [...doc19.querySelectorAll("#player-list .player-row")];
+    rows.find(r => r.querySelector(".player-info b").textContent === name).querySelector(".draft-btn").click();
+  }
+  // 2-team snake over 10 picks: A,B,B,A,A,B,B,A,A,B. Alpha: 1,4,5,8,9.
+  draftByName19("W1"); await new Promise(r => setTimeout(r, 10)); // 1 A: WR starter
+  draftByName19("F1"); await new Promise(r => setTimeout(r, 10)); // 2 B
+  draftByName19("F2"); await new Promise(r => setTimeout(r, 10)); // 3 B
+  let rec19 = t19.computeRecommendation();
+  assert(rec19.player.name === "W2", "1st bench pick: plain BPA (W2) — no balance rule with 0 bench WRs");
+  draftByName19("W2"); await new Promise(r => setTimeout(r, 10)); // 4 A
+  rec19 = t19.computeRecommendation();
+  assert(rec19.player.name === "W3", "2nd bench pick: still BPA (W3) — 1 bench WR is fine");
+  draftByName19("W3"); await new Promise(r => setTimeout(r, 10)); // 5 A
+  draftByName19("F3"); await new Promise(r => setTimeout(r, 10)); // 6 B
+  draftByName19("F4"); await new Promise(r => setTimeout(r, 10)); // 7 B
+  rec19 = t19.computeRecommendation();
+  assert(rec19.player.name === "R1", "3rd bench pick: W4 outranks R1, but bench already has 2 WRs and 0 RBs -> rec is the best RB");
+  assert(/Bench balance/.test(rec19.reason) && /2 bench WRs/.test(rec19.reason), "reason explains the bench-balance override");
+  assert((rec19.alternates[0].player || rec19.alternates[0]).name === "W4", "the higher-ranked WR is still offered as the first alternate");
+  draftByName19("R1"); await new Promise(r => setTimeout(r, 10)); // 8 A
+  rec19 = t19.computeRecommendation();
+  assert(rec19.player.name === "W4", "once a backup RB is on the bench, it's back to BPA (W4)");
+
   console.log("\n=========================");
   if (failures === 0) {
     console.log("ALL TESTS PASSED");

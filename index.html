@@ -424,6 +424,9 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
 
     <label for="needRound">Draft for need starting round # (before this round, always take the best player regardless of position — correct for shallow leagues where bench needs are easy to fill on waivers later)</label>
     <input type="number" id="needRound" min="1" max="30" value="5">
+
+    <label for="lateRounds">Reserve K &amp; DST for the last # of rounds (never recommended before then — the gap between the best and 10th-best kicker/defense is noise, so an early K/DST pick costs you a real bench player; 0 = off)</label>
+    <input type="number" id="lateRounds" min="0" max="10" value="2">
   </div>
 
   <div id="setup-actions">
@@ -460,6 +463,7 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
   <div id="insights-col">
     <div class="panel" id="rec-panel">
       <h2 style="margin:0 0 8px;font-size:.95rem;color:var(--wheat);">🎯 Recommended Pick</h2>
+      <div id="nextPickInfo" class="muted" style="font-size:.78rem;margin-bottom:8px;"></div>
       <div id="recCard" class="rec-card"></div>
       <div id="recAlternates" class="rec-alternates"></div>
     </div>
@@ -516,6 +520,14 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
   const STORAGE_KEY = "sotg_draft_v1";
   const DEFAULT_ROSTER = { QB:1, RB:2, WR:2, TE:1, FLEX:1, DST:1, K:1 };
   const FLEX_ELIGIBLE = ["RB","WR","TE"];
+  const LATE_POSITIONS = ["K","DST"]; // only ever recommended as a need-fill in the reserved final rounds
+  // Snake-draft timing thresholds (in picks, against ADP). ADP is a market average with real
+  // spread, so we only call it when the margin is comfortable and there are enough picks
+  // between now and my next turn for someone to actually take the player.
+  const WAIT_MARGIN = 4;       // ADP at least this far AFTER my next pick => "should last"
+  const GONE_MARGIN = 2;       // ADP at least this far BEFORE my next pick => "likely gone"
+  const MIN_PICKS_BETWEEN = 3; // fewer other-team picks than this before my next turn => too close to call
+  const SWAP_RANK_WINDOW = 6;  // without tiers, "near-equal" = within this many consensus ranks
 
   let state = null; // set on start/load
   let timerInterval = null;
@@ -621,9 +633,11 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
     const myTeamIndex = (Number.isFinite(myTeamRaw) && myTeamRaw>=0 && myTeamRaw<numTeams) ? myTeamRaw : 0;
     const needRoundRaw = parseInt(document.getElementById("needRound").value,10);
     const needRound = Number.isFinite(needRoundRaw) && needRoundRaw>=1 ? needRoundRaw : 5;
+    const lateRoundsRaw = parseInt(document.getElementById("lateRounds").value,10);
+    const lateRounds = Number.isFinite(lateRoundsRaw) && lateRoundsRaw>=0 ? lateRoundsRaw : 2;
 
     return {
-      config: { numTeams, numRounds, pickSeconds, draftType, budget, teamNames: names, roster, needRound },
+      config: { numTeams, numRounds, pickSeconds, draftType, budget, teamNames: names, roster, needRound, lateRounds },
       players,
       picks: [], // {overall, round, teamIndex, playerId, price}
       currentOverall: 1,
@@ -790,7 +804,7 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
     available.forEach(p=>{
       const row = document.createElement("div");
       row.className = "player-row";
-      row.innerHTML = "<div class='player-info'><span class='pos-tag pos-"+ (p.pos==="DST"?"DEF":p.pos) +"'>"+escapeHtml(p.pos)+"</span><b>"+escapeHtml(p.name)+"</b> <span style='color:var(--muted);font-size:.75rem'>"+escapeHtml(p.team||"")+"</span>"+tierByeBadge(p)+adpDeltaBadge(p)+"</div>";
+      row.innerHTML = "<div class='player-info'><span class='pos-tag pos-"+ (p.pos==="DST"?"DEF":p.pos) +"'>"+escapeHtml(p.pos)+"</span><b>"+escapeHtml(p.name)+"</b> <span style='color:var(--muted);font-size:.75rem'>"+escapeHtml(p.team||"")+"</span>"+tierByeBadge(p)+adpDeltaBadge(p)+availabilityBadge(p)+"</div>";
       const btn = document.createElement("button");
       btn.className = "draft-btn";
       btn.textContent = "Draft";
@@ -823,6 +837,117 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
 
   function getRoster(){
     return (state.config && state.config.roster) || DEFAULT_ROSTER;
+  }
+
+  function totalPicks(){ return state.config.numTeams * state.config.numRounds; }
+
+  function lateRoundsReserved(){
+    const v = state.config ? state.config.lateRounds : undefined;
+    return Number.isFinite(v) ? v : 2;
+  }
+  // K/DST are only allowed to be recommended in the final `lateRounds` rounds (0 = no restriction).
+  function isLatePositionAllowed(pos, currentRound){
+    if (!LATE_POSITIONS.includes(pos)) return true;
+    const reserved = lateRoundsReserved();
+    if (reserved <= 0) return true;
+    return currentRound > state.config.numRounds - reserved;
+  }
+
+  function myPlayers(teamIndex){
+    return state.picks.filter(pk=>pk.teamIndex===teamIndex)
+      .map(pk=>state.players.find(x=>x.id===pk.playerId)).filter(Boolean);
+  }
+
+  // Bench sanity: never bench a K/DST, and don't stack a 3rd QB/TE (starters + 1 backup max)
+  // when the pick could be a usable RB/WR instead.
+  function benchEligible(p, teamIndex){
+    if (LATE_POSITIONS.includes(p.pos)) return false;
+    if (p.pos==="QB" || p.pos==="TE"){
+      const have = myPlayers(teamIndex).filter(x=>x.pos===p.pos).length;
+      if (have >= (getRoster()[p.pos]||0) + 1) return false;
+    }
+    return true;
+  }
+
+  // If `pick` would be a 3rd+ bench RB (or WR) while the bench has zero of the other, return the
+  // best available of the other position instead (with context), else null.
+  function benchBalancePick(pick, benchPool, teamIndex){
+    if (pick.pos!=="RB" && pick.pos!=="WR") return null;
+    const other = pick.pos==="RB" ? "WR" : "RB";
+    const bench = computeRosterAssignment(teamIndex).bench;
+    const have = bench.filter(x=>x.pos===pick.pos).length;
+    const haveOther = bench.filter(x=>x.pos===other).length;
+    if (have < 2 || haveOther > 0) return null;
+    const alt = benchPool.find(x=>x.pos===other);
+    if (!alt) return null;
+    return { player: alt, have, stackedPos: pick.pos };
+  }
+
+  // First overall pick strictly after `overall` that belongs to my team (snake only).
+  function myNextPickAfter(overall){
+    if (state.config.draftType !== "snake") return null;
+    const myIdx = getMyTeamIndex();
+    const total = totalPicks();
+    for (let o=overall+1; o<=total; o++){
+      if (teamIndexForOverallPick(o)===myIdx) return o;
+    }
+    return null;
+  }
+  function isMyTurn(){
+    return state.config.draftType==="snake" && state.currentOverall<=totalPicks() &&
+      teamIndexForOverallPick(state.currentOverall)===getMyTeamIndex();
+  }
+  // Will player p still be on the board at my next pick? Uses ADP as the market's expected
+  // slot. Returns "gone" | "there" | null (no ADP / too close to call / not enough picks between).
+  function availabilityAtNextPick(p){
+    if (p.adp == null) return null;
+    const next = myNextPickAfter(state.currentOverall);
+    if (next == null) return null;
+    const picksBefore = next - state.currentOverall - (isMyTurn() ? 1 : 0);
+    if (picksBefore < MIN_PICKS_BETWEEN) return null;
+    if (p.adp <= next - GONE_MARGIN) return "gone";
+    if (p.adp >= next + WAIT_MARGIN) return "there";
+    return null;
+  }
+  function availabilityBadge(p){
+    const a = availabilityAtNextPick(p);
+    if (!a) return "";
+    const next = myNextPickAfter(state.currentOverall);
+    if (a==="gone") return "<span class='value-tag value-hot' title='ADP "+p.adp+" is before your next pick (#"+next+")'>likely gone by #"+next+"</span>";
+    return "<span class='value-tag value-good' title='ADP "+p.adp+" is after your next pick (#"+next+")'>should last to #"+next+"</span>";
+  }
+
+  // Two players are "near-equal" when they share an expert-consensus tier (the pool's tiers are
+  // overall tiers, so they compare across positions) or, without tiers, sit within a few ranks.
+  function isNearEqual(a, b){
+    if (a.tier!=null && b.tier!=null) return a.tier===b.tier;
+    return Math.abs(a.ecrRank - b.ecrRank) <= SWAP_RANK_WINDOW;
+  }
+
+  // Snake-draft timing: if the top recommendation should still be on the board at my next pick
+  // and a near-equal alternative won't be, take the one that won't last and get the other next
+  // turn. Only applies when I'm actually on the clock.
+  function applyWaitLogic(result, pool){
+    if (!isMyTurn()) return result;
+    const top = result.player;
+    if (availabilityAtNextPick(top) !== "there") return result;
+    const alt = pool.find(p => p.id!==top.id && availabilityAtNextPick(p)==="gone" && isNearEqual(top, p));
+    if (!alt) return result;
+    const next = myNextPickAfter(state.currentOverall);
+    const rest = (result.alternates||[]).map(a=>a.player||a).filter(a=>a.id!==alt.id && a.id!==top.id);
+    return {
+      player: alt,
+      reason: alt.name+" (ADP "+alt.adp+") is likely gone before your next pick at #"+next+", while "+top.name+" (ADP "+top.adp+") should still be there — take the one that won't last, grab the other next turn",
+      alternates: [top].concat(rest).slice(0,3),
+      swappedFrom: top
+    };
+  }
+
+  function byeClashNote(p, teamIndex){
+    if (p.bye == null) return "";
+    const clash = myPlayers(teamIndex).filter(x=>x.pos===p.pos && x.bye===p.bye);
+    if (!clash.length) return "";
+    return " ⚠ Same bye (wk "+p.bye+") as your "+p.pos+" "+clash.map(x=>x.name).join(", ");
   }
 
   // Greedily assigns a team's drafted players to open starting slots (primary
@@ -865,25 +990,31 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
 
   // Recommendation = the best-ranked player among everyone who would fill one
   // of your still-open starting slots (need AND value together). If every
-  // starting slot is full, fall back to true best-player-available. Need is
-  // ignored entirely before config.needRound — early picks should always be
-  // the best talent on the board, not a reach to fill a slot you can cover
-  // on waivers later (especially true in shallow leagues).
+  // starting slot is full, fall back to best-player-available for the bench
+  // (K/DST never, and no 3rd QB/TE). Need is ignored entirely before
+  // config.needRound — early picks should always be the best talent on the
+  // board, not a reach to fill a slot you can cover on waivers later
+  // (especially true in shallow leagues). K/DST are never recommended before
+  // the reserved final rounds. Finally, snake-draft timing may swap in a
+  // near-equal player who won't survive to your next pick.
   function computeRecommendation(){
     const avail = bestAvailable();
     if (!avail.length) return null;
-    const bestOverall = avail[0];
     const myIdx = getMyTeamIndex();
     const needRound = (state.config && state.config.needRound) || 1;
-    const currentRound = roundForOverall(state.currentOverall);
+    const currentRound = roundForOverall(Math.min(state.currentOverall, totalPicks()));
+    const allowed = p => isLatePositionAllowed(p.pos, currentRound);
+    const bpaPool = avail.filter(allowed);
+    const bestOverall = bpaPool[0] || avail[0];
 
-    let result;
+    let result, swapPool;
     if (currentRound < needRound){
       result = {
         player: bestOverall,
         reason: "Round "+currentRound+" of "+needRound+" — take the best player on the board, needs can wait",
-        alternates: avail.slice(1,4)
+        alternates: bpaPool.slice(1,4)
       };
+      swapPool = bpaPool.slice(0,5);
     } else {
       const { starterSlots } = computeRosterAssignment(myIdx);
       const openTypes = {};
@@ -896,7 +1027,7 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
           FLEX_ELIGIBLE.forEach(pos=>{
             if (byPos[pos]) candidates.push({ player: byPos[pos], reason: "Fills your open FLEX slot ("+pos+")" });
           });
-        } else if (byPos[type]){
+        } else if (byPos[type] && allowed(byPos[type])){
           candidates.push({ player: byPos[type], reason: "Fills your open "+type+" slot" });
         }
       });
@@ -909,11 +1040,21 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
       candidates.sort((a,b)=> avail.indexOf(a.player) - avail.indexOf(b.player));
 
       if (!candidates.length){
-        result = {
-          player: bestOverall,
-          reason: "All starting slots filled — best player available for bench/upside",
-          alternates: avail.slice(1,4)
-        };
+        const benchPool = avail.filter(p=>benchEligible(p, myIdx));
+        const openLate = Object.keys(openTypes).filter(t=>LATE_POSITIONS.includes(t));
+        let reason = openLate.length
+          ? "Skill starters filled — best bench player available. "+openLate.join("/")+" waits for the last "+lateRoundsReserved()+" round(s)"
+          : "All starting slots filled — best player available for bench/upside";
+        let pick = benchPool[0] || bestOverall;
+        // Bench balance: RB and WR both get hurt and both fill FLEX, but RBs are far scarcer on a
+        // waiver wire. Don't stack a 3rd bench RB/WR while the other position has no backup at all.
+        const bal = benchBalancePick(pick, benchPool, myIdx);
+        if (bal){
+          pick = bal.player;
+          reason = "Bench balance — you already have "+bal.have+" bench "+bal.stackedPos+"s and no backup "+bal.player.pos+"; best "+bal.player.pos+" available";
+        }
+        result = { player: pick, reason, alternates: benchPool.filter(p=>p.id!==pick.id).slice(0,3) };
+        swapPool = [pick].concat(benchPool.filter(p=>p.id!==pick.id)).slice(0,5);
       } else {
         const top = candidates[0];
         const isAlsoBPA = top.player.id === bestOverall.id;
@@ -922,12 +1063,29 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
           reason: isAlsoBPA ? top.reason + " — and it's the best player on the board" : top.reason,
           alternates: candidates.slice(1,4)
         };
+        swapPool = candidates.map(c=>c.player).slice(0,5);
       }
     }
+    result = applyWaitLogic(result, swapPool);
     if (isLastInPositionTier(result.player, avail)){
       result.reason += " ⚠ Last Tier "+result.player.tier+" "+result.player.pos+" left — next "+result.player.pos+" available is a tier drop.";
     }
+    result.reason += byeClashNote(result.player, myIdx);
     return result;
+  }
+
+  function renderNextPickInfo(){
+    const el = document.getElementById("nextPickInfo");
+    if (!el) return;
+    if (state.config.draftType !== "snake"){ el.textContent = "Auction — no fixed pick order."; return; }
+    if (state.currentOverall > totalPicks()){ el.textContent = "Draft complete."; return; }
+    const next = myNextPickAfter(state.currentOverall);
+    if (isMyTurn()){
+      el.innerHTML = "<b style='color:var(--wheat)'>You're on the clock (#"+state.currentOverall+").</b> " +
+        (next ? "Your next pick after this: #"+next+" ("+(next-state.currentOverall-1)+" picks in between)." : "This is your last pick.");
+    } else {
+      el.textContent = next ? "You're up at #"+next+" — "+(next-state.currentOverall)+" pick(s) until then." : "You have no picks left.";
+    }
   }
 
   function renderRoster(){
@@ -970,7 +1128,7 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
     const p = rec.player;
     const posClass = p.pos==="DST" ? "DEF" : p.pos;
     card.innerHTML =
-      "<div class='rec-player'><span class='pos-tag pos-"+posClass+"'>"+escapeHtml(p.pos)+"</span><b>"+escapeHtml(p.name)+"</b> <span class='muted'>"+escapeHtml(p.team||"")+"</span>"+tierByeBadge(p)+adpDeltaBadge(p)+"</div>" +
+      "<div class='rec-player'><span class='pos-tag pos-"+posClass+"'>"+escapeHtml(p.pos)+"</span><b>"+escapeHtml(p.name)+"</b> <span class='muted'>"+escapeHtml(p.team||"")+"</span>"+tierByeBadge(p)+adpDeltaBadge(p)+availabilityBadge(p)+"</div>" +
       "<div class='rec-reason'>"+escapeHtml(rec.reason)+"</div>";
     const btn = document.createElement("button");
     btn.className = "draft-btn";
@@ -984,7 +1142,7 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
       const row = document.createElement("div");
       row.className = "alt-row";
       const apClass = ap.pos==="DST" ? "DEF" : ap.pos;
-      row.innerHTML = "<span class='pos-tag pos-"+apClass+"'>"+escapeHtml(ap.pos)+"</span><span style='flex:1'>"+escapeHtml(ap.name)+"</span>"+tierByeBadge(ap)+adpDeltaBadge(ap);
+      row.innerHTML = "<span class='pos-tag pos-"+apClass+"'>"+escapeHtml(ap.pos)+"</span><span style='flex:1'>"+escapeHtml(ap.name)+"</span>"+tierByeBadge(ap)+adpDeltaBadge(ap)+availabilityBadge(ap);
       const b = document.createElement("button");
       b.className = "btn-secondary btn-small";
       b.textContent = "Draft";
@@ -995,6 +1153,7 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
   }
 
   function renderInsights(){
+    renderNextPickInfo();
     renderRoster();
     renderRecommendation();
   }
@@ -1055,11 +1214,13 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
     });
     state.currentOverall += 1;
     save();
+    const wasRunning = !!timerInterval;
     renderBoard();
     renderQueue();
     updateStatusBar();
     renderInsights();
     resetTimerDisplay();
+    if (wasRunning) startTimer(); // clock rolls straight into the next pick, no extra click
   }
 
   document.getElementById("undoBtn").addEventListener("click", ()=>{
@@ -1139,14 +1300,15 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
     el.textContent = String(m).padStart(2,"0")+":"+String(s).padStart(2,"0");
     el.classList.toggle("warn", timerRemaining <= 10);
   }
-  document.getElementById("timerStart").addEventListener("click", ()=>{
+  function startTimer(){
     if (timerInterval) return;
     timerInterval = setInterval(()=>{
       timerRemaining = Math.max(0, timerRemaining-1);
       renderTimer();
       if (timerRemaining===0){ clearInterval(timerInterval); timerInterval=null; }
     },1000);
-  });
+  }
+  document.getElementById("timerStart").addEventListener("click", startTimer);
   document.getElementById("timerPause").addEventListener("click", ()=>{
     clearInterval(timerInterval); timerInterval = null;
   });
@@ -1157,6 +1319,7 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
     getState: ()=>state,
     buildInitialState, teamIndexForOverallPick, roundForOverall, pickInRoundForOverall,
     computeRosterAssignment, computeRecommendation, getMyTeamIndex,
+    myNextPickAfter, isMyTurn, availabilityAtNextPick,
     startWithDefaults: ()=>{ document.getElementById("startDraftBtn").click(); },
     draftFirstAvailable: ()=>{
       const p = state.players.find(pl=>!pl.drafted);
