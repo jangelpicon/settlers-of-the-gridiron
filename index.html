@@ -19,6 +19,16 @@
   header h1{margin:0;font-size:1.45rem;letter-spacing:.5px;}
   header h1 span{color:var(--wheat);}
   header h1 .league{display:block;font-size:.8rem;font-weight:500;color:var(--sheep);letter-spacing:1.5px;text-transform:uppercase;margin-top:3px;}
+  #teamOrderList{list-style:none;margin:6px 0 0;padding:0;}
+  .team-row{display:flex;align-items:center;gap:8px;padding:7px 10px;margin-bottom:4px;background:var(--panel2);border:1px solid #38424d;border-radius:6px;font-size:.9rem;cursor:grab;}
+  .team-row.dragging{opacity:.4;}
+  .team-row.drop-target{border-color:var(--wheat);box-shadow:0 0 0 1px var(--wheat) inset;}
+  .team-row.mine{border-color:var(--sheep);background:#1f3a22;}
+  .team-row .slot-num{width:26px;height:26px;border-radius:50%;background:var(--wheat);color:#1a1206;font-weight:800;font-size:.8rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .team-row .team-name{flex:1;font-weight:600;}
+  .team-row .handle{color:var(--muted);font-size:1rem;flex-shrink:0;}
+  .team-row .move-btn{background:var(--panel);color:var(--text);border:1px solid #38424d;padding:3px 9px;font-size:.8rem;border-radius:5px;}
+  .team-row .move-btn:disabled{opacity:.3;cursor:default;}
   .you-pill{display:inline-block;background:var(--sheep);color:#0d1a0d;font-size:.62rem;font-weight:800;letter-spacing:.5px;padding:1px 6px;border-radius:10px;margin-left:5px;vertical-align:middle;}
   table#board th.my-col{background:#1f3a22;color:#bfe8bf;border-bottom:2px solid var(--sheep);}
   table#board td.my-col{background:#162316;border-left:1px solid #2f5a33;border-right:1px solid #2f5a33;}
@@ -135,8 +145,8 @@
     <h2>1. League setup</h2>
     <div class="row">
       <div>
-        <label for="numTeams"># of teams</label>
-        <input type="number" id="numTeams" min="2" max="20" value="9">
+        <label for="numTeams"># of teams (set by the team list below)</label>
+        <input type="number" id="numTeams" min="2" max="20" value="9" readonly>
       </div>
       <div>
         <label for="numRounds"># of rounds</label>
@@ -149,8 +159,9 @@
     </div>
     <label for="leagueName">League name</label>
     <input type="text" id="leagueName" value="I got sheep FF">
-    <label for="teamNames">Team names (comma separated, in draft-slot order — these are the 9 real teams from ESPN in standings order; reorder them to match the draft order once it's set)</label>
-    <input type="text" id="teamNames" value="Bad Hombres, SACK OF WHEAT, Resting Blitz Face, Unnecessary Sanctions, The Brady Bunch, BlitzAndGiggles, Knight Moves Ore Else, I'll be white!!, PapasCabezas" placeholder="e.g. Ore Lords, Wheat Kings, Brick House, ...">
+    <label>Draft order — drag the teams (or use the arrows) into the order they'll pick in round 1. Names come straight from ESPN and aren't editable.</label>
+    <input type="hidden" id="teamNames" value="Bad Hombres, SACK OF WHEAT, Resting Blitz Face, Unnecessary Sanctions, The Brady Bunch, BlitzAndGiggles, Knight Moves Ore Else, I'll be white!!, PapasCabezas">
+    <ol id="teamOrderList"></ol>
 
     <label>Draft type</label>
     <div class="radio-group">
@@ -625,8 +636,60 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
     sel.value = String(idx);
   }
   document.getElementById("numTeams").addEventListener("input", refreshMyTeamSelect);
-  document.getElementById("teamNames").addEventListener("input", refreshMyTeamSelect);
+  document.getElementById("teamNames").addEventListener("input", ()=>{ refreshMyTeamSelect(); renderTeamOrder(); });
+  document.getElementById("myTeamIndex").addEventListener("change", renderTeamOrder);
+
+  // ---------- Interactive draft-order list (names fixed, order drag/arrow-reorderable) ----------
+  function getTeamOrder(){
+    return document.getElementById("teamNames").value.split(",").map(s=>s.trim()).filter(Boolean);
+  }
+  function setTeamOrder(names){
+    const input = document.getElementById("teamNames");
+    input.value = names.join(", ");
+    document.getElementById("numTeams").value = names.length;
+    input.dispatchEvent(new Event("input"));
+  }
+  function moveTeam(from, to){
+    const names = getTeamOrder();
+    if (from<0 || from>=names.length || to<0 || to>=names.length || from===to) return;
+    const [moved] = names.splice(from,1);
+    names.splice(to,0,moved);
+    setTeamOrder(names);
+  }
+  let dragFrom = null;
+  function renderTeamOrder(){
+    const list = document.getElementById("teamOrderList");
+    if (!list) return;
+    const names = getTeamOrder();
+    document.getElementById("numTeams").value = names.length;
+    const sel = document.getElementById("myTeamIndex");
+    const myName = sel && sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : null;
+    list.innerHTML = "";
+    names.forEach((name,i)=>{
+      const li = document.createElement("li");
+      li.className = "team-row" + (name===myName ? " mine" : "");
+      li.draggable = true;
+      li.dataset.index = String(i);
+      li.innerHTML = "<span class='handle' title='Drag to reorder'>⠿</span><span class='slot-num'>"+(i+1)+"</span>" +
+        "<span class='team-name'>"+(name===myName?"🐑 ":"")+escapeHtml(name)+(name===myName?"<span class='you-pill'>YOU</span>":"")+"</span>";
+      const up = document.createElement("button");
+      up.type = "button"; up.className = "move-btn move-up"; up.textContent = "▲"; up.title = "Move up"; up.disabled = (i===0);
+      up.addEventListener("click", ()=>moveTeam(i, i-1));
+      const down = document.createElement("button");
+      down.type = "button"; down.className = "move-btn move-down"; down.textContent = "▼"; down.title = "Move down"; down.disabled = (i===names.length-1);
+      down.addEventListener("click", ()=>moveTeam(i, i+1));
+      li.appendChild(up); li.appendChild(down);
+      li.addEventListener("dragstart", (e)=>{ dragFrom = i; li.classList.add("dragging"); if (e.dataTransfer) e.dataTransfer.effectAllowed = "move"; });
+      li.addEventListener("dragend", ()=>{ dragFrom = null; list.querySelectorAll(".team-row").forEach(r=>r.classList.remove("dragging","drop-target")); });
+      li.addEventListener("dragover", (e)=>{ e.preventDefault(); li.classList.add("drop-target"); });
+      li.addEventListener("dragleave", ()=>li.classList.remove("drop-target"));
+      li.addEventListener("drop", (e)=>{ e.preventDefault(); if (dragFrom!=null) moveTeam(dragFrom, i); });
+      list.appendChild(li);
+    });
+  }
+
   refreshMyTeamSelect();
+  renderTeamOrder();
 
   function getRosterConfig(){
     const read = (id, fallback) => {

@@ -7,7 +7,9 @@ A single-file, no-login, no-server draft-day tool for fantasy football.
 Just double-click `index.html` (or drag it into a browser tab). Everything runs
 client-side — nothing to install, nothing to deploy.
 
-1. **Setup screen**: set # of teams, # of rounds, seconds per pick, team names,
+1. **Setup screen**: the 9 "I got sheep FF" teams are fixed (names come from
+   ESPN and aren't editable) — drag them, or use the ▲/▼ arrows, into round-1
+   draft order. Then set # of rounds, seconds per pick,
    draft type (snake or auction), your starting lineup (QB/RB/WR/TE/FLEX/DST/K
    counts), which team is yours, and paste your rankings (`Name, POS, Team, ADP,
    Tier, Bye` per line — everything but Name is optional, order = your rank
@@ -160,4 +162,4 @@ npm install jsdom --no-save   # one-time, ~26MB, only needed to run tests
 node test.js
 ```
 
-All 101 assertions currently pass.
+All 114 assertions currently pass.
