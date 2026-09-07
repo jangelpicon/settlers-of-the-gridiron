@@ -535,7 +535,7 @@ async function run() {
   const doc21 = dom21.window.document;
   const sel21 = doc21.getElementById("myTeamIndex");
   assert(sel21.options[sel21.selectedIndex].textContent === "I'll be white!!", "on load, 'Which team is yours' is already set to I'll be white!!");
-  assert(sel21.value === "7", "…which is draft slot 8 (index 7) in the prefilled standings order");
+  assert(sel21.value === "3", "…which is draft slot 4 (index 3) in the locked-in draft order");
   // Reorder into a hypothetical draft order with my team drafting 3rd.
   doc21.getElementById("teamNames").value = "PapasCabezas, Bad Hombres, I'll be white!!, SACK OF WHEAT, Resting Blitz Face, Unnecessary Sanctions, The Brady Bunch, BlitzAndGiggles, Knight Moves Ore Else";
   doc21.getElementById("teamNames").dispatchEvent(new dom21.window.Event("input"));
@@ -552,28 +552,28 @@ async function run() {
   const rows22 = () => [...doc22.querySelectorAll("#teamOrderList .team-row")];
   const rowNames = () => rows22().map(r => r.querySelector(".team-name").textContent.replace(/^🐑 /, "").replace(/YOU$/, ""));
   assert(rows22().length === 9, "9 fixed team rows render on load");
-  assert(rowNames()[0] === "Bad Hombres" && rowNames()[7] === "I'll be white!!", "initial order matches ESPN standings order");
+  assert(rowNames()[0] === "Unnecessary Sanctions" && rowNames()[3] === "I'll be white!!" && rowNames()[8] === "Bad Hombres", "initial order is the locked-in ESPN draft order (Jose at slot 4)");
   assert(doc22.getElementById("teamNames").type === "hidden", "there is no free-text team-name field to edit");
   assert(doc22.getElementById("numTeams").readOnly === true && doc22.getElementById("numTeams").value === "9", "# of teams is read-only and driven by the list (9)");
-  assert(rows22()[7].classList.contains("mine") && /YOU/.test(rows22()[7].textContent), "my team's row is marked 🐑 YOU");
+  assert(rows22()[3].classList.contains("mine") && /YOU/.test(rows22()[3].textContent), "my team's row is marked 🐑 YOU");
   assert(rows22()[0].querySelector(".move-up").disabled && rows22()[8].querySelector(".move-down").disabled, "top row can't move up, bottom row can't move down");
-  rows22()[7].querySelector(".move-up").click(); // I'll be white!! 8 -> 7
-  assert(rowNames()[6] === "I'll be white!!" && rowNames()[7] === "Knight Moves Ore Else", "▲ moves my team up one slot and pushes the other down");
-  assert(doc22.getElementById("teamNames").value.split(",").map(x => x.trim())[6] === "I'll be white!!", "hidden order field updated to match");
+  rows22()[3].querySelector(".move-up").click(); // I'll be white!! 4 -> 3
+  assert(rowNames()[2] === "I'll be white!!" && rowNames()[3] === "PapasCabezas", "▲ moves my team up one slot and pushes the other down");
+  assert(doc22.getElementById("teamNames").value.split(",").map(x => x.trim())[2] === "I'll be white!!", "hidden order field updated to match");
   const sel22 = doc22.getElementById("myTeamIndex");
-  assert(sel22.options[sel22.selectedIndex].textContent === "I'll be white!!" && sel22.value === "6", "'my team' dropdown followed the move (now slot 7)");
-  // Drag "PapasCabezas" (index 8) onto slot 1 (index 0)
+  assert(sel22.options[sel22.selectedIndex].textContent === "I'll be white!!" && sel22.value === "2", "'my team' dropdown followed the move (now slot 3)");
+  // Drag "Bad Hombres" (index 8) onto slot 1 (index 0)
   const dragEv = (type) => { const e = new dom22.window.Event(type, { bubbles: true, cancelable: true }); e.dataTransfer = { effectAllowed: "" }; return e; };
   rows22()[8].dispatchEvent(dragEv("dragstart"));
   rows22()[0].dispatchEvent(dragEv("dragover"));
   rows22()[0].dispatchEvent(dragEv("drop"));
-  assert(rowNames()[0] === "PapasCabezas" && rowNames()[1] === "Bad Hombres", "drag-and-drop moves a team to the top and shifts the rest down");
-  assert(rowNames()[7] === "I'll be white!!" && sel22.value === "7", "my team shifted to slot 8 by the drag and the dropdown still tracks it by name");
+  assert(rowNames()[0] === "Bad Hombres" && rowNames()[1] === "Unnecessary Sanctions", "drag-and-drop moves a team to the top and shifts the rest down");
+  assert(rowNames()[3] === "I'll be white!!" && sel22.value === "3", "my team shifted back to slot 4 by the drag and the dropdown still tracks it by name");
   doc22.getElementById("startDraftBtn").click();
   await new Promise(r => setTimeout(r, 20));
   const st22 = dom22.window.__sotgTest.getState();
-  assert(st22.config.teamNames[0] === "PapasCabezas" && st22.config.teamNames[7] === "I'll be white!!" && st22.config.numTeams === 9, "draft starts with the interactive order as the real draft order");
-  assert(dom22.window.__sotgTest.getMyTeamIndex() === 7, "my team index in the draft = my slot in the list");
+  assert(st22.config.teamNames[0] === "Bad Hombres" && st22.config.teamNames[3] === "I'll be white!!" && st22.config.numTeams === 9, "draft starts with the interactive order as the real draft order");
+  assert(dom22.window.__sotgTest.getMyTeamIndex() === 3, "my team index in the draft = my slot in the list");
 
   console.log("\n== Test 23: Injury field — badges, and IR/OUT players are never recommended ==");
   const dom23 = new JSDOM(html, { runScripts: "dangerously", resources: "usable", url: "http://localhost/" });
