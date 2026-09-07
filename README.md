@@ -9,22 +9,26 @@ client-side — nothing to install, nothing to deploy.
 
 1. **Setup screen**: set # of teams, # of rounds, seconds per pick, team names,
    draft type (snake or auction), your starting lineup (QB/RB/WR/TE/FLEX/DST/K
-   counts), which team is yours, and paste your rankings (`Name, POS, Team, ADP`
-   per line — POS/Team/ADP all optional, order = your rank order). The pool
-   ships pre-filled with the top 250 players blending **two independent
-   FantasyPros PPR data feeds** for the 2026 season, pulled directly from
-   FantasyPros' public cheat sheet:
+   counts), which team is yours, and paste your rankings (`Name, POS, Team, ADP,
+   Tier, Bye` per line — everything but Name is optional, order = your rank
+   order). The pool ships pre-filled with the top 250 players blending **three
+   independent FantasyPros PPR data feeds** for the 2026 season, pulled
+   directly from FantasyPros' public cheat sheet:
    - **Expert Consensus Ranking (ECR)** — the aggregate of 100+ individual
      expert rankings (list order = ECR rank).
    - **ADP (Average Draft Position)** — real draft-market behavior across
      actual platforms, as the optional 4th field.
+   - **Tier** — FantasyPros' expert-consensus talent clusters, as the
+     optional 5th field. Bye week is the 6th.
 
    When a player's ADP diverges meaningfully from their ECR rank, the queue
    flags it: green "value" (market is letting them slide past their expert
    rank — no need to reach) or red "going early" (market is drafting them
-   ahead of consensus — grab them now if you want them). Overwrite the pool
-   if you want your own board, a different scoring format, or don't have ADP
-   data — everything still works with just `Name, POS, Team`.
+   ahead of consensus — grab them now if you want them). When a player is the
+   last one left in their tier at their position, the Recommended Pick calls
+   out the coming cliff so you know when reaching is actually correct.
+   Overwrite the pool if you want your own board, a different scoring format,
+   or don't have this data — everything still works with just `Name, POS, Team`.
 2. Click **Start Draft**.
 3. As players get picked (by you or anyone else), click **Draft** next to
    their name in the queue — or just take the **Recommended Pick**, which
@@ -47,13 +51,39 @@ tracks each team's remaining budget.
 
 FantasyPros ECR is already a blend of 100+ individual expert rankings, not one
 analyst's opinion — that's most of the value of "multiple sources" already
-baked in. ADP adds a second, genuinely different signal (real draft-market
-behavior instead of expert opinion) for the price of one extra CSV column
-we were already fetching. Scraping additional sites (ESPN, Yahoo, Sleeper)
-on top of that would mean more scrapers to maintain and more ways for the
-tool to silently break right before a live draft, for marginal signal gain —
-not worth it for a draft-day helper. If you want to go further later, drop
-in your own board using the same 4-field format.
+baked in. ADP and Tier add two more genuinely different signals (real
+draft-market behavior, and expert-consensus talent clustering) for the price
+of two extra CSV columns we were already fetching. Scraping additional sites
+(ESPN, Yahoo, Sleeper) on top of that would mean more scrapers to maintain
+and more ways for the tool to silently break right before a live draft, for
+marginal signal gain — not worth it for a draft-day helper. If you want to go
+further later, drop in your own board using the same field format.
+
+### Known gaps (2026-09-07 audit)
+
+- **Your real league settings were never confirmed.** Everything defaults to
+  12 teams, PPR scoring, and a standard 1QB/2RB/2WR/1TE/1FLEX/1DST/1K lineup.
+  If your actual league differs — team count, scoring format, roster
+  construction, keeper/dynasty rules — the rankings and recommendations are
+  only as good as that match. This is the single highest-leverage thing to
+  fix before you actually draft; everything else is downstream of it.
+- **No live injury data.** Checked the FantasyPros feed directly — it doesn't
+  carry an injury-status field on this endpoint. A player who gets hurt after
+  this pool was fetched won't show it. Cross-check anyone you're about to
+  draft against a live injury report if the draft is more than a few hours
+  out.
+- **The pool is a frozen snapshot**, not a live feed. This is a static,
+  client-only page with no backend — it can't re-scrape FantasyPros itself.
+  ADP drifts slowly (days, not hours) so this is low-risk for same-day
+  drafts, but if you're drafting more than ~24h after this was generated,
+  consider asking for a refresh.
+- **Strength-of-schedule/matchup data exists in the feed but isn't wired in.**
+  Deprioritized — it matters more for in-season streaming/trade decisions
+  than for a single draft-night snake/auction pick.
+- Mobile layout was broken (3 columns forced a hidden horizontal scroll on
+  phone-width screens) and has been fixed with a responsive breakpoint that
+  stacks the board, recommendation, and queue vertically under 900px — tested
+  at 390×844 (iPhone-class viewport).
 
 ## Testing
 
@@ -71,7 +101,8 @@ in your own board using the same 4-field format.
 - Auction mode budget tracking
 - Roster tracking + need-aware pick recommendation (best-available, need-fill,
   and bench-fallback cases, hand-traced through a scripted mini-draft)
-- Optional 4th CSV field (ADP) parsing and the resulting value/reach badge
+- Optional 4th/5th/6th CSV fields (ADP, Tier, Bye) parsing and the resulting
+  value/reach badge and tier-cliff warning
 
 Run it:
 
@@ -80,4 +111,4 @@ npm install jsdom --no-save   # one-time, ~26MB, only needed to run tests
 node test.js
 ```
 
-All 40 assertions currently pass.
+All 45 assertions currently pass.

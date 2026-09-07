@@ -223,6 +223,42 @@ async function run() {
   const noAdpRow = rows4.find(r => r.querySelector(".player-info b").textContent === "No ADP Guy");
   assert(!noAdpRow.querySelector(".value-tag"), "queue row shows no value tag at all when the pasted line had no ADP");
 
+  console.log("\n== Test 12: Tier + bye parse, and the recommendation flags a real talent cliff ==");
+  const dom5 = new JSDOM(html, { runScripts: "dangerously", resources: "usable", url: "http://localhost/" });
+  await new Promise(r => setTimeout(r, 50));
+  const doc5 = dom5.window.document;
+  doc5.getElementById("numTeams").value = 2;
+  doc5.getElementById("numRounds").value = 2;
+  doc5.getElementById("teamNames").value = "Alpha, Bravo";
+  doc5.getElementById("rosterQB").value = 0;
+  doc5.getElementById("rosterRB").value = 1;
+  doc5.getElementById("rosterWR").value = 0;
+  doc5.getElementById("rosterTE").value = 0;
+  doc5.getElementById("rosterFLEX").value = 0;
+  doc5.getElementById("rosterDST").value = 0;
+  doc5.getElementById("rosterK").value = 0;
+  doc5.getElementById("playerInput").value = [
+    "RB Last In Tier1,RB,AAA,1,1,7",  // only Tier-1 RB left
+    "RB First In Tier2,RB,BBB,2,2,9", // next RB is a tier worse -> cliff after RB1
+    "WR Filler,WR,CCC,3,1,10"
+  ].join("\n");
+  doc5.getElementById("startDraftBtn").click();
+  await new Promise(r => setTimeout(r, 20));
+
+  const st5 = dom5.window.__sotgTest.getState();
+  const rbLast = st5.players.find(p => p.name === "RB Last In Tier1");
+  assert(rbLast.tier === 1 && rbLast.bye === 7, "5th/6th CSV fields parse into player.tier and player.bye");
+
+  const rec5 = dom5.window.__sotgTest.computeRecommendation();
+  assert(rec5.player.name === "RB Last In Tier1", "rec still recommends the best-ranked RB that fills the open slot");
+  assert(/Last Tier 1 RB/.test(rec5.reason), "reason calls out that this is the last Tier 1 RB left");
+  assert(/tier drop/.test(rec5.reason), "reason warns the next RB available is a tier drop-off");
+
+  const rows5 = [...doc5.querySelectorAll("#player-list .player-row")];
+  const rbLastRow = rows5.find(r => r.querySelector(".player-info b").textContent === "RB Last In Tier1");
+  const tierTag = rbLastRow.querySelector(".tier-tag");
+  assert(tierTag && tierTag.textContent === "T1 · Bye 7", "queue row shows a combined tier + bye badge");
+
   console.log("\n=========================");
   if (failures === 0) {
     console.log("ALL TESTS PASSED");
