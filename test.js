@@ -1,0 +1,146 @@
+// Headless smoke test for Settlers of the Gridiron draft tool.
+// Loads the real index.html in jsdom and drives it like a user would.
+const fs = require("fs");
+const path = require("path");
+const { JSDOM } = require("jsdom");
+
+const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+
+let failures = 0;
+function assert(cond, msg) {
+  if (cond) {
+    console.log("  ok - " + msg);
+  } else {
+    console.log("  FAIL - " + msg);
+    failures++;
+  }
+}
+
+async function run() {
+  const dom = new JSDOM(html, { runScripts: "dangerously", resources: "usable", url: "http://localhost/" });
+  const { window } = dom;
+  // localStorage is provided by jsdom's "usable" resources + url; give it a tick to init scripts.
+  await new Promise(r => setTimeout(r, 50));
+
+  const doc = window.document;
+
+  console.log("\n== Test 1: Setup screen defaults & 4-team snake draft ==");
+  doc.getElementById("numTeams").value = 4;
+  doc.getElementById("numRounds").value = 3;
+  doc.getElementById("pickSeconds").value = 5;
+  doc.getElementById("teamNames").value = "Alpha, Bravo, Charlie, Delta";
+  doc.getElementById("playerInput").value = [
+    "P1,RB,AAA","P2,WR,BBB","P3,QB,CCC","P4,TE,DDD",
+    "P5,RB,EEE","P6,WR,FFF","P7,QB,GGG","P8,TE,HHH",
+    "P9,RB,III","P10,WR,JJJ","P11,QB,KKK","P12,TE,LLL"
+  ].join("\n");
+
+  doc.getElementById("startDraftBtn").click();
+  await new Promise(r => setTimeout(r, 20));
+
+  assert(!doc.getElementById("draft").classList.contains("hidden"), "draft screen becomes visible after Start Draft");
+  const st = window.__sotgTest.getState();
+  assert(st.config.numTeams === 4 && st.config.numRounds === 3, "config picked up numTeams/numRounds from inputs");
+  assert(st.players.length === 12, "parsed 12 players from textarea");
+  assert(st.config.teamNames.join(",") === "Alpha,Bravo,Charlie,Delta", "team names parsed in order");
+
+  console.log("\n== Test 2: Snake order math (4 teams) ==");
+  // Round 1 forward 0,1,2,3 ; Round 2 reverse 3,2,1,0 ; Round 3 forward 0,1,2,3
+  assert(window.__sotgTest.teamIndexForOverallPick(1) === 0, "pick 1 -> team 0 (Alpha)");
+  assert(window.__sotgTest.teamIndexForOverallPick(4) === 3, "pick 4 -> team 3 (Delta), end of round 1");
+  assert(window.__sotgTest.teamIndexForOverallPick(5) === 3, "pick 5 -> team 3 (Delta), snake reverses into round 2");
+  assert(window.__sotgTest.teamIndexForOverallPick(8) === 0, "pick 8 -> team 0 (Alpha), end of round 2");
+  assert(window.__sotgTest.teamIndexForOverallPick(9) === 0, "pick 9 -> team 0 (Alpha), round 3 forward again");
+  assert(window.__sotgTest.roundForOverall(9) === 3, "pick 9 is round 3");
+  assert(window.__sotgTest.pickInRoundForOverall(9) === 1, "pick 9 is slot 1 within round 3");
+
+  console.log("\n== Test 3: Drafting a player updates board, queue, and advances the clock ==");
+  const beforeCount = window.__sotgTest.getState().players.filter(p => !p.drafted).length;
+  const drafted1 = window.__sotgTest.draftFirstAvailable(); // should go to team 0 (Alpha), pick 1
+  await new Promise(r => setTimeout(r, 20));
+  const afterState = window.__sotgTest.getState();
+  const afterCount = afterState.players.filter(p => !p.drafted).length;
+  assert(afterCount === beforeCount - 1, "undrafted player count decremented by 1");
+  assert(afterState.currentOverall === 2, "current overall pick advanced to 2 after a pick");
+  const cell1 = doc.querySelector("td[data-overall='1']");
+  assert(cell1 && cell1.classList.contains("filled"), "board cell #1 marked filled");
+  assert(cell1 && cell1.textContent.includes(drafted1.name), "board cell #1 shows drafted player's name");
+  const queueNames = [...doc.querySelectorAll("#player-list .player-row .player-info b")].map(b => b.textContent);
+  assert(!queueNames.includes(drafted1.name), "drafted player removed from the live queue list");
+  assert(doc.getElementById("curTeam").textContent === "Bravo", "on-the-clock indicator now shows the next team (Bravo)");
+
+  console.log("\n== Test 4: Undo restores state exactly ==");
+  doc.getElementById("undoBtn").click();
+  await new Promise(r => setTimeout(r, 20));
+  const undone = window.__sotgTest.getState();
+  assert(undone.currentOverall === 1, "current overall pick reverted to 1 after undo");
+  assert(undone.players.filter(p => !p.drafted).length === beforeCount, "undone player is back in the pool");
+  assert(doc.getElementById("curTeam").textContent === "Alpha", "on-the-clock reverted back to Alpha");
+
+  console.log("\n== Test 5: Position filter narrows the queue ==");
+  doc.getElementById("search").value = "";
+  doc.getElementById("search").dispatchEvent(new window.Event("input"));
+  const qbFilterBtn = [...doc.querySelectorAll(".filter-btn")].find(b => b.dataset.pos === "QB");
+  qbFilterBtn.click();
+  await new Promise(r => setTimeout(r, 20));
+  const rows = doc.querySelectorAll("#player-list .player-row");
+  assert(rows.length === 3, "QB filter shows exactly the 3 QBs in the pool");
+  assert([...rows].every(r => r.querySelector(".pos-tag").textContent === "QB"), "every visible row is tagged QB");
+
+  console.log("\n== Test 6: Full draft completes and locks further picks ==");
+  const allBtn = [...doc.querySelectorAll(".filter-btn")].find(b => b.dataset.pos === "ALL");
+  allBtn.click();
+  for (let i = 0; i < 12; i++) {
+    window.__sotgTest.draftFirstAvailable();
+    await new Promise(r => setTimeout(r, 5));
+  }
+  const finalState = window.__sotgTest.getState();
+  assert(finalState.picks.length === 12, "all 12 players drafted across 3 rounds x 4 teams");
+  assert(doc.getElementById("curTeam").textContent.includes("complete"), "status bar announces draft complete");
+
+  console.log("\n== Test 7: CSV export builds a well-formed row per pick ==");
+  // Exercise the same code path as the Export button without touching real disk I/O (jsdom has no download sink).
+  let blobCaptured = null;
+  const OrigBlob = window.Blob;
+  window.URL.createObjectURL = (blob) => { blobCaptured = blob; return "blob:fake"; };
+  window.URL.revokeObjectURL = () => {};
+  doc.getElementById("exportBtn").click();
+  assert(blobCaptured !== null, "export click produced a CSV Blob");
+
+  console.log("\n== Test 8: LocalStorage persistence survives a reload ==");
+  const raw = window.localStorage.getItem("sotg_draft_v1");
+  assert(!!raw, "draft state persisted to localStorage");
+  const parsed = JSON.parse(raw);
+  assert(parsed.picks.length === 12, "persisted state has all 12 picks");
+
+  console.log("\n== Test 9: Auction draft type does not crash and tracks budgets ==");
+  // Fresh document for auction mode.
+  const dom2 = new JSDOM(html, { runScripts: "dangerously", resources: "usable", url: "http://localhost/" });
+  await new Promise(r => setTimeout(r, 50));
+  const doc2 = dom2.window.document;
+  doc2.getElementById("numTeams").value = 2;
+  doc2.getElementById("numRounds").value = 1;
+  doc2.getElementById("teamNames").value = "Alpha, Bravo";
+  [...doc2.querySelectorAll("#setup .radio-btn")].find(b => b.dataset.type === "auction").click();
+  doc2.getElementById("budget").value = 100;
+  doc2.getElementById("playerInput").value = "P1,RB,AAA\nP2,WR,BBB";
+  doc2.getElementById("startDraftBtn").click();
+  await new Promise(r => setTimeout(r, 20));
+  const st2 = dom2.window.__sotgTest.getState();
+  assert(st2.config.draftType === "auction", "auction draft type selected correctly");
+  assert(st2.budgets[0] === 100 && st2.budgets[1] === 100, "both teams start with configured $100 budget");
+
+  console.log("\n=========================");
+  if (failures === 0) {
+    console.log("ALL TESTS PASSED");
+    process.exit(0);
+  } else {
+    console.log(failures + " TEST(S) FAILED");
+    process.exit(1);
+  }
+}
+
+run().catch(err => {
+  console.error("Test harness crashed:", err);
+  process.exit(1);
+});

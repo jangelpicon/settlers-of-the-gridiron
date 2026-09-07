@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Settlers of the Gridiron — Draft Day Tool</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --wood:#8a5a2b; --wheat:#d9a441; --brick:#b5493a; --sheep:#5a9e5a;
+    --ore:#5b6b78; --bg:#101418; --panel:#1a2028; --panel2:#20272f;
+    --text:#e8e6df; --muted:#9aa4ad; --accent:#d9a441; --good:#5a9e5a; --bad:#b5493a;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  header{padding:14px 20px;background:linear-gradient(90deg,#2b1d0e,#1a2028);border-bottom:2px solid var(--wheat);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;}
+  header h1{margin:0;font-size:1.3rem;letter-spacing:.5px;}
+  header h1 span{color:var(--wheat);}
+  header .sub{color:var(--muted);font-size:.8rem;}
+  .hidden{display:none !important;}
+  #setup{max-width:760px;margin:30px auto;padding:0 16px;}
+  .card{background:var(--panel);border:1px solid #2a323b;border-radius:10px;padding:18px 20px;margin-bottom:16px;}
+  .card h2{margin-top:0;font-size:1.05rem;color:var(--wheat);}
+  label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:4px;margin-top:12px;}
+  input[type=text],input[type=number],textarea,select{
+    width:100%;padding:8px 10px;border-radius:6px;border:1px solid #38424d;
+    background:var(--panel2);color:var(--text);font-size:.9rem;font-family:inherit;
+  }
+  textarea{min-height:110px;font-family:ui-monospace,Menlo,monospace;font-size:.8rem;resize:vertical;}
+  .row{display:flex;gap:14px;flex-wrap:wrap;}
+  .row > div{flex:1;min-width:140px;}
+  .radio-group{display:flex;gap:8px;margin-top:6px;}
+  .radio-btn{flex:1;text-align:center;padding:8px;border:1px solid #38424d;border-radius:6px;cursor:pointer;background:var(--panel2);font-size:.85rem;}
+  .radio-btn.active{background:var(--wheat);color:#1a1206;border-color:var(--wheat);font-weight:600;}
+  button{cursor:pointer;border:none;border-radius:6px;font-family:inherit;font-weight:600;}
+  .btn-primary{background:var(--wheat);color:#1a1206;padding:10px 18px;font-size:.95rem;}
+  .btn-secondary{background:var(--panel2);color:var(--text);border:1px solid #38424d;padding:8px 14px;font-size:.85rem;}
+  .btn-danger{background:var(--brick);color:#fff;padding:8px 14px;font-size:.85rem;}
+  .btn-small{padding:5px 10px;font-size:.78rem;}
+  #setup-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:6px;}
+  #draft{display:flex;gap:14px;padding:14px;height:calc(100vh - 62px);}
+  #board-col{flex:2;display:flex;flex-direction:column;min-width:0;}
+  #queue-col{flex:1;display:flex;flex-direction:column;min-width:280px;max-width:380px;}
+  .panel{background:var(--panel);border:1px solid #2a323b;border-radius:10px;padding:14px;display:flex;flex-direction:column;overflow:hidden;}
+  #status-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:10px;}
+  #on-clock{font-size:1.1rem;}
+  #on-clock b{color:var(--wheat);}
+  #timer{font-size:2rem;font-weight:700;font-variant-numeric:tabular-nums;padding:4px 16px;border-radius:8px;background:var(--panel2);}
+  #timer.warn{color:var(--brick);}
+  .timer-controls{display:flex;gap:6px;}
+  #board-wrap{flex:1;overflow:auto;border:1px solid #2a323b;border-radius:8px;}
+  table#board{border-collapse:collapse;width:100%;font-size:.78rem;}
+  table#board th,table#board td{border:1px solid #2a323b;padding:6px 8px;text-align:left;white-space:nowrap;}
+  table#board th{position:sticky;top:0;background:var(--panel2);z-index:2;color:var(--wheat);}
+  table#board td.round-label{position:sticky;left:0;background:var(--panel2);font-weight:600;color:var(--muted);z-index:1;}
+  table#board td.pick-cell{cursor:default;min-width:130px;}
+  table#board td.pick-cell.filled{background:#1c2b1c;}
+  table#board td.pick-cell.on-clock{background:#3a2f14;outline:2px solid var(--wheat);}
+  .pick-name{font-weight:600;}
+  .pick-meta{color:var(--muted);font-size:.7rem;}
+  #queue-col .panel{flex:1;}
+  #filters{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;}
+  .filter-btn{padding:4px 9px;font-size:.75rem;border-radius:14px;border:1px solid #38424d;background:var(--panel2);color:var(--muted);}
+  .filter-btn.active{background:var(--wheat);color:#1a1206;border-color:var(--wheat);}
+  #search{margin-bottom:8px;}
+  #player-list{flex:1;overflow-y:auto;}
+  .player-row{display:flex;justify-content:space-between;align-items:center;padding:7px 8px;border-bottom:1px solid #232b33;font-size:.85rem;}
+  .player-row:hover{background:var(--panel2);}
+  .player-info b{font-size:.88rem;}
+  .pos-tag{display:inline-block;font-size:.68rem;padding:1px 6px;border-radius:4px;margin-right:6px;font-weight:700;}
+  .pos-QB{background:#b5493a33;color:#e08272;} .pos-RB{background:#5a9e5a33;color:#8fd28f;}
+  .pos-WR{background:#5b6b7833;color:#a9bdd0;} .pos-TE{background:#d9a44133;color:#ecc07a;}
+  .pos-K{background:#7a5b9e33;color:#c2a3ec;} .pos-DEF{background:#4a4a4a55;color:#c9c9c9;}
+  .draft-btn{background:var(--wheat);color:#1a1206;padding:5px 10px;font-size:.75rem;border-radius:5px;}
+  #queue-count{color:var(--muted);font-size:.75rem;margin-bottom:4px;}
+  #bottom-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
+  dialog{background:var(--panel);color:var(--text);border:1px solid var(--wheat);border-radius:10px;padding:20px;max-width:360px;}
+  dialog h3{margin-top:0;}
+  dialog .row{margin-top:10px;}
+  #test-report{position:fixed;bottom:8px;right:8px;background:#000;color:#0f0;font-family:monospace;font-size:11px;padding:8px;border-radius:6px;max-width:340px;max-height:200px;overflow:auto;opacity:.9;display:none;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Settlers of <span>the Gridiron</span></h1>
+  <div class="sub">Draft-day board &amp; cheat sheet — no login, no server, saves as you go</div>
+</header>
+
+<!-- SETUP SCREEN -->
+<div id="setup">
+  <div class="card">
+    <h2>1. League setup</h2>
+    <div class="row">
+      <div>
+        <label for="numTeams"># of teams</label>
+        <input type="number" id="numTeams" min="2" max="20" value="12">
+      </div>
+      <div>
+        <label for="numRounds"># of rounds</label>
+        <input type="number" id="numRounds" min="1" max="30" value="15">
+      </div>
+      <div>
+        <label for="pickSeconds">Seconds per pick</label>
+        <input type="number" id="pickSeconds" min="10" max="600" value="90">
+      </div>
+    </div>
+    <label for="teamNames">Team names (comma separated, in draft-slot order)</label>
+    <input type="text" id="teamNames" placeholder="e.g. Ore Lords, Wheat Kings, Brick House, ...">
+
+    <label>Draft type</label>
+    <div class="radio-group">
+      <div class="radio-btn active" data-type="snake">Snake</div>
+      <div class="radio-btn" data-type="auction">Auction</div>
+    </div>
+
+    <div id="auctionBudgetWrap" class="hidden">
+      <label for="budget">Auction budget per team ($)</label>
+      <input type="number" id="budget" min="1" value="200">
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>2. Player pool (cheat sheet)</h2>
+    <label for="playerInput">Paste your rankings — one per line: <code>Name, POS, NFL Team</code> (POS/team optional). Order = your rank order.</label>
+    <textarea id="playerInput" placeholder="Ja'Marr Chase, WR, CIN
+Bijan Robinson, RB, ATL
+CeeDee Lamb, WR, DAL
+...">Ja'Marr Chase, WR, CIN
+Jahmyr Gibbs, RB, DET
+Puka Nacua, WR, LAR
+Bijan Robinson, RB, ATL
+Jaxon Smith-Njigba, WR, SEA
+Amon-Ra St. Brown, WR, DET
+Christian McCaffrey, RB, SF
+Justin Jefferson, WR, MIN
+CeeDee Lamb, WR, DAL
+Jonathan Taylor, RB, IND
+Drake London, WR, ATL
+A.J. Brown, WR, NE
+James Cook III, RB, BUF
+Nico Collins, WR, HOU
+Chase Brown, RB, CIN
+Chris Olave, WR, NO
+Trey McBride, TE, ARI
+Brock Bowers, TE, LV
+George Pickens, WR, DAL
+De'Von Achane, RB, MIA
+Saquon Barkley, RB, PHI
+DeVonta Smith, WR, PHI
+Malik Nabers, WR, NYG
+Kenneth Walker III, RB, KC
+Omarion Hampton, RB, LAC
+Josh Allen, QB, BUF
+Rashee Rice, WR, KC
+Ashton Jeanty, RB, LV
+Zay Flowers, WR, BAL
+Garrett Wilson, WR, NYJ
+Lamar Jackson, QB, BAL
+Jaylen Waddle, WR, DEN
+Ladd McConkey, WR, LAC
+Derrick Henry, RB, BAL
+Drake Maye, QB, NE
+Tetairoa McMillan, WR, CAR
+Tee Higgins, WR, CIN
+Colston Loveland, TE, CHI
+Breece Hall, RB, NYJ
+Jeremiyah Love, RB, ARI
+Emeka Egbuka, WR, TB
+Kyren Williams, RB, LAR
+Javonte Williams, RB, DAL
+Joe Burrow, QB, CIN
+Travis Etienne Jr., RB, NO
+Luther Burden III, WR, CHI
+Terry McLaurin, WR, WAS
+DJ Moore, WR, BUF
+Davante Adams, WR, LAR
+D'Andre Swift, RB, CHI
+Tyler Warren, TE, IND
+Jameson Williams, WR, DET
+Bucky Irving, RB, TB
+Jalen Hurts, QB, PHI
+Cam Skattebo, RB, NYG
+Christian Watson, WR, GB
+Jayden Daniels, QB, WAS
+Parker Washington, WR, JAC
+David Montgomery, RB, HOU
+Rome Odunze, WR, CHI
+Quinshon Judkins, RB, CLE
+Mike Evans, WR, SF
+Caleb Williams, QB, CHI
+Bhayshul Tuten, RB, JAC
+Jadarian Price, RB, SEA
+Carnell Tate, WR, TEN
+Marvin Harrison Jr., WR, ARI
+TreVeyon Henderson, RB, NE
+Justin Herbert, QB, LAC
+Rhamondre Stevenson, RB, NE
+Jaylen Warren, RB, PIT
+Chris Godwin Jr., WR, TB
+Trevor Lawrence, QB, JAC
+Harold Fannin Jr., TE, CLE
+Dak Prescott, QB, DAL
+Kyle Pitts Sr., TE, ATL
+DK Metcalf, WR, PIT
+Tucker Kraft, TE, GB
+Michael Pittman Jr., WR, PIT
+Brian Thomas Jr., WR, JAC
+Tony Pollard, RB, TEN
+Rico Dowdle, RB, PIT
+Courtland Sutton, WR, DEN
+Sam LaPorta, TE, DET
+Wan'Dale Robinson, WR, TEN
+Josh Downs, WR, IND
+Jonathon Brooks, RB, CAR
+Michael Wilson, WR, ARI
+Quentin Johnston, WR, LAC
+Stefon Diggs, WR, WAS
+RJ Harvey, RB, DEN
+George Kittle, TE, SF
+Kenny Gainwell, RB, TB
+Brock Purdy, QB, SF
+Bo Nix, QB, DEN
+Chuba Hubbard, RB, CAR
+Jaxson Dart, QB, NYG
+Travis Kelce, TE, KC
+Alec Pierce, WR, IND
+Jayden Reed, WR, GB
+Patrick Mahomes II, QB, KC
+J.K. Dobbins, RB, DEN
+Jared Goff, QB, DET
+Matthew Stafford, QB, LAR
+Jordan Addison, WR, MIN
+MarShawn Lloyd, RB, GB
+Blake Corum, RB, LAR
+KC Concepcion, WR, CLE
+Jakobi Meyers, WR, JAC
+Rachaad White, RB, WAS
+Makai Lemon, WR, PHI
+Jordan Mason, RB, MIN
+Kyler Murray, QB, MIN
+Dalton Kincaid, TE, BUF
+Jacory Croskey-Merritt, RB, WAS
+Jordan Love, QB, GB
+Aaron Jones Sr., RB, MIN
+Baker Mayfield, QB, TB
+Dallas Goedert, TE, PHI
+De'Zhaun Stribling, WR, SF
+Isaiah Likely, TE, NYG
+Kyle Monangai, RB, CHI
+Jake Ferguson, TE, DAL
+Tyler Shough, QB, NO
+Jalen Coker, WR, CAR
+Matthew Golden, WR, GB
+Romeo Doubs, WR, NE
+Khalil Shakir, WR, BUF
+Juwan Johnson, TE, NO
+Malik Willis, QB, MIA
+Xavier Worthy, WR, KC
+Mark Andrews, TE, BAL
+Woody Marks, RB, HOU
+Tyler Allgeier, RB, ARI
+Sam Darnold, QB, SEA
+Chris Rodriguez Jr., RB, JAC
+Tyjae Spears, RB, TEN
+Jordyn Tyson, WR, NO
+C.J. Stroud, QB, HOU
+Daniel Jones, QB, IND
+Jonah Coleman, RB, DEN
+Deebo Samuel Sr., WR, SF
+Rashid Shaheed, WR, SEA
+Dylan Sampson, RB, CLE
+Josh Jacobs, RB, GB
+Mike Washington Jr., RB, LV
+Zach Charbonnet, RB, SEA
+Keaton Mitchell, RB, LAC
+Denzel Boston, WR, CLE
+Tre Tucker, WR, LV
+Cam Ward, QB, TEN
+Brenton Strange, TE, JAC
+Chig Okonkwo, TE, WAS
+Dalton Schultz, TE, HOU
+Houston Texans, DST, HOU
+Hunter Henry, TE, NE
+Bryce Young, QB, CAR
+Tank Bigsby, RB, PHI
+Adonai Mitchell, WR, NYJ
+Alvin Kamara, RB, NO
+Kayshon Boutte, WR, HOU
+Jerry Jeudy, WR, CLE
+Los Angeles Rams, DST, LAR
+Denver Broncos, DST, DEN
+Jalen McMillan, WR, TB
+Brian Robinson Jr., RB, ATL
+Seattle Seahawks, DST, SEA
+Dontayvion Wicks, WR, PHI
+Braelon Allen, RB, NYJ
+Tyrone Tracy Jr., RB, NYG
+Emmett Johnson, RB, KC
+Jauan Jennings, WR, MIN
+Philadelphia Eagles, DST, PHI
+Tre' Harris, WR, LAC
+Omar Cooper Jr., WR, NYJ
+T.J. Hockenson, TE, MIN
+Ryan Flournoy, WR, DAL
+Pat Bryant, WR, DEN
+Ray Davis, RB, BUF
+Jalen Nailor, WR, LV
+Keenan Allen, WR, IND
+Malik Washington, WR, MIA
+Brandon Aubrey, K, DAL
+Jacoby Brissett, QB, ARI
+Pittsburgh Steelers, DST, PIT
+Minnesota Vikings, DST, MIN
+New England Patriots, DST, NE
+Jacksonville Jaguars, DST, JAC
+Cameron Dicker, K, LAC
+Ka'imi Fairbairn, K, HOU
+Los Angeles Chargers, DST, LAC
+Baltimore Ravens, DST, BAL
+Cam Little, K, JAC
+AJ Barner, TE, SEA
+Jason Myers, K, SEA
+Kimani Vidal, RB, LAC
+Terrance Ferguson, TE, LAR
+Jaylin Noel, WR, HOU
+Isiah Pacheco, RB, DET
+Aaron Rodgers, QB, PIT
+Travis Hunter, WR, JAC
+Calvin Ridley, WR, TEN
+Ja'Kobi Lane, WR, BAL
+Sean Tucker, RB, TB
+Eddy Pineiro, K, SF
+Kansas City Chiefs, DST, KC
+Kenyon Sadiq, TE, NYJ
+Tyler Loop, K, BAL
+Geno Smith, QB, NYJ
+Gunnar Helm, TE, TEN
+Chris Bell, WR, MIA
+Malachi Fields, WR, NYG
+Green Bay Packers, DST, GB
+Kaelon Black, RB, SF
+Jake Bates, K, DET
+Nicholas Singleton, RB, TEN
+Oronde Gadsden II, TE, LAC
+Malik Davis, RB, DAL
+Cooper Kupp, WR, SEA
+Isaac TeSlaa, WR, DET
+Zachariah Branch, WR, ATL
+Cairo Santos, K, CHI
+Pat Freiermuth, TE, PIT
+Evan McPherson, K, CIN
+Rashod Bateman, WR, BAL
+Caleb Douglas, WR, MIA
+Andy Borregales, K, NE
+Kaytron Allen, RB, WAS
+Harrison Mevis, K, LAR
+Darnell Mooney, WR, NYG
+Justice Hill, RB, BAL
+Buffalo Bills, DST, BUF
+Najee Harris, RB, NYG
+Detroit Lions, DST, DET
+Chase McLaughlin, K, TB
+Cade Otton, TE, TB
+Germie Bernard, WR, PIT
+James Conner, RB, ARI
+Troy Franklin, WR, DEN
+Jaylen Wright, RB, MIA
+Greg Dulcich, TE, MIA
+George Holani, RB, SEA
+Cleveland Browns, DST, CLE
+Tank Dell, WR, HOU
+Antonio Williams, WR, WAS
+Devaughn Vele, WR, NO
+Ted Hurst III, WR, TB
+Emanuel Wilson, RB, SEA
+Kaleb Johnson, RB, GB
+Evan Engram, TE, DEN</textarea>
+  </div>
+
+  <div id="setup-actions">
+    <button class="btn-secondary" id="loadSavedBtn">Load saved draft</button>
+    <button class="btn-primary" id="startDraftBtn">Start Draft →</button>
+  </div>
+</div>
+
+<!-- DRAFT SCREEN -->
+<div id="draft" class="hidden">
+  <div id="board-col" class="panel">
+    <div id="status-bar">
+      <div id="on-clock">Round <b id="curRound">1</b>, Pick <b id="curPickInRound">1</b> (Overall <b id="curOverall">1</b>) — On the clock: <b id="curTeam">—</b></div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div id="timer">01:30</div>
+        <div class="timer-controls">
+          <button class="btn-secondary btn-small" id="timerStart">Start</button>
+          <button class="btn-secondary btn-small" id="timerPause">Pause</button>
+          <button class="btn-secondary btn-small" id="timerReset">Reset</button>
+        </div>
+      </div>
+    </div>
+    <div id="board-wrap">
+      <table id="board"></table>
+    </div>
+    <div id="bottom-actions">
+      <button class="btn-secondary" id="undoBtn">↶ Undo last pick</button>
+      <button class="btn-secondary" id="exportBtn">⬇ Export CSV</button>
+      <button class="btn-danger" id="resetBtn">Reset draft</button>
+    </div>
+  </div>
+
+  <div id="queue-col">
+    <div class="panel">
+      <h2 style="margin:0 0 8px;font-size:.95rem;color:var(--wheat);">Player Queue</h2>
+      <input type="text" id="search" placeholder="Search player...">
+      <div id="filters">
+        <div class="filter-btn active" data-pos="ALL">ALL</div>
+        <div class="filter-btn" data-pos="QB">QB</div>
+        <div class="filter-btn" data-pos="RB">RB</div>
+        <div class="filter-btn" data-pos="WR">WR</div>
+        <div class="filter-btn" data-pos="TE">TE</div>
+        <div class="filter-btn" data-pos="K">K</div>
+        <div class="filter-btn" data-pos="DEF">DEF</div>
+      </div>
+      <div id="queue-count">0 players left</div>
+      <div id="player-list"></div>
+    </div>
+  </div>
+</div>
+
+<dialog id="auctionDialog">
+  <h3 id="auctionDialogTitle">Draft player</h3>
+  <div class="row">
+    <div style="flex:1">
+      <label for="auctionPrice">Winning bid ($)</label>
+      <input type="number" id="auctionPrice" min="1" value="1">
+    </div>
+    <div style="flex:1">
+      <label for="auctionTeam">Team</label>
+      <select id="auctionTeam"></select>
+    </div>
+  </div>
+  <div class="row" style="justify-content:flex-end">
+    <button class="btn-secondary btn-small" id="auctionCancel">Cancel</button>
+    <button class="btn-primary btn-small" id="auctionConfirm">Confirm</button>
+  </div>
+</dialog>
+
+<div id="test-report"></div>
+
+<script>
+(function(){
+  "use strict";
+  const STORAGE_KEY = "sotg_draft_v1";
+
+  let state = null; // set on start/load
+  let timerInterval = null;
+  let timerRemaining = 90;
+  let posFilter = "ALL";
+  let searchTerm = "";
+
+  // ---------- Setup screen wiring ----------
+  document.querySelectorAll("#setup .radio-btn").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      document.querySelectorAll("#setup .radio-btn").forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+      document.getElementById("auctionBudgetWrap").classList.toggle("hidden", btn.dataset.type!=="auction");
+    });
+  });
+
+  function parsePlayers(text){
+    return text.split("\n").map(l=>l.trim()).filter(Boolean).map((line,i)=>{
+      const parts = line.split(",").map(s=>s.trim());
+      return {
+        id: "p"+i+"_"+parts[0].replace(/\s+/g,"_"),
+        name: parts[0] || ("Player "+(i+1)),
+        pos: (parts[1] || "").toUpperCase() || "N/A",
+        team: parts[2] || "",
+        drafted: false,
+        draftedBy: null,
+        price: null,
+        overall: null
+      };
+    });
+  }
+
+  function getSelectedDraftType(){
+    const active = document.querySelector("#setup .radio-btn.active");
+    return active ? active.dataset.type : "snake";
+  }
+
+  function buildInitialState(){
+    const numTeams = Math.max(2, parseInt(document.getElementById("numTeams").value,10) || 12);
+    const numRounds = Math.max(1, parseInt(document.getElementById("numRounds").value,10) || 15);
+    const pickSeconds = Math.max(10, parseInt(document.getElementById("pickSeconds").value,10) || 90);
+    const draftType = getSelectedDraftType();
+    const budget = Math.max(1, parseInt(document.getElementById("budget").value,10) || 200);
+    let names = document.getElementById("teamNames").value.split(",").map(s=>s.trim()).filter(Boolean);
+    if (names.length < numTeams){
+      for (let i=names.length; i<numTeams; i++) names.push("Team "+(i+1));
+    }
+    names = names.slice(0, numTeams);
+    const players = parsePlayers(document.getElementById("playerInput").value);
+
+    return {
+      config: { numTeams, numRounds, pickSeconds, draftType, budget, teamNames: names },
+      players,
+      picks: [], // {overall, round, teamIndex, playerId, price}
+      currentOverall: 1,
+      budgets: names.map(()=>budget)
+    };
+  }
+
+  function save(){
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e){ /* ignore quota errors */ }
+  }
+  function loadSaved(){
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch(e){ return null; }
+  }
+
+  document.getElementById("loadSavedBtn").addEventListener("click", ()=>{
+    const saved = loadSaved();
+    if (!saved){ alert("No saved draft found on this browser."); return; }
+    state = saved;
+    enterDraftScreen();
+  });
+
+  document.getElementById("startDraftBtn").addEventListener("click", ()=>{
+    state = buildInitialState();
+    save();
+    enterDraftScreen();
+  });
+
+  // ---------- Snake order ----------
+  function teamIndexForOverallPick(overall){
+    const n = state.config.numTeams;
+    const round = Math.ceil(overall / n); // 1-indexed
+    const posInRound = ((overall - 1) % n); // 0-indexed
+    if (state.config.draftType === "auction") return null; // no fixed slot in auction
+    const forward = (round % 2 === 1);
+    const idx = forward ? posInRound : (n - 1 - posInRound);
+    return idx;
+  }
+  function roundForOverall(overall){
+    return Math.ceil(overall / state.config.numTeams);
+  }
+  function pickInRoundForOverall(overall){
+    const n = state.config.numTeams;
+    const posInRound = ((overall - 1) % n);
+    return posInRound + 1;
+  }
+
+  // ---------- Draft screen render ----------
+  function enterDraftScreen(){
+    document.getElementById("setup").classList.add("hidden");
+    document.getElementById("draft").classList.remove("hidden");
+    renderBoard();
+    renderQueue();
+    updateStatusBar();
+    resetTimerDisplay();
+  }
+
+  function renderBoard(){
+    const table = document.getElementById("board");
+    const n = state.config.numTeams;
+    const rounds = state.config.numRounds;
+    let html = "<thead><tr><th>Rd</th>";
+    state.config.teamNames.forEach(name=>{ html += "<th>"+escapeHtml(name)+"</th>"; });
+    html += "</tr></thead><tbody>";
+
+    for (let r=1; r<=rounds; r++){
+      html += "<tr><td class='round-label'>"+r+"</td>";
+      for (let slot=0; slot<n; slot++){
+        let overall;
+        if (state.config.draftType === "snake"){
+          const forward = (r % 2 === 1);
+          const posInRound = forward ? slot : (n-1-slot);
+          overall = (r-1)*n + posInRound + 1;
+        } else {
+          overall = (r-1)*n + slot + 1; // display order only for auction grid
+        }
+        const pick = state.picks.find(p=>p.overall===overall);
+        const isClock = (overall === state.currentOverall);
+        let cellClass = "pick-cell" + (pick?" filled":"") + (isClock?" on-clock":"");
+        let content = "";
+        if (pick){
+          const player = state.players.find(p=>p.id===pick.playerId);
+          content = "<div class='pick-name'>"+escapeHtml(player?player.name:"?")+"</div>"+
+            "<div class='pick-meta'>"+escapeHtml(player?player.pos:"")+
+            (pick.price!=null ? " · $"+pick.price : "")+" · #"+overall+"</div>";
+        } else {
+          content = "<div class='pick-meta'>#"+overall+"</div>";
+        }
+        html += "<td class='"+cellClass+"' data-overall='"+overall+"'>"+content+"</td>";
+      }
+      html += "</tr>";
+    }
+    html += "</tbody>";
+    table.innerHTML = html;
+  }
+
+  function updateStatusBar(){
+    const overall = state.currentOverall;
+    const totalPicks = state.config.numTeams * state.config.numRounds;
+    if (overall > totalPicks){
+      document.getElementById("curRound").textContent = state.config.numRounds;
+      document.getElementById("curPickInRound").textContent = state.config.numTeams;
+      document.getElementById("curOverall").textContent = totalPicks;
+      document.getElementById("curTeam").textContent = "Draft complete 🎉";
+      return;
+    }
+    document.getElementById("curRound").textContent = roundForOverall(overall);
+    document.getElementById("curPickInRound").textContent = pickInRoundForOverall(overall);
+    document.getElementById("curOverall").textContent = overall;
+    if (state.config.draftType === "snake"){
+      const idx = teamIndexForOverallPick(overall);
+      document.getElementById("curTeam").textContent = state.config.teamNames[idx];
+    } else {
+      document.getElementById("curTeam").textContent = "(any team — auction)";
+    }
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+
+  // ---------- Queue ----------
+  function renderQueue(){
+    const list = document.getElementById("player-list");
+    const available = state.players.filter(p=>!p.drafted).filter(p=>{
+      if (posFilter!=="ALL" && p.pos!==posFilter) return false;
+      if (searchTerm && !p.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+      return true;
+    });
+    document.getElementById("queue-count").textContent = state.players.filter(p=>!p.drafted).length + " players left";
+    list.innerHTML = "";
+    available.forEach(p=>{
+      const row = document.createElement("div");
+      row.className = "player-row";
+      row.innerHTML = "<div class='player-info'><span class='pos-tag pos-"+ (p.pos==="DST"?"DEF":p.pos) +"'>"+escapeHtml(p.pos)+"</span><b>"+escapeHtml(p.name)+"</b> <span style='color:var(--muted);font-size:.75rem'>"+escapeHtml(p.team||"")+"</span></div>";
+      const btn = document.createElement("button");
+      btn.className = "draft-btn";
+      btn.textContent = "Draft";
+      btn.addEventListener("click", ()=>onDraftPlayer(p.id));
+      row.appendChild(btn);
+      list.appendChild(row);
+    });
+  }
+
+  document.getElementById("search").addEventListener("input", (e)=>{
+    searchTerm = e.target.value;
+    renderQueue();
+  });
+  document.querySelectorAll(".filter-btn").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      document.querySelectorAll(".filter-btn").forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+      posFilter = btn.dataset.pos;
+      renderQueue();
+    });
+  });
+
+  // ---------- Drafting a player ----------
+  let pendingPlayerId = null;
+  function onDraftPlayer(playerId){
+    const totalPicks = state.config.numTeams * state.config.numRounds;
+    if (state.currentOverall > totalPicks){ alert("Draft is already complete."); return; }
+    if (state.config.draftType === "auction"){
+      pendingPlayerId = playerId;
+      const player = state.players.find(p=>p.id===playerId);
+      document.getElementById("auctionDialogTitle").textContent = "Draft: " + player.name;
+      const sel = document.getElementById("auctionTeam");
+      sel.innerHTML = "";
+      state.config.teamNames.forEach((name,i)=>{
+        const opt = document.createElement("option");
+        opt.value = i;
+        opt.textContent = name + " ($"+state.budgets[i]+" left)";
+        sel.appendChild(opt);
+      });
+      document.getElementById("auctionPrice").value = 1;
+      document.getElementById("auctionDialog").showModal();
+    } else {
+      commitPick(playerId, teamIndexForOverallPick(state.currentOverall), null);
+    }
+  }
+
+  document.getElementById("auctionCancel").addEventListener("click", ()=>{
+    document.getElementById("auctionDialog").close();
+    pendingPlayerId = null;
+  });
+  document.getElementById("auctionConfirm").addEventListener("click", ()=>{
+    const price = Math.max(1, parseInt(document.getElementById("auctionPrice").value,10) || 1);
+    const teamIdx = parseInt(document.getElementById("auctionTeam").value,10);
+    if (price > state.budgets[teamIdx]){
+      alert("That team only has $"+state.budgets[teamIdx]+" left.");
+      return;
+    }
+    commitPick(pendingPlayerId, teamIdx, price);
+    state.budgets[teamIdx] -= price;
+    document.getElementById("auctionDialog").close();
+    pendingPlayerId = null;
+    save();
+  });
+
+  function commitPick(playerId, teamIndex, price){
+    const player = state.players.find(p=>p.id===playerId);
+    if (!player || player.drafted) return;
+    player.drafted = true;
+    player.draftedBy = teamIndex;
+    player.price = price;
+    player.overall = state.currentOverall;
+    state.picks.push({
+      overall: state.currentOverall,
+      round: roundForOverall(state.currentOverall),
+      teamIndex, playerId, price
+    });
+    state.currentOverall += 1;
+    save();
+    renderBoard();
+    renderQueue();
+    updateStatusBar();
+    resetTimerDisplay();
+  }
+
+  document.getElementById("undoBtn").addEventListener("click", ()=>{
+    const last = state.picks.pop();
+    if (!last){ return; }
+    const player = state.players.find(p=>p.id===last.playerId);
+    if (player){
+      player.drafted = false;
+      player.draftedBy = null;
+      if (last.price!=null) state.budgets[last.teamIndex] += last.price;
+      player.price = null;
+      player.overall = null;
+    }
+    state.currentOverall = last.overall;
+    save();
+    renderBoard();
+    renderQueue();
+    updateStatusBar();
+    resetTimerDisplay();
+  });
+
+  document.getElementById("resetBtn").addEventListener("click", ()=>{
+    if (!confirm("Reset the entire draft? This cannot be undone.")) return;
+    localStorage.removeItem(STORAGE_KEY);
+    document.getElementById("draft").classList.add("hidden");
+    document.getElementById("setup").classList.remove("hidden");
+    clearInterval(timerInterval);
+  });
+
+  document.getElementById("exportBtn").addEventListener("click", ()=>{
+    let csv = "Overall,Round,PickInRound,Team,Player,Position,NFLTeam,Price\n";
+    state.picks.slice().sort((a,b)=>a.overall-b.overall).forEach(pk=>{
+      const player = state.players.find(p=>p.id===pk.playerId);
+      const teamName = state.config.teamNames[pk.teamIndex];
+      csv += [pk.overall, pk.round, pickInRoundForOverall(pk.overall), teamName,
+        player?player.name:"", player?player.pos:"", player?player.team:"", pk.price!=null?pk.price:""]
+        .map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(",") + "\n";
+    });
+    const blob = new Blob([csv], {type:"text/csv"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "settlers-of-the-gridiron-draft.csv";
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  // ---------- Timer ----------
+  function resetTimerDisplay(){
+    clearInterval(timerInterval);
+    timerInterval = null;
+    timerRemaining = state.config.pickSeconds;
+    renderTimer();
+  }
+  function renderTimer(){
+    const m = Math.floor(timerRemaining/60);
+    const s = timerRemaining % 60;
+    const el = document.getElementById("timer");
+    el.textContent = String(m).padStart(2,"0")+":"+String(s).padStart(2,"0");
+    el.classList.toggle("warn", timerRemaining <= 10);
+  }
+  document.getElementById("timerStart").addEventListener("click", ()=>{
+    if (timerInterval) return;
+    timerInterval = setInterval(()=>{
+      timerRemaining = Math.max(0, timerRemaining-1);
+      renderTimer();
+      if (timerRemaining===0){ clearInterval(timerInterval); timerInterval=null; }
+    },1000);
+  });
+  document.getElementById("timerPause").addEventListener("click", ()=>{
+    clearInterval(timerInterval); timerInterval = null;
+  });
+  document.getElementById("timerReset").addEventListener("click", resetTimerDisplay);
+
+  // ---------- Lightweight self-test hook (used by automated test harness) ----------
+  window.__sotgTest = {
+    getState: ()=>state,
+    buildInitialState, teamIndexForOverallPick, roundForOverall, pickInRoundForOverall,
+    startWithDefaults: ()=>{ document.getElementById("startDraftBtn").click(); },
+    draftFirstAvailable: ()=>{
+      const p = state.players.find(pl=>!pl.drafted);
+      if (p) onDraftPlayer(p.id);
+      return p;
+    }
+  };
+})();
+</script>
+</body>
+</html>
