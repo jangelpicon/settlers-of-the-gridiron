@@ -80,9 +80,9 @@ further later, drop in your own board using the same field format.
    both positions get hurt).
 3. **Snake timing (the wait/take call)**: the rec panel always shows your
    next pick number and how many picks stand between you and it. Every player
-   with ADP gets a tag — "should last to #N" or "likely gone by #N" — based on
-   whether the market's average draft slot lands comfortably after or before
-   your next turn. When you're on the clock and the top recommendation should
+   with ADP gets a tag — "72% there at #15" — the probability he's still on
+   the board at your next pick, modeling his actual draft slot as
+   Normal(ADP, 1.5 + 0.13·ADP) (tight early, wide late). Green ≥65%, red ≤35%. When you're on the clock and the top recommendation should
    still be there next time around while a **same-tier** alternative won't be,
    it recommends the one that won't last and tells you why, keeping the other
    as the first alternate. It stays quiet when the margin is thin (ADP within
@@ -131,6 +131,14 @@ further later, drop in your own board using the same field format.
   stacks the board, recommendation, and queue vertically under 900px — tested
   at 390×844 (iPhone-class viewport).
 
+## Pre-draft plan (Monte Carlo)
+
+`python3 tools/draft_plan.py --slot 4` simulates the draft thousands of times
+(opponents draft by ESPN ADP with realistic noise, skip IR/OUT players and
+K/DST until the last 2 rounds) and prints, for each of your picks, who is
+realistically still there and how often. Output for tonight is saved in
+`docs/draft-plan-slot4-2026-09-07.txt`.
+
 ## Testing
 
 `test.js` is a headless smoke test (via jsdom) that drives the real
@@ -167,4 +175,4 @@ npm install jsdom --no-save   # one-time, ~26MB, only needed to run tests
 node test.js
 ```
 
-All 123 assertions currently pass.
+All 124 assertions currently pass.

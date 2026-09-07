@@ -401,18 +401,19 @@ async function run() {
   const X1 = st13.players.find(p => p.name === "X1"), X2 = st13.players.find(p => p.name === "X2"), X3 = st13.players.find(p => p.name === "X3");
   assert(t13.isMyTurn() === true, "Alpha (slot 1) is on the clock at pick 1");
   assert(t13.myNextPickAfter(1) === 6, "Alpha's next pick after #1 is #6 in a 3-team snake");
-  assert(t13.availabilityAtNextPick(X1) === "there", "X1 (ADP 12) should still be there at #6");
-  assert(t13.availabilityAtNextPick(X2) === "gone", "X2 (ADP 2) is likely gone by #6");
+  assert(t13.availabilityAtNextPick(X1) === "there" && t13.probAvailableAtNextPick(X1) > 0.9, "X1 (ADP 12) should still be there at #6 (>90%)");
+  assert(t13.availabilityAtNextPick(X2) === "gone" && t13.probAvailableAtNextPick(X2) < 0.1, "X2 (ADP 2) is likely gone by #6 (<10%)");
+  assert(Math.abs(t13.probAvailableAt({adp: 20}, 20) - 0.5) < 0.1 && t13.probAvailableAt({adp: 40}, 20) > 0.9 && t13.probAvailableAt({adp: 5}, 20) < 0.05, "availability model: ~50% at his ADP, ~certain far after, ~zero far before");
   assert(t13.availabilityAtNextPick(X3) === "gone", "X3 (ADP 3) is also likely gone by #6");
   let rec13 = t13.computeRecommendation();
   assert(rec13.player.name === "X2", "rec swaps from rank-1 X1 to same-tier X2 because X1 will last and X2 won't");
-  assert(/likely gone before your next pick at #6/.test(rec13.reason) && /X1 \(ADP 12\) should still be there/.test(rec13.reason), "reason explains the wait/take trade-off with both ADPs and the next pick number");
+  assert(/X2 has only a \d+% chance of lasting to your next pick \(#6\)/.test(rec13.reason) && /X1 is \d+% likely to still be there/.test(rec13.reason), "reason explains the wait/take trade-off with both probabilities and the next pick number");
   assert((rec13.alternates[0].player || rec13.alternates[0]).name === "X1", "the player we chose to wait on is the first alternate");
   assert(/You're on the clock \(#1\)/.test(doc13.getElementById("nextPickInfo").textContent) && /#6/.test(doc13.getElementById("nextPickInfo").textContent), "next-pick line shows on-the-clock + next pick #6");
   const x1Row = [...doc13.querySelectorAll("#player-list .player-row")].find(r => r.querySelector(".player-info b").textContent === "X1");
-  assert(x1Row && /should last to #6/.test(x1Row.textContent), "queue row for X1 carries the 'should last to #6' tag");
+  assert(x1Row && /9\d% there at #6/.test(x1Row.textContent) && x1Row.querySelector(".value-good"), "queue row for X1 carries a green 9x% there at #6 tag");
   const x2Row = [...doc13.querySelectorAll("#player-list .player-row")].find(r => r.querySelector(".player-info b").textContent === "X2");
-  assert(x2Row && /likely gone by #6/.test(x2Row.textContent), "queue row for X2 carries the 'likely gone by #6' tag");
+  assert(x2Row && /\d% there at #6/.test(x2Row.textContent) && x2Row.querySelector(".value-hot"), "queue row for X2 carries a red single-digit % there at #6 tag");
   x2Row.querySelector(".draft-btn").click(); // Alpha takes X2 at #1
   await new Promise(r => setTimeout(r, 10));
   assert(t13.isMyTurn() === false, "after Alpha's pick, Bravo is on the clock");
@@ -461,7 +462,7 @@ async function run() {
   await new Promise(r => setTimeout(r, 20));
   const rec18 = dom18.window.__sotgTest.computeRecommendation();
   assert(rec18.player.name === "Y1", "top player lasts to #6 but the only 'gone' option is two tiers worse: rec stays on Y1, no swap");
-  assert(!/likely gone before your next pick/.test(rec18.reason), "no wait/take reasoning shown when no near-equal swap exists");
+  assert(!/chance of lasting/.test(rec18.reason), "no wait/take reasoning shown when no near-equal swap exists");
 
   console.log("\n== Test 19: Bench balance — no 3rd bench WR while there's no backup RB ==");
   const dom19 = new JSDOM(html, { runScripts: "dangerously", resources: "usable", url: "http://localhost/" });

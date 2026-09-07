@@ -558,8 +558,12 @@ Ted Hurst III, WR, TB, 170.2, 11, 10</textarea>
   // Snake-draft timing thresholds (in picks, against ADP). ADP is a market average with real
   // spread, so we only call it when the margin is comfortable and there are enough picks
   // between now and my next turn for someone to actually take the player.
-  const WAIT_MARGIN = 4;       // ADP at least this far AFTER my next pick => "should last"
-  const GONE_MARGIN = 2;       // ADP at least this far BEFORE my next pick => "likely gone"
+  // ADP is the market's average slot; the spread around it grows with the pick number
+  // (early picks are tight, round 8+ is wide). We model "pick where he actually goes" as
+  // Normal(adp, 1.5 + 0.13*adp) and report P(still on the board at my next pick).
+  const ADP_SIGMA = adp => 1.5 + 0.13*adp;
+  const THERE_PROB = 0.65;     // >= this => "should last"
+  const GONE_PROB = 0.35;      // <= this => "likely gone"
   const MIN_PICKS_BETWEEN = 3; // fewer other-team picks than this before my next turn => too close to call
   const SWAP_RANK_WINDOW = 6;  // without tiers, "near-equal" = within this many consensus ranks
 
@@ -1016,22 +1020,41 @@ Ted Hurst III, WR, TB, 170.2, 11, 10</textarea>
   }
   // Will player p still be on the board at my next pick? Uses ADP as the market's expected
   // slot. Returns "gone" | "there" | null (no ADP / too close to call / not enough picks between).
-  function availabilityAtNextPick(p){
-    if (p.adp == null) return null;
+  // Standard normal CDF (Abramowitz-Stegun 7.1.26, good to ~1e-7).
+  function normCdf(z){
+    const t = 1/(1+0.2316419*Math.abs(z));
+    const d = 0.3989423*Math.exp(-z*z/2);
+    const p = d*t*(0.3193815+t*(-0.3565638+t*(1.781478+t*(-1.821256+t*1.330274))));
+    return z>0 ? 1-p : p;
+  }
+  // P(player p is still available at overall pick N), from ADP alone.
+  function probAvailableAt(p, N){
+    if (p.adp == null || N == null) return null;
+    return 1 - normCdf((N - 0.5 - p.adp) / ADP_SIGMA(p.adp));
+  }
+  function probAvailableAtNextPick(p){
     const next = myNextPickAfter(state.currentOverall);
     if (next == null) return null;
     const picksBefore = next - state.currentOverall - (isMyTurn() ? 1 : 0);
     if (picksBefore < MIN_PICKS_BETWEEN) return null;
-    if (p.adp <= next - GONE_MARGIN) return "gone";
-    if (p.adp >= next + WAIT_MARGIN) return "there";
+    return probAvailableAt(p, next);
+  }
+  function availabilityAtNextPick(p){
+    const pr = probAvailableAtNextPick(p);
+    if (pr == null) return null;
+    if (pr <= GONE_PROB) return "gone";
+    if (pr >= THERE_PROB) return "there";
     return null;
   }
   function availabilityBadge(p){
-    const a = availabilityAtNextPick(p);
-    if (!a) return "";
+    const pr = probAvailableAtNextPick(p);
+    if (pr == null) return "";
     const next = myNextPickAfter(state.currentOverall);
-    if (a==="gone") return "<span class='value-tag value-hot' title='ADP "+p.adp+" is before your next pick (#"+next+")'>likely gone by #"+next+"</span>";
-    return "<span class='value-tag value-good' title='ADP "+p.adp+" is after your next pick (#"+next+")'>should last to #"+next+"</span>";
+    const pct = Math.round(pr*100);
+    const title = "ADP "+p.adp+" vs your next pick #"+next+" — "+pct+"% chance he's still there";
+    if (pr <= GONE_PROB) return "<span class='value-tag value-hot' title='"+title+"'>"+pct+"% there at #"+next+"</span>";
+    if (pr >= THERE_PROB) return "<span class='value-tag value-good' title='"+title+"'>"+pct+"% there at #"+next+"</span>";
+    return "<span class='value-tag' title='"+title+"'>"+pct+"% there at #"+next+"</span>";
   }
 
   // Two players are "near-equal" when they share an expert-consensus tier (the pool's tiers are
@@ -1052,9 +1075,10 @@ Ted Hurst III, WR, TB, 170.2, 11, 10</textarea>
     if (!alt) return result;
     const next = myNextPickAfter(state.currentOverall);
     const rest = (result.alternates||[]).map(a=>a.player||a).filter(a=>a.id!==alt.id && a.id!==top.id);
+    const pa = Math.round(probAvailableAtNextPick(alt)*100), pt = Math.round(probAvailableAtNextPick(top)*100);
     return {
       player: alt,
-      reason: alt.name+" (ADP "+alt.adp+") is likely gone before your next pick at #"+next+", while "+top.name+" (ADP "+top.adp+") should still be there — take the one that won't last, grab the other next turn",
+      reason: alt.name+" has only a "+pa+"% chance of lasting to your next pick (#"+next+"), while "+top.name+" is "+pt+"% likely to still be there — take the one that won't last, grab the other next turn",
       alternates: [top].concat(rest).slice(0,3),
       swappedFrom: top
     };
@@ -1438,7 +1462,7 @@ Ted Hurst III, WR, TB, 170.2, 11, 10</textarea>
     getState: ()=>state,
     buildInitialState, teamIndexForOverallPick, roundForOverall, pickInRoundForOverall,
     computeRosterAssignment, computeRecommendation, getMyTeamIndex,
-    myNextPickAfter, isMyTurn, availabilityAtNextPick,
+    myNextPickAfter, isMyTurn, availabilityAtNextPick, probAvailableAt, probAvailableAtNextPick,
     startWithDefaults: ()=>{ document.getElementById("startDraftBtn").click(); },
     draftFirstAvailable: ()=>{
       const p = state.players.find(pl=>!pl.drafted);
