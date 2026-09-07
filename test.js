@@ -130,6 +130,72 @@ async function run() {
   assert(st2.config.draftType === "auction", "auction draft type selected correctly");
   assert(st2.budgets[0] === 100 && st2.budgets[1] === 100, "both teams start with configured $100 budget");
 
+  console.log("\n== Test 10: Roster tracking + pick recommendation (need-aware, data-driven) ==");
+  const dom3 = new JSDOM(html, { runScripts: "dangerously", resources: "usable", url: "http://localhost/" });
+  await new Promise(r => setTimeout(r, 50));
+  const doc3 = dom3.window.document;
+
+  // Snake order for 2 teams alternates A,B,B,A,A,B,... so we draft specific
+  // named players (like a real user clicking the queue) instead of always
+  // taking rank-1, which keeps each team's outcome deterministic and provable by hand.
+  function draftByName(name) {
+    const row = [...doc3.querySelectorAll("#player-list .player-row")]
+      .find(r => r.querySelector(".player-info b").textContent === name);
+    if (!row) throw new Error("player row not found for " + name);
+    row.querySelector("button").click();
+  }
+
+  doc3.getElementById("numTeams").value = 2;
+  doc3.getElementById("numRounds").value = 6;
+  doc3.getElementById("teamNames").value = "Alpha, Bravo";
+  // Minimal lineup: 1 QB, 1 RB only — no FLEX/WR ambiguity, easy to verify by hand.
+  doc3.getElementById("rosterQB").value = 1;
+  doc3.getElementById("rosterRB").value = 1;
+  doc3.getElementById("rosterWR").value = 0;
+  doc3.getElementById("rosterTE").value = 0;
+  doc3.getElementById("rosterFLEX").value = 0;
+  doc3.getElementById("rosterDST").value = 0;
+  doc3.getElementById("rosterK").value = 0;
+  doc3.getElementById("playerInput").value = [
+    "RB1,RB,AAA","WR1,WR,BBB","QB1,QB,CCC","RB2,RB,DDD",
+    "WR2,WR,EEE","QB2,QB,FFF","TE1,TE,GGG","RB3,RB,HHH"
+  ].join("\n");
+  doc3.getElementById("startDraftBtn").click();
+  await new Promise(r => setTimeout(r, 20));
+  // myTeamIndex defaults to option 0 (Alpha) since the test never touches the select.
+  assert(dom3.window.__sotgTest.getMyTeamIndex() === 0, "my team defaults to the first team (Alpha)");
+
+  let rec = dom3.window.__sotgTest.computeRecommendation();
+  assert(rec.player.name === "RB1", "with everything open, recommendation = best player available (RB1, rank 1)");
+
+  draftByName("RB1"); // pick1 -> Alpha (fills RB)
+  await new Promise(r => setTimeout(r, 10));
+  draftByName("WR1"); // pick2 -> Bravo
+  await new Promise(r => setTimeout(r, 10));
+  draftByName("RB2"); // pick3 -> Bravo (keeps QB1 alive for Alpha's next turn)
+  await new Promise(r => setTimeout(r, 10));
+
+  const rosterAfter1 = dom3.window.__sotgTest.computeRosterAssignment(0);
+  const rbSlot = rosterAfter1.starterSlots.find(s => s.type === "RB");
+  assert(rbSlot.filled && rbSlot.filled.name === "RB1", "Alpha's RB starter slot shows RB1 after the pick");
+  const qbSlotOpen = rosterAfter1.starterSlots.find(s => s.type === "QB");
+  assert(!qbSlotOpen.filled, "Alpha's QB starter slot is still open");
+
+  rec = dom3.window.__sotgTest.computeRecommendation();
+  assert(rec.player.name === "QB1", "with only QB open, rec recommends the best remaining QB (QB1) even though better-ranked non-QBs remain");
+  assert(/QB slot/.test(rec.reason), "recommendation reason names the QB slot it fills");
+
+  draftByName("QB1"); // pick4 -> Alpha (fills QB) -> Alpha's lineup now complete
+  await new Promise(r => setTimeout(r, 10));
+
+  const rosterFull = dom3.window.__sotgTest.computeRosterAssignment(0);
+  assert(rosterFull.starterSlots.every(s => s.filled), "Alpha's starting lineup (QB + RB) is fully filled");
+  assert(rosterFull.bench.length === 0, "no bench players yet for Alpha (exactly 2 starters, 2 picks)");
+
+  rec = dom3.window.__sotgTest.computeRecommendation();
+  assert(rec.player.name === "WR2", "once all starters are filled, rec falls back to true best-player-available (WR2)");
+  assert(/best player available/i.test(rec.reason), "fallback reason explains it's BPA for bench/upside, not a need fill");
+
   console.log("\n=========================");
   if (failures === 0) {
     console.log("ALL TESTS PASSED");

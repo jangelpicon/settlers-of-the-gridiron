@@ -37,9 +37,26 @@
   .btn-danger{background:var(--brick);color:#fff;padding:8px 14px;font-size:.85rem;}
   .btn-small{padding:5px 10px;font-size:.78rem;}
   #setup-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:6px;}
-  #draft{display:flex;gap:14px;padding:14px;height:calc(100vh - 62px);}
+  #draft{display:flex;gap:14px;padding:14px;height:calc(100vh - 62px);overflow-x:auto;}
   #board-col{flex:2;display:flex;flex-direction:column;min-width:0;}
   #queue-col{flex:1;display:flex;flex-direction:column;min-width:280px;max-width:380px;}
+  #insights-col{flex:1;display:flex;flex-direction:column;gap:14px;min-width:260px;max-width:340px;}
+  #insights-col .panel{overflow:auto;}
+  #roster-panel{flex:1;}
+  .slot-row{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid #232b33;font-size:.8rem;}
+  .slot-label{color:var(--muted);font-weight:600;min-width:44px;}
+  .slot-player{display:flex;align-items:center;gap:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .slot-empty{color:#5a636b;font-style:italic;}
+  .slot-open{background:#241a12;}
+  .bench-header{margin-top:10px;margin-bottom:2px;font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+  .bench-row{display:flex;align-items:center;gap:6px;padding:3px 6px;font-size:.78rem;}
+  .bench-row.muted{color:var(--muted);font-style:italic;}
+  .rec-card{padding:10px;background:var(--panel2);border-radius:8px;margin-bottom:8px;}
+  .rec-player{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:.95rem;flex-wrap:wrap;}
+  .rec-reason{color:var(--muted);font-size:.78rem;margin-bottom:8px;}
+  .rec-alternates{display:flex;flex-direction:column;gap:4px;}
+  .alt-row{display:flex;justify-content:space-between;align-items:center;padding:4px 6px;background:var(--panel2);border-radius:6px;font-size:.78rem;gap:6px;}
+  .muted{color:var(--muted);}
   .panel{background:var(--panel);border:1px solid #2a323b;border-radius:10px;padding:14px;display:flex;flex-direction:column;overflow:hidden;}
   #status-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:10px;}
   #on-clock{font-size:1.1rem;}
@@ -377,6 +394,25 @@ Kaleb Johnson, RB, GB
 Evan Engram, TE, DEN</textarea>
   </div>
 
+  <div class="card">
+    <h2>3. Your team &amp; starting lineup</h2>
+    <label for="myTeamIndex">Which team is yours?</label>
+    <select id="myTeamIndex"></select>
+
+    <label>Starting lineup (drives the roster tracker &amp; pick recommendations)</label>
+    <div class="row">
+      <div><label for="rosterQB">QB</label><input type="number" id="rosterQB" min="0" max="5" value="1"></div>
+      <div><label for="rosterRB">RB</label><input type="number" id="rosterRB" min="0" max="6" value="2"></div>
+      <div><label for="rosterWR">WR</label><input type="number" id="rosterWR" min="0" max="6" value="2"></div>
+      <div><label for="rosterTE">TE</label><input type="number" id="rosterTE" min="0" max="4" value="1"></div>
+    </div>
+    <div class="row">
+      <div><label for="rosterFLEX">FLEX (RB/WR/TE)</label><input type="number" id="rosterFLEX" min="0" max="4" value="1"></div>
+      <div><label for="rosterDST">DST</label><input type="number" id="rosterDST" min="0" max="2" value="1"></div>
+      <div><label for="rosterK">K</label><input type="number" id="rosterK" min="0" max="2" value="1"></div>
+    </div>
+  </div>
+
   <div id="setup-actions">
     <button class="btn-secondary" id="loadSavedBtn">Load saved draft</button>
     <button class="btn-primary" id="startDraftBtn">Start Draft →</button>
@@ -407,9 +443,23 @@ Evan Engram, TE, DEN</textarea>
     </div>
   </div>
 
+  <div id="insights-col">
+    <div class="panel" id="rec-panel">
+      <h2 style="margin:0 0 8px;font-size:.95rem;color:var(--wheat);">🎯 Recommended Pick</h2>
+      <div id="recCard" class="rec-card"></div>
+      <div id="recAlternates" class="rec-alternates"></div>
+    </div>
+    <div class="panel" id="roster-panel">
+      <h2 style="margin:0 0 8px;font-size:.95rem;color:var(--wheat);">Your Roster — <span id="rosterTeamName">—</span></h2>
+      <div id="rosterSlotList"></div>
+      <div class="bench-header">Bench</div>
+      <div id="rosterBenchList"></div>
+    </div>
+  </div>
+
   <div id="queue-col">
     <div class="panel">
-      <h2 style="margin:0 0 8px;font-size:.95rem;color:var(--wheat);">Player Queue</h2>
+      <h2 style="margin:0 0 8px;font-size:.95rem;color:var(--wheat);">Player Queue (Best Available)</h2>
       <input type="text" id="search" placeholder="Search player...">
       <div id="filters">
         <div class="filter-btn active" data-pos="ALL">ALL</div>
@@ -418,7 +468,7 @@ Evan Engram, TE, DEN</textarea>
         <div class="filter-btn" data-pos="WR">WR</div>
         <div class="filter-btn" data-pos="TE">TE</div>
         <div class="filter-btn" data-pos="K">K</div>
-        <div class="filter-btn" data-pos="DEF">DEF</div>
+        <div class="filter-btn" data-pos="DST">DEF</div>
       </div>
       <div id="queue-count">0 players left</div>
       <div id="player-list"></div>
@@ -450,6 +500,8 @@ Evan Engram, TE, DEN</textarea>
 (function(){
   "use strict";
   const STORAGE_KEY = "sotg_draft_v1";
+  const DEFAULT_ROSTER = { QB:1, RB:2, WR:2, TE:1, FLEX:1, DST:1, K:1 };
+  const FLEX_ELIGIBLE = ["RB","WR","TE"];
 
   let state = null; // set on start/load
   let timerInterval = null;
@@ -487,25 +539,73 @@ Evan Engram, TE, DEN</textarea>
     return active ? active.dataset.type : "snake";
   }
 
-  function buildInitialState(){
-    const numTeams = Math.max(2, parseInt(document.getElementById("numTeams").value,10) || 12);
-    const numRounds = Math.max(1, parseInt(document.getElementById("numRounds").value,10) || 15);
-    const pickSeconds = Math.max(10, parseInt(document.getElementById("pickSeconds").value,10) || 90);
-    const draftType = getSelectedDraftType();
-    const budget = Math.max(1, parseInt(document.getElementById("budget").value,10) || 200);
+  function getEffectiveNumTeams(){
+    return Math.max(2, parseInt(document.getElementById("numTeams").value,10) || 12);
+  }
+
+  function getEffectiveTeamNames(){
+    const numTeams = getEffectiveNumTeams();
     let names = document.getElementById("teamNames").value.split(",").map(s=>s.trim()).filter(Boolean);
     if (names.length < numTeams){
       for (let i=names.length; i<numTeams; i++) names.push("Team "+(i+1));
     }
-    names = names.slice(0, numTeams);
+    return names.slice(0, numTeams);
+  }
+
+  function refreshMyTeamSelect(){
+    const sel = document.getElementById("myTeamIndex");
+    if (!sel) return;
+    const prevValue = sel.value;
+    const names = getEffectiveTeamNames();
+    sel.innerHTML = "";
+    names.forEach((name,i)=>{
+      const opt = document.createElement("option");
+      opt.value = String(i);
+      opt.textContent = name;
+      sel.appendChild(opt);
+    });
+    if (prevValue !== "" && Number(prevValue) < names.length) sel.value = prevValue;
+  }
+  document.getElementById("numTeams").addEventListener("input", refreshMyTeamSelect);
+  document.getElementById("teamNames").addEventListener("input", refreshMyTeamSelect);
+  refreshMyTeamSelect();
+
+  function getRosterConfig(){
+    const read = (id, fallback) => {
+      const el = document.getElementById(id);
+      const v = el ? parseInt(el.value,10) : NaN;
+      return Number.isFinite(v) && v>=0 ? v : fallback;
+    };
+    return {
+      QB: read("rosterQB", DEFAULT_ROSTER.QB),
+      RB: read("rosterRB", DEFAULT_ROSTER.RB),
+      WR: read("rosterWR", DEFAULT_ROSTER.WR),
+      TE: read("rosterTE", DEFAULT_ROSTER.TE),
+      FLEX: read("rosterFLEX", DEFAULT_ROSTER.FLEX),
+      DST: read("rosterDST", DEFAULT_ROSTER.DST),
+      K: read("rosterK", DEFAULT_ROSTER.K)
+    };
+  }
+
+  function buildInitialState(){
+    const numTeams = getEffectiveNumTeams();
+    const numRounds = Math.max(1, parseInt(document.getElementById("numRounds").value,10) || 15);
+    const pickSeconds = Math.max(10, parseInt(document.getElementById("pickSeconds").value,10) || 90);
+    const draftType = getSelectedDraftType();
+    const budget = Math.max(1, parseInt(document.getElementById("budget").value,10) || 200);
+    const names = getEffectiveTeamNames();
     const players = parsePlayers(document.getElementById("playerInput").value);
+    const roster = getRosterConfig();
+    const myTeamRaw = parseInt(document.getElementById("myTeamIndex").value,10);
+    const myTeamIndex = (Number.isFinite(myTeamRaw) && myTeamRaw>=0 && myTeamRaw<numTeams) ? myTeamRaw : 0;
 
     return {
-      config: { numTeams, numRounds, pickSeconds, draftType, budget, teamNames: names },
+      config: { numTeams, numRounds, pickSeconds, draftType, budget, teamNames: names, roster },
       players,
       picks: [], // {overall, round, teamIndex, playerId, price}
       currentOverall: 1,
-      budgets: names.map(()=>budget)
+      budgets: names.map(()=>budget),
+      myTeamIndex
     };
   }
 
@@ -557,6 +657,7 @@ Evan Engram, TE, DEN</textarea>
     renderBoard();
     renderQueue();
     updateStatusBar();
+    renderInsights();
     resetTimerDisplay();
   }
 
@@ -660,6 +761,172 @@ Evan Engram, TE, DEN</textarea>
     });
   });
 
+  // ---------- Roster tracking & pick recommendation ----------
+  function getMyTeamIndex(){
+    const n = state.config.numTeams;
+    let idx = (typeof state.myTeamIndex === "number") ? state.myTeamIndex : 0;
+    if (idx < 0 || idx >= n) idx = 0;
+    return idx;
+  }
+
+  function getRoster(){
+    return (state.config && state.config.roster) || DEFAULT_ROSTER;
+  }
+
+  // Greedily assigns a team's drafted players to open starting slots (primary
+  // position first, else FLEX if eligible), everything left over is bench.
+  function computeRosterAssignment(teamIndex){
+    const roster = getRoster();
+    const starterSlots = [];
+    ["QB","RB","WR","TE","FLEX","DST","K"].forEach(type=>{
+      const count = roster[type] || 0;
+      for (let i=0; i<count; i++) starterSlots.push({ type, filled: null });
+    });
+    const teamPicks = state.picks
+      .filter(pk=>pk.teamIndex===teamIndex)
+      .slice().sort((a,b)=>a.overall-b.overall);
+    const bench = [];
+    teamPicks.forEach(pk=>{
+      const player = state.players.find(p=>p.id===pk.playerId);
+      if (!player) return;
+      let slot = starterSlots.find(s=>s.type===player.pos && !s.filled);
+      if (!slot && FLEX_ELIGIBLE.includes(player.pos)){
+        slot = starterSlots.find(s=>s.type==="FLEX" && !s.filled);
+      }
+      if (slot) slot.filled = player; else bench.push(player);
+    });
+    return { starterSlots, bench };
+  }
+
+  function bestAvailable(){
+    return state.players.filter(p=>!p.drafted); // parse order == rank order
+  }
+
+  function bestByPosition(){
+    const avail = bestAvailable();
+    const map = {};
+    ["QB","RB","WR","TE","DST","K"].forEach(pos=>{
+      map[pos] = avail.find(p=>p.pos===pos) || null;
+    });
+    return map;
+  }
+
+  // Recommendation = the best-ranked player among everyone who would fill one
+  // of your still-open starting slots (need AND value together). If every
+  // starting slot is full, fall back to true best-player-available.
+  function computeRecommendation(){
+    const avail = bestAvailable();
+    if (!avail.length) return null;
+    const bestOverall = avail[0];
+    const myIdx = getMyTeamIndex();
+    const { starterSlots } = computeRosterAssignment(myIdx);
+    const openTypes = {};
+    starterSlots.forEach(s=>{ if (!s.filled) openTypes[s.type] = (openTypes[s.type]||0) + 1; });
+    const byPos = bestByPosition();
+
+    let candidates = [];
+    Object.keys(openTypes).forEach(type=>{
+      if (type === "FLEX"){
+        FLEX_ELIGIBLE.forEach(pos=>{
+          if (byPos[pos]) candidates.push({ player: byPos[pos], reason: "Fills your open FLEX slot ("+pos+")" });
+        });
+      } else if (byPos[type]){
+        candidates.push({ player: byPos[type], reason: "Fills your open "+type+" slot" });
+      }
+    });
+    const seen = new Set();
+    candidates = candidates.filter(c=>{
+      if (seen.has(c.player.id)) return false;
+      seen.add(c.player.id);
+      return true;
+    });
+    candidates.sort((a,b)=> avail.indexOf(a.player) - avail.indexOf(b.player));
+
+    if (!candidates.length){
+      return {
+        player: bestOverall,
+        reason: "All starting slots filled — best player available for bench/upside",
+        alternates: avail.slice(1,4)
+      };
+    }
+    const top = candidates[0];
+    const isAlsoBPA = top.player.id === bestOverall.id;
+    return {
+      player: top.player,
+      reason: isAlsoBPA ? top.reason + " — and it's the best player on the board" : top.reason,
+      alternates: candidates.slice(1,4)
+    };
+  }
+
+  function renderRoster(){
+    const listEl = document.getElementById("rosterSlotList");
+    if (!listEl) return;
+    const myIdx = getMyTeamIndex();
+    document.getElementById("rosterTeamName").textContent = state.config.teamNames[myIdx] || "Your team";
+    const { starterSlots, bench } = computeRosterAssignment(myIdx);
+    const roster = getRoster();
+    const seenCount = {};
+    listEl.innerHTML = "";
+    starterSlots.forEach(s=>{
+      seenCount[s.type] = (seenCount[s.type]||0) + 1;
+      const label = (roster[s.type]||0) > 1 ? s.type + seenCount[s.type] : s.type;
+      const row = document.createElement("div");
+      row.className = "slot-row " + (s.filled ? "slot-filled" : "slot-open");
+      const posClass = s.filled ? (s.filled.pos==="DST"?"DEF":s.filled.pos) : "";
+      row.innerHTML = "<span class='slot-label'>"+escapeHtml(label)+"</span>" +
+        (s.filled
+          ? "<span class='slot-player'><span class='pos-tag pos-"+posClass+"'>"+escapeHtml(s.filled.pos)+"</span>"+escapeHtml(s.filled.name)+"</span>"
+          : "<span class='slot-empty'>— open —</span>");
+      listEl.appendChild(row);
+    });
+    const benchEl = document.getElementById("rosterBenchList");
+    benchEl.innerHTML = bench.length
+      ? bench.map(p=>"<div class='bench-row'><span class='pos-tag pos-"+(p.pos==="DST"?"DEF":p.pos)+"'>"+escapeHtml(p.pos)+"</span>"+escapeHtml(p.name)+"</div>").join("")
+      : "<div class='bench-row muted'>No bench picks yet</div>";
+  }
+
+  function renderRecommendation(){
+    const card = document.getElementById("recCard");
+    const altWrap = document.getElementById("recAlternates");
+    if (!card) return;
+    const rec = computeRecommendation();
+    if (!rec){
+      card.innerHTML = "<div class='muted'>Draft complete — no players left.</div>";
+      altWrap.innerHTML = "";
+      return;
+    }
+    const p = rec.player;
+    const posClass = p.pos==="DST" ? "DEF" : p.pos;
+    card.innerHTML =
+      "<div class='rec-player'><span class='pos-tag pos-"+posClass+"'>"+escapeHtml(p.pos)+"</span><b>"+escapeHtml(p.name)+"</b> <span class='muted'>"+escapeHtml(p.team||"")+"</span></div>" +
+      "<div class='rec-reason'>"+escapeHtml(rec.reason)+"</div>";
+    const btn = document.createElement("button");
+    btn.className = "draft-btn";
+    btn.textContent = "Draft this pick";
+    btn.addEventListener("click", ()=>onDraftPlayer(p.id));
+    card.appendChild(btn);
+
+    altWrap.innerHTML = "";
+    (rec.alternates||[]).forEach(alt=>{
+      const ap = alt.player || alt;
+      const row = document.createElement("div");
+      row.className = "alt-row";
+      const apClass = ap.pos==="DST" ? "DEF" : ap.pos;
+      row.innerHTML = "<span class='pos-tag pos-"+apClass+"'>"+escapeHtml(ap.pos)+"</span><span style='flex:1'>"+escapeHtml(ap.name)+"</span>";
+      const b = document.createElement("button");
+      b.className = "btn-secondary btn-small";
+      b.textContent = "Draft";
+      b.addEventListener("click", ()=>onDraftPlayer(ap.id));
+      row.appendChild(b);
+      altWrap.appendChild(row);
+    });
+  }
+
+  function renderInsights(){
+    renderRoster();
+    renderRecommendation();
+  }
+
   // ---------- Drafting a player ----------
   let pendingPlayerId = null;
   function onDraftPlayer(playerId){
@@ -719,6 +986,7 @@ Evan Engram, TE, DEN</textarea>
     renderBoard();
     renderQueue();
     updateStatusBar();
+    renderInsights();
     resetTimerDisplay();
   }
 
@@ -738,6 +1006,7 @@ Evan Engram, TE, DEN</textarea>
     renderBoard();
     renderQueue();
     updateStatusBar();
+    renderInsights();
     resetTimerDisplay();
   });
 
@@ -797,6 +1066,7 @@ Evan Engram, TE, DEN</textarea>
   window.__sotgTest = {
     getState: ()=>state,
     buildInitialState, teamIndexForOverallPick, roundForOverall, pickInRoundForOverall,
+    computeRosterAssignment, computeRecommendation, getMyTeamIndex,
     startWithDefaults: ()=>{ document.getElementById("startDraftBtn").click(); },
     draftFirstAvailable: ()=>{
       const p = state.players.find(pl=>!pl.drafted);
