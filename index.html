@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <title>Settlers of the Gridiron — Draft Day Tool</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%91%3C/text%3E%3C/svg%3E">
 <style>
   :root{
     --wood:#8a5a2b; --wheat:#d9a441; --brick:#b5493a; --sheep:#5a9e5a;
@@ -12,9 +13,24 @@
   }
   *{box-sizing:border-box;}
   body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
-  header{padding:14px 20px;background:linear-gradient(90deg,#2b1d0e,#1a2028);border-bottom:2px solid var(--wheat);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;}
-  header h1{margin:0;font-size:1.3rem;letter-spacing:.5px;}
+  header{padding:14px 20px;background:linear-gradient(90deg,#2b1d0e,#1a2028 55%,#12301a);border-bottom:2px solid var(--wheat);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;position:relative;overflow:hidden;}
+  header::before{content:"🐑 🌾 🧱 🪨 🌲 🐑 🌾 🧱 🪨 🌲 🐑 🌾 🧱 🪨 🌲 🐑 🌾 🧱 🪨 🌲 🐑 🌾 🧱 🪨 🌲";position:absolute;right:0;top:-6px;font-size:2.4rem;letter-spacing:.6rem;opacity:.10;white-space:nowrap;pointer-events:none;}
+  header > *{position:relative;}
+  header h1{margin:0;font-size:1.45rem;letter-spacing:.5px;}
   header h1 span{color:var(--wheat);}
+  header h1 .league{display:block;font-size:.85rem;font-weight:500;color:var(--sheep);letter-spacing:1px;text-transform:uppercase;margin-top:2px;}
+  .you-pill{display:inline-block;background:var(--sheep);color:#0d1a0d;font-size:.62rem;font-weight:800;letter-spacing:.5px;padding:1px 6px;border-radius:10px;margin-left:5px;vertical-align:middle;}
+  table#board th.my-col{background:#1f3a22;color:#bfe8bf;border-bottom:2px solid var(--sheep);}
+  table#board td.my-col{background:#162316;border-left:1px solid #2f5a33;border-right:1px solid #2f5a33;}
+  table#board td.my-col.filled{background:#1f3d22;}
+  table#board td.pick-cell.on-clock.my-col{background:#2f5a33;outline:2px solid var(--sheep);animation:pulse 1.2s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(90,158,90,.55);}50%{box-shadow:0 0 0 6px rgba(90,158,90,0);}}
+  table#board td.pick-cell.just-picked{animation:pop .5s ease-out;}
+  @keyframes pop{0%{transform:scale(.85);background:#3a2f14;}100%{transform:scale(1);}}
+  #on-clock.mine b{color:var(--sheep);}
+  #on-clock.mine{background:#1f3a22;border:1px solid var(--sheep);border-radius:8px;padding:4px 10px;}
+  #timer.warn{animation:pulse 1s ease-in-out infinite;}
+  .slot-filled .slot-label{color:var(--sheep);}
   header .sub{color:var(--muted);font-size:.8rem;}
   .hidden{display:none !important;}
   #setup{max-width:760px;margin:30px auto;padding:0 16px;}
@@ -109,7 +125,7 @@
 <body>
 
 <header>
-  <h1>Settlers of <span>the Gridiron</span></h1>
+  <h1><span id="leagueTitle" class="league">🐑 I got sheep FF · 2026 Draft</span>Settlers of <span>the Gridiron</span></h1>
   <div class="sub">Draft-day board &amp; cheat sheet — no login, no server, saves as you go<br>Rankings refreshed: <b>2026-09-07 1:17 PM CDT</b> (FantasyPros PPR ECR/ADP/Tier)</div>
 </header>
 
@@ -131,8 +147,10 @@
         <input type="number" id="pickSeconds" min="10" max="600" value="90">
       </div>
     </div>
-    <label for="teamNames">Team names (comma separated, in draft-slot order)</label>
-    <input type="text" id="teamNames" placeholder="e.g. Ore Lords, Wheat Kings, Brick House, ...">
+    <label for="leagueName">League name</label>
+    <input type="text" id="leagueName" value="I got sheep FF">
+    <label for="teamNames">Team names (comma separated, in draft-slot order — these are the 9 real teams from ESPN in standings order; reorder them to match the draft order once it's set)</label>
+    <input type="text" id="teamNames" value="Bad Hombres, SACK OF WHEAT, Resting Blitz Face, Unnecessary Sanctions, The Brady Bunch, BlitzAndGiggles, Knight Moves Ore Else, I'll be white!!, PapasCabezas" placeholder="e.g. Ore Lords, Wheat Kings, Brick House, ...">
 
     <label>Draft type</label>
     <div class="radio-group">
@@ -406,7 +424,7 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
 
   <div class="card">
     <h2>3. Your team &amp; starting lineup</h2>
-    <label for="myTeamIndex">Which team is yours?</label>
+    <label for="myTeamIndex">Which team is yours? 🐑 (your column on the board, your roster, and every timing tag depend on this)</label>
     <select id="myTeamIndex"></select>
 
     <label>Starting lineup (drives the roster tracker &amp; pick recommendations)</label>
@@ -468,7 +486,7 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
       <div id="recAlternates" class="rec-alternates"></div>
     </div>
     <div class="panel" id="roster-panel">
-      <h2 style="margin:0 0 8px;font-size:.95rem;color:var(--wheat);">Your Roster — <span id="rosterTeamName">—</span></h2>
+      <h2 style="margin:0 0 8px;font-size:.95rem;color:var(--wheat);">🐑 Your Flock — <span id="rosterTeamName">—</span></h2>
       <div id="rosterSlotList"></div>
       <div class="bench-header">Bench</div>
       <div id="rosterBenchList"></div>
@@ -635,9 +653,10 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
     const needRound = Number.isFinite(needRoundRaw) && needRoundRaw>=1 ? needRoundRaw : 5;
     const lateRoundsRaw = parseInt(document.getElementById("lateRounds").value,10);
     const lateRounds = Number.isFinite(lateRoundsRaw) && lateRoundsRaw>=0 ? lateRoundsRaw : 2;
+    const leagueName = (document.getElementById("leagueName").value || "").trim() || "I got sheep FF";
 
     return {
-      config: { numTeams, numRounds, pickSeconds, draftType, budget, teamNames: names, roster, needRound, lateRounds },
+      config: { numTeams, numRounds, pickSeconds, draftType, budget, teamNames: names, roster, needRound, lateRounds, leagueName },
       players,
       picks: [], // {overall, round, teamIndex, playerId, price}
       currentOverall: 1,
@@ -689,6 +708,8 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
 
   // ---------- Draft screen render ----------
   function enterDraftScreen(){
+    const lt = document.getElementById("leagueTitle");
+    if (lt) lt.textContent = "🐑 " + ((state.config && state.config.leagueName) || "I got sheep FF") + " · 2026 Draft";
     document.getElementById("setup").classList.add("hidden");
     document.getElementById("draft").classList.remove("hidden");
     renderBoard();
@@ -702,8 +723,13 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
     const table = document.getElementById("board");
     const n = state.config.numTeams;
     const rounds = state.config.numRounds;
+    const myIdx = getMyTeamIndex();
+    const lastPick = state.picks.length ? state.picks[state.picks.length-1].overall : null;
     let html = "<thead><tr><th>Rd</th>";
-    state.config.teamNames.forEach(name=>{ html += "<th>"+escapeHtml(name)+"</th>"; });
+    state.config.teamNames.forEach((name,i)=>{
+      const mine = (i===myIdx && state.config.draftType==="snake");
+      html += "<th"+(mine?" class='my-col'":"")+">"+(mine?"🐑 ":"")+escapeHtml(name)+(mine?"<span class='you-pill'>YOU</span>":"")+"</th>";
+    });
     html += "</tr></thead><tbody>";
 
     for (let r=1; r<=rounds; r++){
@@ -719,11 +745,12 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
         }
         const pick = state.picks.find(p=>p.overall===overall);
         const isClock = (overall === state.currentOverall);
-        let cellClass = "pick-cell" + (pick?" filled":"") + (isClock?" on-clock":"");
+        const mine = (slot===myIdx && state.config.draftType==="snake");
+        let cellClass = "pick-cell" + (pick?" filled":"") + (isClock?" on-clock":"") + (mine?" my-col":"") + (pick && overall===lastPick?" just-picked":"");
         let content = "";
         if (pick){
           const player = state.players.find(p=>p.id===pick.playerId);
-          content = "<div class='pick-name'>"+escapeHtml(player?player.name:"?")+"</div>"+
+          content = "<div class='pick-name'>"+(mine?"🐑 ":"")+escapeHtml(player?player.name:"?")+"</div>"+
             "<div class='pick-meta'>"+escapeHtml(player?player.pos:"")+
             (pick.price!=null ? " · $"+pick.price : "")+" · #"+overall+"</div>";
         } else {
@@ -745,15 +772,20 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
       document.getElementById("curPickInRound").textContent = state.config.numTeams;
       document.getElementById("curOverall").textContent = totalPicks;
       document.getElementById("curTeam").textContent = "Draft complete 🎉";
+      document.getElementById("on-clock").classList.remove("mine");
       return;
     }
     document.getElementById("curRound").textContent = roundForOverall(overall);
     document.getElementById("curPickInRound").textContent = pickInRoundForOverall(overall);
     document.getElementById("curOverall").textContent = overall;
+    const onClockEl = document.getElementById("on-clock");
     if (state.config.draftType === "snake"){
       const idx = teamIndexForOverallPick(overall);
-      document.getElementById("curTeam").textContent = state.config.teamNames[idx];
+      const mine = idx === getMyTeamIndex();
+      document.getElementById("curTeam").textContent = (mine ? "🐑 YOU — " : "") + state.config.teamNames[idx];
+      onClockEl.classList.toggle("mine", mine);
     } else {
+      onClockEl.classList.remove("mine");
       document.getElementById("curTeam").textContent = "(any team — auction)";
     }
   }

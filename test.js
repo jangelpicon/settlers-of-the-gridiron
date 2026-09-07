@@ -75,7 +75,7 @@ async function run() {
   const undone = window.__sotgTest.getState();
   assert(undone.currentOverall === 1, "current overall pick reverted to 1 after undo");
   assert(undone.players.filter(p => !p.drafted).length === beforeCount, "undone player is back in the pool");
-  assert(doc.getElementById("curTeam").textContent === "Alpha", "on-the-clock reverted back to Alpha");
+  assert(/Alpha$/.test(doc.getElementById("curTeam").textContent), "on-the-clock reverted back to Alpha (labeled YOU since Alpha is my team)");
 
   console.log("\n== Test 5: Position filter narrows the queue ==");
   doc.getElementById("search").value = "";
@@ -503,6 +503,31 @@ async function run() {
   draftByName19("R1"); await new Promise(r => setTimeout(r, 10)); // 8 A
   rec19 = t19.computeRecommendation();
   assert(rec19.player.name === "W4", "once a backup RB is on the bench, it's back to BPA (W4)");
+
+  console.log("\n== Test 20: My team is labeled on the draft board; ESPN team names prefilled ==");
+  const dom20 = new JSDOM(html, { runScripts: "dangerously", resources: "usable", url: "http://localhost/" });
+  await new Promise(r => setTimeout(r, 50));
+  const doc20 = dom20.window.document;
+  const prefilled = doc20.getElementById("teamNames").value.split(",").map(x => x.trim()).filter(Boolean);
+  assert(prefilled.length === 9 && prefilled.includes("SACK OF WHEAT") && prefilled.includes("PapasCabezas"), "setup ships with the 9 real 'I got sheep FF' team names from ESPN");
+  assert(doc20.getElementById("myTeamIndex").options.length === 9, "'Which team is yours' dropdown lists all 9 teams");
+  doc20.getElementById("myTeamIndex").value = "6"; // Knight Moves Ore Else
+  doc20.getElementById("startDraftBtn").click();
+  await new Promise(r => setTimeout(r, 20));
+  const ths20 = [...doc20.querySelectorAll("#board thead th")];
+  const myTh = ths20.find(th => th.classList.contains("my-col"));
+  assert(myTh && /Knight Moves Ore Else/.test(myTh.textContent) && /YOU/.test(myTh.textContent), "my team's board column header is tagged 🐑 + YOU");
+  assert(ths20.filter(th => th.classList.contains("my-col")).length === 1, "exactly one column is marked as mine");
+  const myCells = [...doc20.querySelectorAll("#board td.my-col")];
+  assert(myCells.length === 14, "all 14 of my pick cells carry the my-col highlight (one per round)");
+  assert(/I got sheep FF/.test(doc20.getElementById("leagueTitle").textContent), "league name shows in the header");
+  // Snake, 9 teams: slot 7 (index 6) picks at overall 7 and 12. Advance to pick 7 and check the on-clock banner.
+  for (let i = 0; i < 6; i++) { dom20.window.__sotgTest.draftFirstAvailable(); await new Promise(r => setTimeout(r, 5)); }
+  assert(/YOU/.test(doc20.getElementById("curTeam").textContent) && doc20.getElementById("on-clock").classList.contains("mine"), "when it's my pick, the on-the-clock banner says YOU and lights up");
+  dom20.window.__sotgTest.draftFirstAvailable(); await new Promise(r => setTimeout(r, 5));
+  assert(!doc20.getElementById("on-clock").classList.contains("mine"), "banner highlight clears once my pick is made");
+  const myFilled = doc20.querySelector("#board td.my-col.filled");
+  assert(myFilled && /🐑/.test(myFilled.textContent), "my drafted player's cell shows the sheep");
 
   console.log("\n=========================");
   if (failures === 0) {
