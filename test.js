@@ -529,6 +529,22 @@ async function run() {
   const myFilled = doc20.querySelector("#board td.my-col.filled");
   assert(myFilled && /🐑/.test(myFilled.textContent), "my drafted player's cell shows the sheep");
 
+  console.log("\n== Test 21: My team defaults to \"I'll be white!!\" and follows the name when teams are reordered ==");
+  const dom21 = new JSDOM(html, { runScripts: "dangerously", resources: "usable", url: "http://localhost/" });
+  await new Promise(r => setTimeout(r, 50));
+  const doc21 = dom21.window.document;
+  const sel21 = doc21.getElementById("myTeamIndex");
+  assert(sel21.options[sel21.selectedIndex].textContent === "I'll be white!!", "on load, 'Which team is yours' is already set to I'll be white!!");
+  assert(sel21.value === "7", "…which is draft slot 8 (index 7) in the prefilled standings order");
+  // Reorder into a hypothetical draft order with my team drafting 3rd.
+  doc21.getElementById("teamNames").value = "PapasCabezas, Bad Hombres, I'll be white!!, SACK OF WHEAT, Resting Blitz Face, Unnecessary Sanctions, The Brady Bunch, BlitzAndGiggles, Knight Moves Ore Else";
+  doc21.getElementById("teamNames").dispatchEvent(new dom21.window.Event("input"));
+  assert(sel21.options[sel21.selectedIndex].textContent === "I'll be white!!" && sel21.value === "2", "after reordering, my team is still I'll be white!! (now index 2), not whatever landed at the old index");
+  doc21.getElementById("startDraftBtn").click();
+  await new Promise(r => setTimeout(r, 20));
+  assert(dom21.window.__sotgTest.getMyTeamIndex() === 2, "draft starts with my team = slot 3");
+  assert(/I'll be white!!/.test(doc21.querySelector("#board th.my-col").textContent), "board column for I'll be white!! is the one marked YOU");
+
   console.log("\n=========================");
   if (failures === 0) {
     console.log("ALL TESTS PASSED");

@@ -160,4 +160,4 @@ npm install jsdom --no-save   # one-time, ~26MB, only needed to run tests
 node test.js
 ```
 
-All 96 assertions currently pass.
+All 101 assertions currently pass.

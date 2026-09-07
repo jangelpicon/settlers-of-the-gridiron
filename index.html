@@ -538,6 +538,7 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
   const STORAGE_KEY = "sotg_draft_v1";
   const DEFAULT_ROSTER = { QB:1, RB:2, WR:2, TE:1, FLEX:1, DST:1, K:1 };
   const FLEX_ELIGIBLE = ["RB","WR","TE"];
+  const MY_TEAM_DEFAULT = "I'll be white!!"; // Jose's team in "I got sheep FF" — auto-selected by name, survives reordering
   const LATE_POSITIONS = ["K","DST"]; // only ever recommended as a need-fill in the reserved final rounds
   // Snake-draft timing thresholds (in picks, against ADP). ADP is a market average with real
   // spread, so we only call it when the margin is comfortable and there are enough picks
@@ -606,7 +607,9 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
   function refreshMyTeamSelect(){
     const sel = document.getElementById("myTeamIndex");
     if (!sel) return;
-    const prevValue = sel.value;
+    // Track the chosen team by NAME, not index, so reordering the team list into draft order
+    // keeps "my team" pointing at the same team.
+    const prevName = sel.selectedIndex >= 0 && sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : null;
     const names = getEffectiveTeamNames();
     sel.innerHTML = "";
     names.forEach((name,i)=>{
@@ -615,7 +618,11 @@ Ted Hurst III, WR, TB, 249, 11, 10</textarea>
       opt.textContent = name;
       sel.appendChild(opt);
     });
-    if (prevValue !== "" && Number(prevValue) < names.length) sel.value = prevValue;
+    const byName = (n)=> n==null ? -1 : names.findIndex(x=>x.toLowerCase()===n.toLowerCase());
+    let idx = byName(prevName);
+    if (idx < 0) idx = byName(MY_TEAM_DEFAULT);
+    if (idx < 0) idx = 0;
+    sel.value = String(idx);
   }
   document.getElementById("numTeams").addEventListener("input", refreshMyTeamSelect);
   document.getElementById("teamNames").addEventListener("input", refreshMyTeamSelect);
