@@ -57,6 +57,9 @@
   .rec-alternates{display:flex;flex-direction:column;gap:4px;}
   .alt-row{display:flex;justify-content:space-between;align-items:center;padding:4px 6px;background:var(--panel2);border-radius:6px;font-size:.78rem;gap:6px;}
   .muted{color:var(--muted);}
+  .value-tag{font-size:.66rem;color:var(--muted);margin-left:4px;white-space:nowrap;}
+  .value-tag.value-good{color:var(--good);}
+  .value-tag.value-hot{color:var(--brick);}
   .panel{background:var(--panel);border:1px solid #2a323b;border-radius:10px;padding:14px;display:flex;flex-direction:column;overflow:hidden;}
   #status-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:10px;}
   #on-clock{font-size:1.1rem;}
@@ -138,260 +141,260 @@
 
   <div class="card">
     <h2>2. Player pool (cheat sheet)</h2>
-    <label for="playerInput">Paste your rankings — one per line: <code>Name, POS, NFL Team</code> (POS/team optional). Order = your rank order.</label>
-    <textarea id="playerInput" placeholder="Ja'Marr Chase, WR, CIN
-Bijan Robinson, RB, ATL
-CeeDee Lamb, WR, DAL
-...">Ja'Marr Chase, WR, CIN
-Jahmyr Gibbs, RB, DET
-Puka Nacua, WR, LAR
-Bijan Robinson, RB, ATL
-Jaxon Smith-Njigba, WR, SEA
-Amon-Ra St. Brown, WR, DET
-Christian McCaffrey, RB, SF
-Justin Jefferson, WR, MIN
-CeeDee Lamb, WR, DAL
-Jonathan Taylor, RB, IND
-Drake London, WR, ATL
-A.J. Brown, WR, NE
-James Cook III, RB, BUF
-Nico Collins, WR, HOU
-Chase Brown, RB, CIN
-Chris Olave, WR, NO
-Trey McBride, TE, ARI
-Brock Bowers, TE, LV
-George Pickens, WR, DAL
-De'Von Achane, RB, MIA
-Saquon Barkley, RB, PHI
-DeVonta Smith, WR, PHI
-Malik Nabers, WR, NYG
-Kenneth Walker III, RB, KC
-Omarion Hampton, RB, LAC
-Josh Allen, QB, BUF
-Rashee Rice, WR, KC
-Ashton Jeanty, RB, LV
-Zay Flowers, WR, BAL
-Garrett Wilson, WR, NYJ
-Lamar Jackson, QB, BAL
-Jaylen Waddle, WR, DEN
-Ladd McConkey, WR, LAC
-Derrick Henry, RB, BAL
-Drake Maye, QB, NE
-Tetairoa McMillan, WR, CAR
-Tee Higgins, WR, CIN
-Colston Loveland, TE, CHI
-Breece Hall, RB, NYJ
-Jeremiyah Love, RB, ARI
-Emeka Egbuka, WR, TB
-Kyren Williams, RB, LAR
-Javonte Williams, RB, DAL
-Joe Burrow, QB, CIN
-Travis Etienne Jr., RB, NO
-Luther Burden III, WR, CHI
-Terry McLaurin, WR, WAS
-DJ Moore, WR, BUF
-Davante Adams, WR, LAR
-D'Andre Swift, RB, CHI
-Tyler Warren, TE, IND
-Jameson Williams, WR, DET
-Bucky Irving, RB, TB
-Jalen Hurts, QB, PHI
-Cam Skattebo, RB, NYG
-Christian Watson, WR, GB
-Jayden Daniels, QB, WAS
-Parker Washington, WR, JAC
-David Montgomery, RB, HOU
-Rome Odunze, WR, CHI
-Quinshon Judkins, RB, CLE
-Mike Evans, WR, SF
-Caleb Williams, QB, CHI
-Bhayshul Tuten, RB, JAC
-Jadarian Price, RB, SEA
-Carnell Tate, WR, TEN
-Marvin Harrison Jr., WR, ARI
-TreVeyon Henderson, RB, NE
-Justin Herbert, QB, LAC
-Rhamondre Stevenson, RB, NE
-Jaylen Warren, RB, PIT
-Chris Godwin Jr., WR, TB
-Trevor Lawrence, QB, JAC
-Harold Fannin Jr., TE, CLE
-Dak Prescott, QB, DAL
-Kyle Pitts Sr., TE, ATL
-DK Metcalf, WR, PIT
-Tucker Kraft, TE, GB
-Michael Pittman Jr., WR, PIT
-Brian Thomas Jr., WR, JAC
-Tony Pollard, RB, TEN
-Rico Dowdle, RB, PIT
-Courtland Sutton, WR, DEN
-Sam LaPorta, TE, DET
-Wan'Dale Robinson, WR, TEN
-Josh Downs, WR, IND
-Jonathon Brooks, RB, CAR
-Michael Wilson, WR, ARI
-Quentin Johnston, WR, LAC
-Stefon Diggs, WR, WAS
-RJ Harvey, RB, DEN
-George Kittle, TE, SF
-Kenny Gainwell, RB, TB
-Brock Purdy, QB, SF
-Bo Nix, QB, DEN
-Chuba Hubbard, RB, CAR
-Jaxson Dart, QB, NYG
-Travis Kelce, TE, KC
-Alec Pierce, WR, IND
-Jayden Reed, WR, GB
-Patrick Mahomes II, QB, KC
-J.K. Dobbins, RB, DEN
-Jared Goff, QB, DET
-Matthew Stafford, QB, LAR
-Jordan Addison, WR, MIN
-MarShawn Lloyd, RB, GB
-Blake Corum, RB, LAR
-KC Concepcion, WR, CLE
-Jakobi Meyers, WR, JAC
-Rachaad White, RB, WAS
-Makai Lemon, WR, PHI
-Jordan Mason, RB, MIN
-Kyler Murray, QB, MIN
-Dalton Kincaid, TE, BUF
-Jacory Croskey-Merritt, RB, WAS
-Jordan Love, QB, GB
-Aaron Jones Sr., RB, MIN
-Baker Mayfield, QB, TB
-Dallas Goedert, TE, PHI
-De'Zhaun Stribling, WR, SF
-Isaiah Likely, TE, NYG
-Kyle Monangai, RB, CHI
-Jake Ferguson, TE, DAL
-Tyler Shough, QB, NO
-Jalen Coker, WR, CAR
-Matthew Golden, WR, GB
-Romeo Doubs, WR, NE
-Khalil Shakir, WR, BUF
-Juwan Johnson, TE, NO
-Malik Willis, QB, MIA
-Xavier Worthy, WR, KC
-Mark Andrews, TE, BAL
-Woody Marks, RB, HOU
-Tyler Allgeier, RB, ARI
-Sam Darnold, QB, SEA
-Chris Rodriguez Jr., RB, JAC
-Tyjae Spears, RB, TEN
-Jordyn Tyson, WR, NO
-C.J. Stroud, QB, HOU
-Daniel Jones, QB, IND
-Jonah Coleman, RB, DEN
-Deebo Samuel Sr., WR, SF
-Rashid Shaheed, WR, SEA
-Dylan Sampson, RB, CLE
-Josh Jacobs, RB, GB
-Mike Washington Jr., RB, LV
-Zach Charbonnet, RB, SEA
-Keaton Mitchell, RB, LAC
-Denzel Boston, WR, CLE
-Tre Tucker, WR, LV
-Cam Ward, QB, TEN
-Brenton Strange, TE, JAC
-Chig Okonkwo, TE, WAS
-Dalton Schultz, TE, HOU
-Houston Texans, DST, HOU
-Hunter Henry, TE, NE
-Bryce Young, QB, CAR
-Tank Bigsby, RB, PHI
-Adonai Mitchell, WR, NYJ
-Alvin Kamara, RB, NO
-Kayshon Boutte, WR, HOU
-Jerry Jeudy, WR, CLE
-Los Angeles Rams, DST, LAR
-Denver Broncos, DST, DEN
-Jalen McMillan, WR, TB
-Brian Robinson Jr., RB, ATL
-Seattle Seahawks, DST, SEA
-Dontayvion Wicks, WR, PHI
-Braelon Allen, RB, NYJ
-Tyrone Tracy Jr., RB, NYG
-Emmett Johnson, RB, KC
-Jauan Jennings, WR, MIN
-Philadelphia Eagles, DST, PHI
-Tre' Harris, WR, LAC
-Omar Cooper Jr., WR, NYJ
-T.J. Hockenson, TE, MIN
-Ryan Flournoy, WR, DAL
-Pat Bryant, WR, DEN
-Ray Davis, RB, BUF
-Jalen Nailor, WR, LV
-Keenan Allen, WR, IND
-Malik Washington, WR, MIA
-Brandon Aubrey, K, DAL
-Jacoby Brissett, QB, ARI
-Pittsburgh Steelers, DST, PIT
-Minnesota Vikings, DST, MIN
-New England Patriots, DST, NE
-Jacksonville Jaguars, DST, JAC
-Cameron Dicker, K, LAC
-Ka'imi Fairbairn, K, HOU
-Los Angeles Chargers, DST, LAC
-Baltimore Ravens, DST, BAL
-Cam Little, K, JAC
-AJ Barner, TE, SEA
-Jason Myers, K, SEA
-Kimani Vidal, RB, LAC
-Terrance Ferguson, TE, LAR
-Jaylin Noel, WR, HOU
-Isiah Pacheco, RB, DET
-Aaron Rodgers, QB, PIT
-Travis Hunter, WR, JAC
-Calvin Ridley, WR, TEN
-Ja'Kobi Lane, WR, BAL
-Sean Tucker, RB, TB
-Eddy Pineiro, K, SF
-Kansas City Chiefs, DST, KC
-Kenyon Sadiq, TE, NYJ
-Tyler Loop, K, BAL
-Geno Smith, QB, NYJ
-Gunnar Helm, TE, TEN
-Chris Bell, WR, MIA
-Malachi Fields, WR, NYG
-Green Bay Packers, DST, GB
-Kaelon Black, RB, SF
-Jake Bates, K, DET
-Nicholas Singleton, RB, TEN
-Oronde Gadsden II, TE, LAC
-Malik Davis, RB, DAL
-Cooper Kupp, WR, SEA
-Isaac TeSlaa, WR, DET
-Zachariah Branch, WR, ATL
-Cairo Santos, K, CHI
-Pat Freiermuth, TE, PIT
-Evan McPherson, K, CIN
-Rashod Bateman, WR, BAL
-Caleb Douglas, WR, MIA
-Andy Borregales, K, NE
-Kaytron Allen, RB, WAS
-Harrison Mevis, K, LAR
-Darnell Mooney, WR, NYG
-Justice Hill, RB, BAL
-Buffalo Bills, DST, BUF
-Najee Harris, RB, NYG
-Detroit Lions, DST, DET
-Chase McLaughlin, K, TB
-Cade Otton, TE, TB
-Germie Bernard, WR, PIT
-James Conner, RB, ARI
-Troy Franklin, WR, DEN
-Jaylen Wright, RB, MIA
-Greg Dulcich, TE, MIA
-George Holani, RB, SEA
-Cleveland Browns, DST, CLE
-Tank Dell, WR, HOU
-Antonio Williams, WR, WAS
-Devaughn Vele, WR, NO
-Ted Hurst III, WR, TB
-Emanuel Wilson, RB, SEA
-Kaleb Johnson, RB, GB
-Evan Engram, TE, DEN</textarea>
+    <label for="playerInput">Paste your rankings — one per line: <code>Name, POS, NFL Team, ADP</code> (POS/Team/ADP optional). Order = your rank order.</label>
+    <textarea id="playerInput" placeholder="Ja'Marr Chase, WR, CIN, 3
+Bijan Robinson, RB, ATL, 2
+CeeDee Lamb, WR, DAL, 10
+...">Ja'Marr Chase, WR, CIN, 3
+Jahmyr Gibbs, RB, DET, 1
+Puka Nacua, WR, LAR, 4
+Bijan Robinson, RB, ATL, 2
+Jaxon Smith-Njigba, WR, SEA, 7
+Amon-Ra St. Brown, WR, DET, 8
+Christian McCaffrey, RB, SF, 5
+Justin Jefferson, WR, MIN, 12
+CeeDee Lamb, WR, DAL, 10
+Jonathan Taylor, RB, IND, 6
+Drake London, WR, ATL, 20
+A.J. Brown, WR, NE, 18
+James Cook III, RB, BUF, 9
+Nico Collins, WR, HOU, 24
+Chase Brown, RB, CIN, 13
+Chris Olave, WR, NO, 26
+Trey McBride, TE, ARI, 25
+Brock Bowers, TE, LV, 21
+George Pickens, WR, DAL, 23
+De'Von Achane, RB, MIA, 11
+Saquon Barkley, RB, PHI, 14
+DeVonta Smith, WR, PHI, 32
+Malik Nabers, WR, NYG, 28
+Kenneth Walker III, RB, KC, 17
+Omarion Hampton, RB, LAC, 15
+Josh Allen, QB, BUF, 22
+Rashee Rice, WR, KC, 31
+Ashton Jeanty, RB, LV, 19
+Zay Flowers, WR, BAL, 35
+Garrett Wilson, WR, NYJ, 40
+Lamar Jackson, QB, BAL, 38
+Jaylen Waddle, WR, DEN, 46
+Ladd McConkey, WR, LAC, 43
+Derrick Henry, RB, BAL, 16
+Drake Maye, QB, NE, 52
+Tetairoa McMillan, WR, CAR, 36
+Tee Higgins, WR, CIN, 41
+Colston Loveland, TE, CHI, 39
+Breece Hall, RB, NYJ, 33
+Jeremiyah Love, RB, ARI, 30
+Emeka Egbuka, WR, TB, 42
+Kyren Williams, RB, LAR, 29
+Javonte Williams, RB, DAL, 27
+Joe Burrow, QB, CIN, 54
+Travis Etienne Jr., RB, NO, 34
+Luther Burden III, WR, CHI, 53
+Terry McLaurin, WR, WAS, 57
+DJ Moore, WR, BUF, 48
+Davante Adams, WR, LAR, 50
+D'Andre Swift, RB, CHI, 44
+Tyler Warren, TE, IND, 51
+Jameson Williams, WR, DET, 58
+Bucky Irving, RB, TB, 47
+Jalen Hurts, QB, PHI, 61
+Cam Skattebo, RB, NYG, 37
+Christian Watson, WR, GB, 65
+Jayden Daniels, QB, WAS, 63
+Parker Washington, WR, JAC, 62
+David Montgomery, RB, HOU, 49
+Rome Odunze, WR, CHI, 59
+Quinshon Judkins, RB, CLE, 45
+Mike Evans, WR, SF, 67
+Caleb Williams, QB, CHI, 77
+Bhayshul Tuten, RB, JAC, 55
+Jadarian Price, RB, SEA, 56
+Carnell Tate, WR, TEN, 75
+Marvin Harrison Jr., WR, ARI, 70
+TreVeyon Henderson, RB, NE, 60
+Justin Herbert, QB, LAC, 84
+Rhamondre Stevenson, RB, NE, 64
+Jaylen Warren, RB, PIT, 68
+Chris Godwin Jr., WR, TB, 89
+Trevor Lawrence, QB, JAC, 88
+Harold Fannin Jr., TE, CLE, 66
+Dak Prescott, QB, DAL, 73
+Kyle Pitts Sr., TE, ATL, 72
+DK Metcalf, WR, PIT, 80
+Tucker Kraft, TE, GB, 69
+Michael Pittman Jr., WR, PIT, 95
+Brian Thomas Jr., WR, JAC, 85
+Tony Pollard, RB, TEN, 74
+Courtland Sutton, WR, DEN, 76
+Rico Dowdle, RB, PIT, 78
+Sam LaPorta, TE, DET, 71
+Wan'Dale Robinson, WR, TEN, 102
+Josh Downs, WR, IND, 118
+Jonathon Brooks, RB, CAR, 82
+Michael Wilson, WR, ARI, 83
+Quentin Johnston, WR, LAC, 104
+Stefon Diggs, WR, WAS, 100
+RJ Harvey, RB, DEN, 86
+George Kittle, TE, SF, 81
+Kenny Gainwell, RB, TB, 93
+Brock Purdy, QB, SF, 114
+Bo Nix, QB, DEN, 113
+Jaxson Dart, QB, NYG, 99
+Chuba Hubbard, RB, CAR, 90
+Travis Kelce, TE, KC, 94
+Alec Pierce, WR, IND, 92
+Jayden Reed, WR, GB, 119
+Patrick Mahomes II, QB, KC, 108
+J.K. Dobbins, RB, DEN, 87
+Jared Goff, QB, DET, 126
+Matthew Stafford, QB, LAR, 98
+Jordan Addison, WR, MIN, 109
+MarShawn Lloyd, RB, GB, 91
+Blake Corum, RB, LAR, 97
+KC Concepcion, WR, CLE, 125
+Jakobi Meyers, WR, JAC, 124
+Rachaad White, RB, WAS, 117
+Makai Lemon, WR, PHI, 116
+Jordan Mason, RB, MIN, 101
+Kyler Murray, QB, MIN, 138
+Dalton Kincaid, TE, BUF, 121
+Jacory Croskey-Merritt, RB, WAS, 110
+Jordan Love, QB, GB, 148
+Aaron Jones Sr., RB, MIN, 120
+Baker Mayfield, QB, TB, 141
+Dallas Goedert, TE, PHI, 112
+De'Zhaun Stribling, WR, SF, 111
+Isaiah Likely, TE, NYG, 105
+Kyle Monangai, RB, CHI, 107
+Jake Ferguson, TE, DAL, 122
+Tyler Shough, QB, NO, 154
+Jalen Coker, WR, CAR, 142
+Matthew Golden, WR, GB, 127
+Romeo Doubs, WR, NE, 130
+Khalil Shakir, WR, BUF, 146
+Juwan Johnson, TE, NO, 149
+Malik Willis, QB, MIA, 165
+Xavier Worthy, WR, KC, 131
+Mark Andrews, TE, BAL, 128
+Woody Marks, RB, HOU, 132
+Tyler Allgeier, RB, ARI, 140
+Chris Rodriguez Jr., RB, JAC, 137
+Sam Darnold, QB, SEA, 184
+Tyjae Spears, RB, TEN, 143
+Jordyn Tyson, WR, NO, 144
+C.J. Stroud, QB, HOU, 182
+Daniel Jones, QB, IND, 178
+Jonah Coleman, RB, DEN, 152
+Deebo Samuel Sr., WR, SF, 134
+Rashid Shaheed, WR, SEA, 147
+Dylan Sampson, RB, CLE, 172
+Josh Jacobs, RB, GB, 79
+Mike Washington Jr., RB, LV, 129
+Zach Charbonnet, RB, SEA, 145
+Keaton Mitchell, RB, LAC, 161
+Denzel Boston, WR, CLE, 166
+Tre Tucker, WR, LV, 171
+Cam Ward, QB, TEN, 214
+Brenton Strange, TE, JAC, 157
+Chig Okonkwo, TE, WAS, 200
+Dalton Schultz, TE, HOU, 170
+Houston Texans, DST, HOU, 103
+Hunter Henry, TE, NE, 156
+Bryce Young, QB, CAR, 212
+Tank Bigsby, RB, PHI, 167
+Adonai Mitchell, WR, NYJ, 235
+Alvin Kamara, RB, NO, 158
+Kayshon Boutte, WR, HOU, 196
+Jerry Jeudy, WR, CLE, 181
+Los Angeles Rams, DST, LAR, 106
+Denver Broncos, DST, DEN, 115
+Jalen McMillan, WR, TB, 201
+Brian Robinson Jr., RB, ATL, 163
+Seattle Seahawks, DST, SEA, 123
+Dontayvion Wicks, WR, PHI, 259
+Braelon Allen, RB, NYJ, 197
+Tyrone Tracy Jr., RB, NYG, 193
+Emmett Johnson, RB, KC, 185
+Jauan Jennings, WR, MIN, 202
+Philadelphia Eagles, DST, PHI, 139
+Tre' Harris, WR, LAC, 239
+Omar Cooper Jr., WR, NYJ, 225
+T.J. Hockenson, TE, MIN, 168
+Ryan Flournoy, WR, DAL, 231
+Pat Bryant, WR, DEN, 245
+Ray Davis, RB, BUF, 227
+Jalen Nailor, WR, LV, 203
+Keenan Allen, WR, IND, 177
+Malik Washington, WR, MIA, 213
+Brandon Aubrey, K, DAL, 96
+Jacoby Brissett, QB, ARI, 222
+Pittsburgh Steelers, DST, PIT, 151
+Minnesota Vikings, DST, MIN, 159
+New England Patriots, DST, NE, 153
+Jacksonville Jaguars, DST, JAC, 164
+Cameron Dicker, K, LAC, 135
+Ka'imi Fairbairn, K, HOU, 133
+Los Angeles Chargers, DST, LAC, 169
+Baltimore Ravens, DST, BAL, 155
+Cam Little, K, JAC, 150
+AJ Barner, TE, SEA, 209
+Jason Myers, K, SEA, 136
+Kimani Vidal, RB, LAC, 241
+Terrance Ferguson, TE, LAR, 198
+Jaylin Noel, WR, HOU, 279
+Isiah Pacheco, RB, DET, 174
+Aaron Rodgers, QB, PIT, 237
+Travis Hunter, WR, JAC, 258
+Calvin Ridley, WR, TEN, 194
+Ja'Kobi Lane, WR, BAL, 173
+Eddy Pineiro, K, SF, 179
+Kansas City Chiefs, DST, KC, 191
+Sean Tucker, RB, TB, 248
+Kenyon Sadiq, TE, NYJ, 175
+Tyler Loop, K, BAL, 183
+Geno Smith, QB, NYJ, 392
+Gunnar Helm, TE, TEN, 283
+Chris Bell, WR, MIA, 243
+Malachi Fields, WR, NYG, 229
+Kaelon Black, RB, SF, 195
+Green Bay Packers, DST, GB, 189
+Jake Bates, K, DET, 160
+Nicholas Singleton, RB, TEN, 238
+Oronde Gadsden II, TE, LAC, 257
+Malik Davis, RB, DAL, 268
+Cooper Kupp, WR, SEA, 210
+Isaac TeSlaa, WR, DET, 269
+Zachariah Branch, WR, ATL, 242
+Cairo Santos, K, CHI, 192
+Pat Freiermuth, TE, PIT, 246
+Evan McPherson, K, CIN, 186
+Rashod Bateman, WR, BAL, 287
+Caleb Douglas, WR, MIA, 208
+Andy Borregales, K, NE, 215
+Kaytron Allen, RB, WAS, 244
+Harrison Mevis, K, LAR, 162
+Darnell Mooney, WR, NYG, 305
+Buffalo Bills, DST, BUF, 190
+Najee Harris, RB, NYG, 234
+Detroit Lions, DST, DET, 180
+Justice Hill, RB, BAL, 224
+Chase McLaughlin, K, TB, 219
+Cade Otton, TE, TB, 220
+Germie Bernard, WR, PIT, 286
+James Conner, RB, ARI, 273
+Troy Franklin, WR, DEN, 295
+Jaylen Wright, RB, MIA, 254
+Greg Dulcich, TE, MIA, 217
+Cleveland Browns, DST, CLE, 199
+George Holani, RB, SEA, 263
+Tank Dell, WR, HOU, 205
+Antonio Williams, WR, WAS, 272
+Devaughn Vele, WR, NO, 252
+Ted Hurst III, WR, TB, 249
+Emanuel Wilson, RB, SEA, 317
+Kaleb Johnson, RB, GB, 233
+Evan Engram, TE, DEN, 370</textarea>
   </div>
 
   <div class="card">
@@ -521,11 +524,14 @@ Evan Engram, TE, DEN</textarea>
   function parsePlayers(text){
     return text.split("\n").map(l=>l.trim()).filter(Boolean).map((line,i)=>{
       const parts = line.split(",").map(s=>s.trim());
+      const adpNum = parseFloat(parts[3]);
       return {
         id: "p"+i+"_"+parts[0].replace(/\s+/g,"_"),
         name: parts[0] || ("Player "+(i+1)),
         pos: (parts[1] || "").toUpperCase() || "N/A",
         team: parts[2] || "",
+        ecrRank: i+1, // list order = your rank source's order (e.g. FantasyPros ECR)
+        adp: Number.isFinite(adpNum) ? adpNum : null, // optional 4th field: real draft-market ADP
         drafted: false,
         draftedBy: null,
         price: null,
@@ -721,6 +727,17 @@ Evan Engram, TE, DEN</textarea>
     }
   }
 
+  // Compares consensus rank order (list position) against real draft-market ADP,
+  // when the pasted pool includes it as an optional 4th CSV field.
+  function adpDeltaBadge(p){
+    if (p.adp == null) return "";
+    const delta = p.adp - p.ecrRank; // positive = market drafts him later than consensus rank (can wait)
+    const title = "Consensus rank #"+p.ecrRank+" vs ADP #"+p.adp;
+    if (delta >= 5) return "<span class='value-tag value-good' title='"+title+"'>ADP "+p.adp+" · value</span>";
+    if (delta <= -5) return "<span class='value-tag value-hot' title='"+title+"'>ADP "+p.adp+" · going early</span>";
+    return "<span class='value-tag' title='"+title+"'>ADP "+p.adp+"</span>";
+  }
+
   function escapeHtml(s){
     return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   }
@@ -738,7 +755,7 @@ Evan Engram, TE, DEN</textarea>
     available.forEach(p=>{
       const row = document.createElement("div");
       row.className = "player-row";
-      row.innerHTML = "<div class='player-info'><span class='pos-tag pos-"+ (p.pos==="DST"?"DEF":p.pos) +"'>"+escapeHtml(p.pos)+"</span><b>"+escapeHtml(p.name)+"</b> <span style='color:var(--muted);font-size:.75rem'>"+escapeHtml(p.team||"")+"</span></div>";
+      row.innerHTML = "<div class='player-info'><span class='pos-tag pos-"+ (p.pos==="DST"?"DEF":p.pos) +"'>"+escapeHtml(p.pos)+"</span><b>"+escapeHtml(p.name)+"</b> <span style='color:var(--muted);font-size:.75rem'>"+escapeHtml(p.team||"")+"</span>"+adpDeltaBadge(p)+"</div>";
       const btn = document.createElement("button");
       btn.className = "draft-btn";
       btn.textContent = "Draft";
@@ -898,7 +915,7 @@ Evan Engram, TE, DEN</textarea>
     const p = rec.player;
     const posClass = p.pos==="DST" ? "DEF" : p.pos;
     card.innerHTML =
-      "<div class='rec-player'><span class='pos-tag pos-"+posClass+"'>"+escapeHtml(p.pos)+"</span><b>"+escapeHtml(p.name)+"</b> <span class='muted'>"+escapeHtml(p.team||"")+"</span></div>" +
+      "<div class='rec-player'><span class='pos-tag pos-"+posClass+"'>"+escapeHtml(p.pos)+"</span><b>"+escapeHtml(p.name)+"</b> <span class='muted'>"+escapeHtml(p.team||"")+"</span>"+adpDeltaBadge(p)+"</div>" +
       "<div class='rec-reason'>"+escapeHtml(rec.reason)+"</div>";
     const btn = document.createElement("button");
     btn.className = "draft-btn";
@@ -912,7 +929,7 @@ Evan Engram, TE, DEN</textarea>
       const row = document.createElement("div");
       row.className = "alt-row";
       const apClass = ap.pos==="DST" ? "DEF" : ap.pos;
-      row.innerHTML = "<span class='pos-tag pos-"+apClass+"'>"+escapeHtml(ap.pos)+"</span><span style='flex:1'>"+escapeHtml(ap.name)+"</span>";
+      row.innerHTML = "<span class='pos-tag pos-"+apClass+"'>"+escapeHtml(ap.pos)+"</span><span style='flex:1'>"+escapeHtml(ap.name)+"</span>"+adpDeltaBadge(ap);
       const b = document.createElement("button");
       b.className = "btn-secondary btn-small";
       b.textContent = "Draft";

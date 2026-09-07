@@ -196,6 +196,33 @@ async function run() {
   assert(rec.player.name === "WR2", "once all starters are filled, rec falls back to true best-player-available (WR2)");
   assert(/best player available/i.test(rec.reason), "fallback reason explains it's BPA for bench/upside, not a need fill");
 
+  console.log("\n== Test 11: Optional 4th field (ADP) parses and drives the value badge ==");
+  const dom4 = new JSDOM(html, { runScripts: "dangerously", resources: "usable", url: "http://localhost/" });
+  await new Promise(r => setTimeout(r, 50));
+  const doc4 = dom4.window.document;
+  doc4.getElementById("numTeams").value = 2;
+  doc4.getElementById("numRounds").value = 2;
+  doc4.getElementById("teamNames").value = "Alpha, Bravo";
+  doc4.getElementById("playerInput").value = [
+    "Value Guy,RB,AAA,9",   // rank 1, ADP 9 -> delta +8, drafted later than his rank -> "value"
+    "Hot Guy,WR,BBB,1",     // rank 2, ADP 1 -> delta -1... need bigger gap, see next line
+    "No ADP Guy,QB,CCC",    // rank 3, no 4th field -> adp stays null, no badge
+    "Reach Guy,TE,DDD,25"   // rank 4, but only 4 players in pool so ADP 25 is fine, delta +21 -> value too
+  ].join("\n");
+  doc4.getElementById("startDraftBtn").click();
+  await new Promise(r => setTimeout(r, 20));
+  const st4 = dom4.window.__sotgTest.getState();
+  const valueGuy = st4.players.find(p => p.name === "Value Guy");
+  const noAdpGuy = st4.players.find(p => p.name === "No ADP Guy");
+  assert(valueGuy.ecrRank === 1 && valueGuy.adp === 9, "4th CSV field parses into player.adp, ecrRank tracks list position");
+  assert(noAdpGuy.adp === null, "missing 4th field leaves adp null instead of crashing (backward compatible)");
+
+  const rows4 = [...doc4.querySelectorAll("#player-list .player-row")];
+  const valueRow = rows4.find(r => r.querySelector(".player-info b").textContent === "Value Guy");
+  assert(valueRow.querySelector(".value-tag.value-good"), "queue row shows a green 'value' tag when ADP is well later than consensus rank");
+  const noAdpRow = rows4.find(r => r.querySelector(".player-info b").textContent === "No ADP Guy");
+  assert(!noAdpRow.querySelector(".value-tag"), "queue row shows no value tag at all when the pasted line had no ADP");
+
   console.log("\n=========================");
   if (failures === 0) {
     console.log("ALL TESTS PASSED");
