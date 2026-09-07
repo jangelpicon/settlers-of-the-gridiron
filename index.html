@@ -421,6 +421,9 @@ Evan Engram, TE, DEN, 370, 11, 10</textarea>
       <div><label for="rosterDST">DST</label><input type="number" id="rosterDST" min="0" max="2" value="1"></div>
       <div><label for="rosterK">K</label><input type="number" id="rosterK" min="0" max="2" value="1"></div>
     </div>
+
+    <label for="needRound">Draft for need starting round # (before this round, always take the best player regardless of position — correct for shallow leagues where bench needs are easy to fill on waivers later)</label>
+    <input type="number" id="needRound" min="1" max="30" value="5">
   </div>
 
   <div id="setup-actions">
@@ -616,9 +619,11 @@ Evan Engram, TE, DEN, 370, 11, 10</textarea>
     const roster = getRosterConfig();
     const myTeamRaw = parseInt(document.getElementById("myTeamIndex").value,10);
     const myTeamIndex = (Number.isFinite(myTeamRaw) && myTeamRaw>=0 && myTeamRaw<numTeams) ? myTeamRaw : 0;
+    const needRoundRaw = parseInt(document.getElementById("needRound").value,10);
+    const needRound = Number.isFinite(needRoundRaw) && needRoundRaw>=1 ? needRoundRaw : 5;
 
     return {
-      config: { numTeams, numRounds, pickSeconds, draftType, budget, teamNames: names, roster },
+      config: { numTeams, numRounds, pickSeconds, draftType, budget, teamNames: names, roster, needRound },
       players,
       picks: [], // {overall, round, teamIndex, playerId, price}
       currentOverall: 1,
@@ -860,50 +865,64 @@ Evan Engram, TE, DEN, 370, 11, 10</textarea>
 
   // Recommendation = the best-ranked player among everyone who would fill one
   // of your still-open starting slots (need AND value together). If every
-  // starting slot is full, fall back to true best-player-available.
+  // starting slot is full, fall back to true best-player-available. Need is
+  // ignored entirely before config.needRound — early picks should always be
+  // the best talent on the board, not a reach to fill a slot you can cover
+  // on waivers later (especially true in shallow leagues).
   function computeRecommendation(){
     const avail = bestAvailable();
     if (!avail.length) return null;
     const bestOverall = avail[0];
     const myIdx = getMyTeamIndex();
-    const { starterSlots } = computeRosterAssignment(myIdx);
-    const openTypes = {};
-    starterSlots.forEach(s=>{ if (!s.filled) openTypes[s.type] = (openTypes[s.type]||0) + 1; });
-    const byPos = bestByPosition();
-
-    let candidates = [];
-    Object.keys(openTypes).forEach(type=>{
-      if (type === "FLEX"){
-        FLEX_ELIGIBLE.forEach(pos=>{
-          if (byPos[pos]) candidates.push({ player: byPos[pos], reason: "Fills your open FLEX slot ("+pos+")" });
-        });
-      } else if (byPos[type]){
-        candidates.push({ player: byPos[type], reason: "Fills your open "+type+" slot" });
-      }
-    });
-    const seen = new Set();
-    candidates = candidates.filter(c=>{
-      if (seen.has(c.player.id)) return false;
-      seen.add(c.player.id);
-      return true;
-    });
-    candidates.sort((a,b)=> avail.indexOf(a.player) - avail.indexOf(b.player));
+    const needRound = (state.config && state.config.needRound) || 1;
+    const currentRound = roundForOverall(state.currentOverall);
 
     let result;
-    if (!candidates.length){
+    if (currentRound < needRound){
       result = {
         player: bestOverall,
-        reason: "All starting slots filled — best player available for bench/upside",
+        reason: "Round "+currentRound+" of "+needRound+" — take the best player on the board, needs can wait",
         alternates: avail.slice(1,4)
       };
     } else {
-      const top = candidates[0];
-      const isAlsoBPA = top.player.id === bestOverall.id;
-      result = {
-        player: top.player,
-        reason: isAlsoBPA ? top.reason + " — and it's the best player on the board" : top.reason,
-        alternates: candidates.slice(1,4)
-      };
+      const { starterSlots } = computeRosterAssignment(myIdx);
+      const openTypes = {};
+      starterSlots.forEach(s=>{ if (!s.filled) openTypes[s.type] = (openTypes[s.type]||0) + 1; });
+      const byPos = bestByPosition();
+
+      let candidates = [];
+      Object.keys(openTypes).forEach(type=>{
+        if (type === "FLEX"){
+          FLEX_ELIGIBLE.forEach(pos=>{
+            if (byPos[pos]) candidates.push({ player: byPos[pos], reason: "Fills your open FLEX slot ("+pos+")" });
+          });
+        } else if (byPos[type]){
+          candidates.push({ player: byPos[type], reason: "Fills your open "+type+" slot" });
+        }
+      });
+      const seen = new Set();
+      candidates = candidates.filter(c=>{
+        if (seen.has(c.player.id)) return false;
+        seen.add(c.player.id);
+        return true;
+      });
+      candidates.sort((a,b)=> avail.indexOf(a.player) - avail.indexOf(b.player));
+
+      if (!candidates.length){
+        result = {
+          player: bestOverall,
+          reason: "All starting slots filled — best player available for bench/upside",
+          alternates: avail.slice(1,4)
+        };
+      } else {
+        const top = candidates[0];
+        const isAlsoBPA = top.player.id === bestOverall.id;
+        result = {
+          player: top.player,
+          reason: isAlsoBPA ? top.reason + " — and it's the best player on the board" : top.reason,
+          alternates: candidates.slice(1,4)
+        };
+      }
     }
     if (isLastInPositionTier(result.player, avail)){
       result.reason += " ⚠ Last Tier "+result.player.tier+" "+result.player.pos+" left — next "+result.player.pos+" available is a tier drop.";

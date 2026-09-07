@@ -156,6 +156,7 @@ async function run() {
   doc3.getElementById("rosterFLEX").value = 0;
   doc3.getElementById("rosterDST").value = 0;
   doc3.getElementById("rosterK").value = 0;
+  doc3.getElementById("needRound").value = 1; // isolate need-logic from the round gate tested separately below
   doc3.getElementById("playerInput").value = [
     "RB1,RB,AAA","WR1,WR,BBB","QB1,QB,CCC","RB2,RB,DDD",
     "WR2,WR,EEE","QB2,QB,FFF","TE1,TE,GGG","RB3,RB,HHH"
@@ -284,6 +285,57 @@ async function run() {
   assert(waiverText.includes("Waiver Guy"), "waiver board includes the still-undrafted player");
   assert(!waiverText.includes("Drafted Guy"), "waiver board excludes the already-drafted player");
   assert(waiverText.includes("ConsensusRank,Tier,Position,Player,NFLTeam,ADP,Bye"), "waiver board has the expected header row");
+
+  console.log("\n== Test 14: Need is ignored before needRound (shallow-league draft-for-value guardrail) ==");
+  const dom7 = new JSDOM(html, { runScripts: "dangerously", resources: "usable", url: "http://localhost/" });
+  await new Promise(r => setTimeout(r, 50));
+  const doc7 = dom7.window.document;
+  function draftByName7(name) {
+    const row = [...doc7.querySelectorAll("#player-list .player-row")]
+      .find(r => r.querySelector(".player-info b").textContent === name);
+    if (!row) throw new Error("player row not found for " + name);
+    row.querySelector("button").click();
+  }
+  doc7.getElementById("numTeams").value = 2; // 2 is the minimum the app allows (min="2")
+  doc7.getElementById("numRounds").value = 4;
+  doc7.getElementById("teamNames").value = "Alpha, Bravo";
+  doc7.getElementById("rosterQB").value = 1;
+  doc7.getElementById("rosterRB").value = 0;
+  doc7.getElementById("rosterWR").value = 0;
+  doc7.getElementById("rosterTE").value = 0;
+  doc7.getElementById("rosterFLEX").value = 0;
+  doc7.getElementById("rosterDST").value = 0;
+  doc7.getElementById("rosterK").value = 0;
+  doc7.getElementById("needRound").value = 3;
+  // 5 WRs all outrank the QB, so any round-3 QB recommendation is a real need
+  // override, not a coincidence of rank order.
+  doc7.getElementById("playerInput").value = [
+    "Filler1,WR,AAA", "Filler2,WR,BBB", "Filler3,WR,CCC", "Filler4,WR,DDD",
+    "Filler5,WR,EEE", "TargetQB,QB,FFF", "Filler6,WR,GGG"
+  ].join("\n");
+  doc7.getElementById("startDraftBtn").click();
+  await new Promise(r => setTimeout(r, 20));
+
+  // Snake order for 2 teams over picks 1-4: Alpha, Bravo, Bravo, Alpha.
+  // roundForOverall = ceil(overall/2), so overall 1-2 = round 1, 3-4 = round 2, 5-6 = round 3.
+  let rec7 = dom7.window.__sotgTest.computeRecommendation();
+  assert(rec7.player.name === "Filler1", "round 1 (before needRound 3): rec is pure best-player-available, ignoring the open QB slot");
+  assert(/Round 1 of 3/.test(rec7.reason), "reason states which round the need-gate opens at");
+
+  draftByName7("Filler1"); // overall1, Alpha
+  await new Promise(r => setTimeout(r, 10));
+  draftByName7("Filler2"); // overall2, Bravo
+  await new Promise(r => setTimeout(r, 10));
+  rec7 = dom7.window.__sotgTest.computeRecommendation();
+  assert(rec7.player.name === "Filler3", "round 2 (still before needRound 3): still pure BPA, still ignoring the QB need");
+
+  draftByName7("Filler3"); // overall3, Bravo
+  await new Promise(r => setTimeout(r, 10));
+  draftByName7("Filler4"); // overall4, Alpha
+  await new Promise(r => setTimeout(r, 10));
+  rec7 = dom7.window.__sotgTest.computeRecommendation();
+  assert(rec7.player.name === "TargetQB", "round 3 (needRound reached): now recommends the QB to fill Alpha's open slot, even though Filler5 outranks it");
+  assert(/QB slot/.test(rec7.reason), "round 3 reason explains it's filling the QB need, not just best player available");
 
   console.log("\n=========================");
   if (failures === 0) {
