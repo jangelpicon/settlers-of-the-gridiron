@@ -35,23 +35,19 @@ const assert = (c, m) => { console.log((c ? "  ok - " : "  FAIL - ") + m); if (!
   assert(trades.length > 0, "at least one win-win 1-for-1 trade found (" + trades.length + ")");
   assert(trades.every(t => t.myGain > 0 && t.theirGain >= -12), "every suggested trade improves my lineup and has a realistic pitch");
   const isSorted = (arr, key) => arr.every((x, i) => i === 0 || key(arr[i-1]) >= key(x));
-  T.setTradeSort("upside");   assert(isSorted(T.findTrades(), t => t.myGain), "'Upside for me' sorts by my gain, descending");
-  T.setTradeSort("accept");   assert(isSorted(T.findTrades(), t => t.theirGain), "'Likely to be accepted' sorts by their side, descending");
-  T.setTradeSort("balanced"); assert(isSorted(T.findTrades(), t => t.myGain + Math.min(t.theirGain, 10)), "'Balanced' sorts by combined score");
-  assert(d.getElementById("tradeSort") && d.getElementById("tradeSort").value === "balanced", "sort selector rendered, default Balanced");
+  assert(isSorted(trades, t => t.ev), "single list sorted by expected value (my gain × acceptance odds)");
+  assert(trades.every(t => Math.abs(t.ev - Math.round(t.myGain * t.odds.p * 10) / 10) < 1e-9), "expected value = my gain × odds");
+  assert(!d.getElementById("tradeSort"), "no sort selector — one list only");
   const oddsTags = [...d.querySelectorAll("#tab-trades .suggest .tag")].map(x => x.textContent);
   assert(oddsTags.length > 0 && oddsTags.every(x => ["easy yes","likely","coin flip","long shot"].includes(x)), "every trade card carries an acceptance-odds label");
   assert(trades.slice(0, 8).some(t => t.get.pos === "RB"), "top suggestions include getting a running back");
   console.log("== Byes / League ==");
   assert([...d.querySelectorAll("#tab-byes .row")].length >= 5, "bye map has rows");
   assert([...d.querySelectorAll("#tab-league .row")].length === 9, "power ranking lists all 9 teams");
-  for (const mode of ["upside","accept","balanced"]) {
-    console.log("\n--- TOP TRADES: " + mode + " ---");
-    T.setTradeSort(mode);
-    const seen = new Set();
-    T.findTrades().filter(t => { const k = t.team + "|" + t.get.n; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 6).forEach(t =>
-      console.log(`${t.team}: give ${t.give.name} (${t.give.pos} ROS#${t.give.ros}) for ${t.get.name} (${t.get.pos} ROS#${t.get.ros}) | me +${t.myGain} them ${t.theirGain >= 0 ? "+" : ""}${t.theirGain} [${t.odds.label}]`));
-  }
+  console.log("\n--- OPTIMAL TRADES ---");
+  { const seen = new Set();
+    trades.filter(t => { const k = t.team + "|" + t.get.n; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 8).forEach((t, i) =>
+      console.log(`${i+1}. ${t.team}: give ${t.give.name} (${t.give.pos} ROS#${t.give.ros}) for ${t.get.name} (${t.get.pos} ROS#${t.get.ros}) | me +${t.myGain} them ${t.theirGain >= 0 ? "+" : ""}${t.theirGain} [${t.odds.label}] EV ${t.ev}`)); }
   console.log("\n--- WAIVER SUGGESTIONS ---");
   console.log(d.getElementById("tab-waivers").textContent.replace(/\s+/g, " ").slice(0, 900));
   console.log("\n--- LINEUP ---");
