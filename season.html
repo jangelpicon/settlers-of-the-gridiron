@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>I got sheep FF — In-Season</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%91%3C/text%3E%3C/svg%3E">
+<style>
+  :root{--wheat:#d9a441;--brick:#b5493a;--sheep:#5a9e5a;--bg:#101418;--panel:#1a2028;--panel2:#20272f;--text:#e8e6df;--muted:#9aa4ad;}
+  *{box-sizing:border-box;} body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  header{padding:12px 20px;background:linear-gradient(90deg,#2b1d0e,#1a2028 55%,#12301a);border-bottom:2px solid var(--wheat);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;}
+  header h1{margin:0;font-size:1.3rem;} header h1 span{display:block;font-size:.75rem;color:var(--sheep);letter-spacing:1px;text-transform:uppercase;font-weight:500;}
+  header .sub{color:var(--muted);font-size:.78rem;text-align:right;} header a{color:var(--wheat);}
+  nav{display:flex;gap:6px;padding:10px 16px;flex-wrap:wrap;}
+  nav button{background:var(--panel2);color:var(--muted);border:1px solid #38424d;border-radius:14px;padding:6px 14px;font-weight:600;cursor:pointer;font-family:inherit;}
+  nav button.active{background:var(--wheat);color:#1a1206;border-color:var(--wheat);}
+  main{padding:0 16px 30px;max-width:1100px;margin:0 auto;}
+  .panel{background:var(--panel);border:1px solid #2a323b;border-radius:10px;padding:14px;margin-bottom:14px;}
+  .panel h2{margin:0 0 8px;font-size:1rem;color:var(--wheat);} .panel h3{margin:12px 0 6px;font-size:.85rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+  .row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid #232b33;font-size:.86rem;flex-wrap:wrap;}
+  .row .slot{color:var(--muted);font-weight:700;min-width:44px;} .row b{flex:1;min-width:140px;}
+  .pos-tag{display:inline-block;font-size:.66rem;padding:1px 6px;border-radius:4px;font-weight:700;}
+  .pos-QB{background:#b5493a33;color:#e08272;} .pos-RB{background:#5a9e5a33;color:#8fd28f;} .pos-WR{background:#5b6b7833;color:#a9bdd0;} .pos-TE{background:#d9a44133;color:#ecc07a;} .pos-K{background:#7a5b9e33;color:#c2a3ec;} .pos-DST{background:#4a4a4a55;color:#c9c9c9;}
+  .tag{font-size:.68rem;padding:0 6px;border-radius:4px;border:1px solid #38424d;color:var(--muted);white-space:nowrap;}
+  .good{color:var(--sheep);border-color:var(--sheep);} .bad{color:#e08272;border-color:var(--brick);} .warn{color:#ffd977;border-color:#5a4a12;}
+  .inj{font-size:.62rem;font-weight:800;padding:0 5px;border-radius:4px;} .inj-hard{background:var(--brick);color:#fff;} .inj-soft{background:#5a4a12;color:#ffd977;}
+  .start{background:#16301a;} .sit{opacity:.75;} .muted{color:var(--muted);font-size:.8rem;}
+  .grade{font-weight:800;min-width:22px;text-align:center;}
+  .hidden{display:none;}
+  .suggest{background:var(--panel2);border-radius:8px;padding:10px;margin:8px 0;font-size:.86rem;line-height:1.45;}
+  .suggest b.hl{color:var(--wheat);}
+  @media (max-width:700px){ .row b{min-width:100px;} }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>🐑 I got sheep FF</span>In-Season — <span id="teamTitle" style="display:inline;color:var(--text);text-transform:none;letter-spacing:0;font-size:1.3rem;font-weight:700;">…</span></h1>
+  <div class="sub"><a href="index.html">Draft board</a> · Week <b id="wk">–</b> · Data: <b id="stamp">loading…</b><br>Rosters as of <b id="rosterStamp">–</b> (update after every trade/waiver move)</div>
+</header>
+<nav>
+  <button data-tab="lineup" class="active">Lineup</button>
+  <button data-tab="waivers">Waivers</button>
+  <button data-tab="trades">Trades</button>
+  <button data-tab="byes">Byes</button>
+  <button data-tab="league">League</button>
+</nav>
+<main>
+  <div id="tab-lineup"></div>
+  <div id="tab-waivers" class="hidden"></div>
+  <div id="tab-trades" class="hidden"></div>
+  <div id="tab-byes" class="hidden"></div>
+  <div id="tab-league" class="hidden"></div>
+</main>
+<script>
+(function(){
+  "use strict";
+  const LINEUP = { QB:1, RB:2, WR:2, TE:1, FLEX:1, DST:1, K:1 };
+  const FLEX = ["RB","WR","TE"];
+  const ROS_MAX = 420; // value = ROS_MAX - rank
+  let S = null, R = null; // season data, rosters
+
+  function norm(n){ return String(n||"").normalize("NFKD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g,"").replace(/\bd\/st\b/g,"").replace(/[^a-z]/g,""); }
+  function esc(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+  const idx = {};
+  function buildIndex(){
+    idx.ros = {}; S.ros.forEach(p=>{ idx.ros[p.n] = p; });
+    idx.week = {}; Object.keys(S.weekly).forEach(k=>{ S.weekly[k].forEach(p=>{ idx.week[k+"|"+p.n] = p; }); });
+  }
+  function weeklyKey(pos){ return pos==="QB"?"QB":pos==="DST"?"DST":pos==="K"?"K":"FLEX"; }
+  // Enrich a roster entry {name,pos,team} with ROS rank, weekly rank/opp/grade, injury, bye.
+  function info(p){
+    const n = norm(p.name);
+    const ros = idx.ros[n] || null;
+    const wk = idx.week[weeklyKey(p.pos)+"|"+n] || null;
+    const inj = S.injuries[n] || null;
+    const bye = ros ? ros.bye : null;
+    const onBye = bye != null && S.week != null && bye === S.week;
+    return { ...p, n, ros: ros?ros.rank:null, tier: ros?ros.tier:null, bye, onBye,
+      wkRank: wk?wk.rank:null, opp: wk?wk.opp:null, grade: wk?wk.grade:null, inj };
+  }
+  function rosVal(p){ return p.ros!=null ? ROS_MAX - p.ros : 0; }
+  function undraftable(p){ return p.inj && ["IR","O","SUSP"].includes(p.inj.code); }
+
+  // Optimal lineup by a scoring fn (weekly rank for this week, ROS rank for trade math).
+  function optimalLineup(players, key){
+    const usable = players.filter(p=>!p.onBye && !undraftable(p) && p[key]!=null);
+    const sortBy = (arr)=>arr.slice().sort((a,b)=>a[key]-b[key]);
+    const by = {}; ["QB","RB","WR","TE","DST","K"].forEach(pos=>{ by[pos] = sortBy(usable.filter(p=>p.pos===pos)); });
+    const slots = [];
+    const used = new Set();
+    ["QB","RB","WR","TE","DST","K"].forEach(pos=>{
+      for (let i=0;i<LINEUP[pos];i++){ const p = by[pos][i]||null; slots.push({slot:pos+(LINEUP[pos]>1?(i+1):""), p}); if (p) used.add(p.n); }
+    });
+    const flexPool = sortBy(usable.filter(p=>FLEX.includes(p.pos) && !used.has(p.n)));
+    for (let i=0;i<LINEUP.FLEX;i++){ const p = flexPool[i]||null; slots.push({slot:"FLEX", p}); if (p) used.add(p.n); }
+    const bench = players.filter(p=>!used.has(p.n));
+    return { slots, bench, used };
+  }
+  function strength(players){ // ROS-based starter strength
+    const { slots } = optimalLineup(players, "ros");
+    return slots.reduce((s,x)=> s + (x.p ? rosVal(x.p) : 0), 0);
+  }
+
+  function myTeam(){ return R.teams[R.me].map(info); }
+  function teamOf(name){ return R.teams[name].map(info); }
+  function allRostered(){ const s = new Set(); Object.values(R.teams).forEach(t=>t.forEach(p=>s.add(norm(p.name)))); return s; }
+
+  function injBadge(p){ if (!p.inj) return ""; const hard = ["IR","O","SUSP"].includes(p.inj.code); return " <span class='inj "+(hard?"inj-hard":"inj-soft")+"' title='"+esc(p.inj.note||"")+"'>"+esc(p.inj.code==="O"?"OUT":p.inj.code)+(p.inj.note?" · "+esc(p.inj.note):"")+"</span>"; }
+  function posTag(pos){ return "<span class='pos-tag pos-"+pos+"'>"+pos+"</span>"; }
+  function gradeTag(g){ if (!g) return ""; const cls = /^A/.test(g)?"good":/^B/.test(g)?"":/^[DF]/.test(g)?"bad":"warn"; return "<span class='tag grade "+cls+"' title='FantasyPros start/sit grade'>"+esc(g)+"</span>"; }
+  function playerLine(p, extra){
+    return posTag(p.pos)+"<b>"+esc(p.name)+" <span class='muted'>"+esc(p.team||"")+"</span></b>"+
+      (p.wkRank!=null ? "<span class='tag' title='This week rank at position group'>wk #"+p.wkRank+"</span>" : "<span class='tag bad'>no weekly rank</span>")+
+      (p.opp ? "<span class='tag'>"+esc(p.opp)+"</span>" : "")+ gradeTag(p.grade)+
+      (p.ros!=null ? "<span class='tag' title='Rest-of-season rank'>ROS #"+p.ros+"</span>" : "")+
+      (p.onBye ? "<span class='tag bad'>BYE</span>" : (p.bye!=null ? "<span class='tag'>bye "+p.bye+"</span>" : ""))+
+      injBadge(p)+(extra||"");
+  }
+
+  // ---------- Lineup tab ----------
+  function renderLineup(){
+    const me = myTeam();
+    const { slots, bench } = optimalLineup(me, "wkRank");
+    let h = "<div class='panel'><h2>Week "+S.week+" — start these</h2><div class='muted' style='margin-bottom:6px'>Best lineup by this week's consensus ranks. Bye-week and OUT/IR players are automatically benched.</div>";
+    slots.forEach(s=>{ h += "<div class='row start'><span class='slot'>"+s.slot+"</span>"+(s.p ? playerLine(s.p) : "<span class='bad'>— nobody available — grab a streamer on the Waivers tab</span>")+"</div>"; });
+    h += "<h3>Bench</h3>";
+    bench.forEach(p=>{ h += "<div class='row sit'><span class='slot'>BN</span>"+playerLine(p)+"</div>"; });
+    // close calls
+    const flexStart = slots.filter(s=>s.p && FLEX.includes(s.p.pos)).map(s=>s.p);
+    const flexBench = bench.filter(p=>FLEX.includes(p.pos) && p.wkRank!=null && !p.onBye && !undraftable(p)).sort((a,b)=>a.wkRank-b.wkRank);
+    const worstStarter = flexStart.slice().sort((a,b)=>b.wkRank-a.wkRank)[0];
+    if (worstStarter && flexBench[0] && flexBench[0].wkRank - worstStarter.wkRank <= 8){
+      h += "<div class='suggest'>⚖️ <b class='hl'>Close call:</b> "+esc(flexBench[0].name)+" (wk #"+flexBench[0].wkRank+") is within a few spots of "+esc(worstStarter.name)+" (wk #"+worstStarter.wkRank+"). Check Sunday-morning news before locking.</div>";
+    }
+    h += "</div>";
+    document.getElementById("tab-lineup").innerHTML = h;
+  }
+
+  // ---------- Waivers tab ----------
+  function freeAgents(){
+    const taken = allRostered();
+    return S.ros.filter(p=>!taken.has(p.n)).map(p=>info({name:p.name,pos:p.pos,team:p.team}));
+  }
+  function renderWaivers(){
+    const me = myTeam();
+    const { bench } = optimalLineup(me, "ros");
+    const fa = freeAgents().filter(p=>!undraftable(p));
+    let h = "<div class='panel'><h2>Waiver moves that beat your bench</h2><div class='muted' style='margin-bottom:6px'>A free agent is suggested only when his rest-of-season rank is better than a bench player at the same position (or FLEX-eligible). K/DST are streamed by this week's rank instead.</div>";
+    const sugg = [];
+    bench.filter(p=>!["K","DST"].includes(p.pos)).forEach(b=>{
+      const cands = fa.filter(f=>f.ros!=null && (f.pos===b.pos) && (b.ros==null || f.ros < b.ros)).sort((a,c)=>a.ros-c.ros);
+      if (cands[0]) sugg.push({ drop:b, add:cands[0], gain:(b.ros||ROS_MAX)-cands[0].ros });
+    });
+    sugg.sort((a,b)=>b.gain-a.gain);
+    if (!sugg.length) h += "<div class='muted'>Nothing on the wire outranks your bench right now. Good sign.</div>";
+    sugg.slice(0,6).forEach(s=>{ h += "<div class='suggest'>➕ <b class='hl'>Add "+esc(s.add.name)+"</b> ("+s.add.pos+", ROS #"+s.add.ros+(s.add.inj?" — "+esc(s.add.inj.code):"")+") &nbsp;➖ drop "+esc(s.drop.name)+" (ROS "+(s.drop.ros!=null?"#"+s.drop.ros:"unranked")+(s.drop.inj?", "+esc(s.drop.inj.code):"")+")</div>"; });
+    h += "<h3>Streamers this week (best available by Week "+S.week+" rank)</h3>";
+    ["QB","DST","K"].forEach(pos=>{
+      const mine = me.filter(p=>p.pos===pos && !p.onBye && !undraftable(p)).sort((a,b)=>(a.wkRank||999)-(b.wkRank||999))[0];
+      const best = fa.filter(p=>p.pos===pos && p.wkRank!=null && !p.onBye).sort((a,b)=>a.wkRank-b.wkRank).slice(0,3);
+      h += "<div class='row'><span class='slot'>"+pos+"</span><span class='muted'>yours: "+(mine? esc(mine.name)+" (wk #"+(mine.wkRank!=null?mine.wkRank:"–")+")" : "none")+"</span></div>";
+      best.forEach(p=>{ const better = mine && mine.wkRank!=null && p.wkRank < mine.wkRank; h += "<div class='row'><span class='slot'></span>"+playerLine(p, better?"<span class='tag good'>better than yours this week</span>":"")+"</div>"; });
+    });
+    h += "<h3>Top free agents (rest of season)</h3>";
+    fa.filter(p=>!["K","DST"].includes(p.pos)).sort((a,b)=>a.ros-b.ros).slice(0,15).forEach(p=>{ h += "<div class='row'>"+playerLine(p)+"</div>"; });
+    h += "</div>";
+    document.getElementById("tab-waivers").innerHTML = h;
+  }
+
+  // ---------- Trades tab ----------
+  // 1-for-1 swaps: I give a player, get one back. Keep only trades where my ROS starting
+  // strength goes up AND theirs doesn't go down by more than a sliver (so it's acceptable).
+  function findTrades(){
+    const me = myTeam();
+    const myBase = strength(me);
+    const out = [];
+    Object.keys(R.teams).filter(t=>t!==R.me).forEach(t=>{
+      const them = teamOf(t);
+      const theirBase = strength(them);
+      me.forEach(give=>{
+        if (undraftable(give) || ["K","DST"].includes(give.pos)) return;
+        them.forEach(get=>{
+          if (undraftable(get) || ["K","DST"].includes(get.pos) || get.ros==null || give.ros==null) return;
+          const me2 = me.filter(p=>p.n!==give.n).concat([get]);
+          const them2 = them.filter(p=>p.n!==get.n).concat([give]);
+          const myGain = strength(me2) - myBase;
+          const theirGain = strength(them2) - theirBase;
+          if (myGain <= 0) return;
+          if (theirGain < -6) return; // they'd be worse off — won't accept
+          const fairness = give.ros - get.ros; // + = I'm getting the higher-ranked player
+          out.push({ team:t, give, get, myGain, theirGain, fairness });
+        });
+      });
+    });
+    out.sort((a,b)=> (b.myGain + Math.min(b.theirGain,10)) - (a.myGain + Math.min(a.theirGain,10)));
+    return out;
+  }
+  function renderTrades(){
+    const trades = findTrades();
+    let h = "<div class='panel'><h2>Trades worth proposing</h2><div class='muted' style='margin-bottom:6px'>1-for-1 swaps where your best starting lineup gets better (by rest-of-season rank) and theirs doesn't get worse — so they have a reason to say yes. 'Their gain' near zero or positive = easy sell.</div>";
+    if (!trades.length) h += "<div class='muted'>No win-win 1-for-1 found right now.</div>";
+    const seen = new Set();
+    trades.filter(t=>{ const k=t.team+"|"+t.get.n; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0,8).forEach(t=>{
+      h += "<div class='suggest'>🤝 <b class='hl'>"+esc(t.team)+":</b> give <b>"+esc(t.give.name)+"</b> ("+t.give.pos+" ROS #"+t.give.ros+") for <b>"+esc(t.get.name)+"</b> ("+t.get.pos+" ROS #"+t.get.ros+(t.get.inj?", "+esc(t.get.inj.code):"")+")"+
+        "<br><span class='muted'>your lineup +"+t.myGain+" · their lineup "+(t.theirGain>=0?"+":"")+t.theirGain+" · "+(t.fairness>=0?"you get the higher-ranked player by "+t.fairness:"you give up "+(-t.fairness)+" spots of rank")+"</span></div>";
+    });
+    h += "</div>";
+    document.getElementById("tab-trades").innerHTML = h;
+  }
+
+  // ---------- Byes tab ----------
+  function renderByes(){
+    const me = myTeam();
+    let h = "<div class='panel'><h2>Bye-week map</h2><div class='muted' style='margin-bottom:6px'>Who's out each week, and whether your bench covers it.</div>";
+    const weeks = {}; me.forEach(p=>{ if (p.bye!=null){ (weeks[p.bye] = weeks[p.bye]||[]).push(p); } });
+    Object.keys(weeks).map(Number).sort((a,b)=>a-b).forEach(w=>{
+      const out = weeks[w];
+      const remaining = me.filter(p=>p.bye!==w && !undraftable(p));
+      const fake = remaining.map(p=>({...p, onBye:false}));
+      const { slots } = optimalLineup(fake, "ros");
+      const holes = slots.filter(s=>!s.p).map(s=>s.slot);
+      h += "<div class='row"+(holes.length?" ":" ")+"'><span class='slot'>Wk "+w+"</span><b>"+out.map(p=>esc(p.name)+" ("+p.pos+")").join(", ")+"</b>"+(holes.length?"<span class='tag bad'>hole: "+holes.join(", ")+" — stream</span>":"<span class='tag good'>bench covers it</span>")+"</div>";
+    });
+    h += "</div>";
+    document.getElementById("tab-byes").innerHTML = h;
+  }
+
+  // ---------- League tab ----------
+  function renderLeague(){
+    const rows = Object.keys(R.teams).map(t=>({ team:t, s: strength(teamOf(t)) })).sort((a,b)=>b.s-a.s);
+    let h = "<div class='panel'><h2>Power ranking (rest-of-season starters)</h2>";
+    rows.forEach((r,i)=>{ h += "<div class='row"+(r.team===R.me?" start":"")+"'><span class='slot'>"+(i+1)+"</span><b>"+esc(r.team)+(r.team===R.me?" 🐑":"")+"</b><span class='tag'>"+r.s+"</span></div>"; });
+    h += "</div>";
+    document.getElementById("tab-league").innerHTML = h;
+  }
+
+  function renderAll(){
+    document.getElementById("teamTitle").textContent = R.me;
+    document.getElementById("wk").textContent = S.week!=null ? S.week : "–";
+    document.getElementById("stamp").textContent = S.generated;
+    document.getElementById("rosterStamp").textContent = R.updated || "–";
+    renderLineup(); renderWaivers(); renderTrades(); renderByes(); renderLeague();
+  }
+  document.querySelectorAll("nav button").forEach(b=>b.addEventListener("click", ()=>{
+    document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active")); b.classList.add("active");
+    ["lineup","waivers","trades","byes","league"].forEach(t=>document.getElementById("tab-"+t).classList.toggle("hidden", t!==b.dataset.tab));
+  }));
+
+  async function load(){
+    try {
+      const [s, r] = await Promise.all([fetch("data/season.json?v="+Date.now()).then(x=>x.json()), fetch("data/rosters.json?v="+Date.now()).then(x=>x.json())]);
+      S = s; R = r; buildIndex(); renderAll();
+    } catch(e){
+      document.getElementById("stamp").textContent = "failed to load data ("+e.message+")";
+    }
+  }
+  window.__seasonTest = { inject:(s,r)=>{ S=s; R=r; buildIndex(); renderAll(); }, info, optimalLineup, strength, findTrades, freeAgents, norm };
+  if (!window.__seasonNoAutoLoad) load();
+})();
+</script>
+</body>
+</html>

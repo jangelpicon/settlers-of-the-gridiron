@@ -139,6 +139,39 @@ K/DST until the last 2 rounds) and prints, for each of your picks, who is
 realistically still there and how often. Output for tonight is saved in
 `docs/draft-plan-slot4-2026-09-07.txt`.
 
+## In-season tool (`season.html`)
+
+Live at the same site: `…/settlers-of-the-gridiron/season.html`. Reads
+`data/season.json` (rankings + injuries) and `data/rosters.json` (all 9 rosters).
+
+- **Lineup**: best starters for the current week by FantasyPros weekly consensus
+  (opponent + start/sit grade where available); bye-week and OUT/IR players are
+  benched automatically; flags close calls.
+- **Waivers**: free agents (rest-of-season rank) that beat a bench player at the
+  same position, plus QB/DST/K streamers ranked for this week.
+- **Trades**: 1-for-1 swaps where my rest-of-season starting lineup improves and
+  the other team's doesn't get worse (so they have a reason to accept).
+- **Byes**: which week each starter is out and whether the bench covers it.
+- **League**: power ranking of every team's rest-of-season starters.
+
+Refresh data weekly (Tuesday after waivers, and again Sunday morning):
+
+```bash
+python3 tools/refresh_season.py     # FantasyPros ROS + weekly ranks, ESPN injuries -> data/season.json
+node test_season.js                 # sanity-checks the page against the real data
+git add -A && git commit -m "season data refresh" && git push
+```
+
+Keep rosters current after every move (the page is only as right as this file):
+
+```bash
+python3 tools/update_roster.py add  "I'll be white!!" "Player Name" RB NFL
+python3 tools/update_roster.py drop "I'll be white!!" "Player Name"
+python3 tools/update_roster.py trade "I'll be white!!" "Garrett Wilson" "BlitzAndGiggles" "Ashton Jeanty"
+```
+
+`tools/league_analysis.py <draft csv> --me "<team>"` grades the draft itself.
+
 ## Testing
 
 `test.js` is a headless smoke test (via jsdom) that drives the real
