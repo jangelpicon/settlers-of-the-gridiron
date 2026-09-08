@@ -1,0 +1,6 @@
+{
+ "note": "Players to ignore as free agents: not in ESPN's player pool for this league (Jose confirmed), retired, or otherwise unclaimable. Name match is normalized (case/punctuation-insensitive).",
+ "players": [
+  {"name": "Tetairoa McMillan", "reason": "Not in ESPN's player pool — Jose confirmed 2026-09-07; FantasyPros still ranks him"}
+ ]
+}

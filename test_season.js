@@ -3,13 +3,14 @@ const fs = require("fs"), path = require("path"), { JSDOM } = require("jsdom");
 const html = fs.readFileSync(path.join(__dirname, "season.html"), "utf8");
 const season = JSON.parse(fs.readFileSync(path.join(__dirname, "data/season.json"), "utf8"));
 const rosters = JSON.parse(fs.readFileSync(path.join(__dirname, "data/rosters.json"), "utf8"));
+const exclusions = JSON.parse(fs.readFileSync(path.join(__dirname, "data/exclusions.json"), "utf8"));
 let failures = 0;
 const assert = (c, m) => { console.log((c ? "  ok - " : "  FAIL - ") + m); if (!c) failures++; };
 (async () => {
   const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://localhost/", beforeParse(w){ w.__seasonNoAutoLoad = true; } });
   await new Promise(r => setTimeout(r, 30));
   const w = dom.window, d = w.document, T = w.__seasonTest;
-  T.inject(season, rosters);
+  T.inject(season, rosters, exclusions);
   console.log("== Lineup ==");
   const starters = [...d.querySelectorAll("#tab-lineup .row.start")];
   assert(starters.length === 9, "9 starting slots rendered (QB,RB1,RB2,WR1,WR2,TE,DST,K,FLEX)");
@@ -29,6 +30,8 @@ const assert = (c, m) => { console.log((c ? "  ok - " : "  FAIL - ") + m); if (!
   assert(fa.length > 200, "free-agent pool is large (" + fa.length + ") in a 9-team league");
   const allRostered = new Set(Object.values(rosters.teams).flat().map(p => T.norm(p.name)));
   assert(fa.every(p => !allRostered.has(p.n)), "no rostered player appears as a free agent");
+  assert(!fa.some(p => p.n === T.norm("Tetairoa McMillan")), "excluded player (not in ESPN's pool) never appears as a free agent or waiver suggestion");
+  assert(!/McMillan/.test(d.getElementById("tab-waivers").textContent), "waiver tab does not mention the excluded player");
   assert(/Streamers this week/.test(d.getElementById("tab-waivers").textContent), "streamer section rendered");
   console.log("== Trades ==");
   const trades = T.findTrades();

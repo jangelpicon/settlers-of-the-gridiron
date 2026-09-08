@@ -57,7 +57,7 @@
   const LINEUP = { QB:1, RB:2, WR:2, TE:1, FLEX:1, DST:1, K:1 };
   const FLEX = ["RB","WR","TE"];
   const ROS_MAX = 420; // value = ROS_MAX - rank
-  let S = null, R = null; // season data, rosters
+  let S = null, R = null, X = { players: [] }; // season data, rosters, exclusions
 
   function norm(n){ return String(n||"").normalize("NFKD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g,"").replace(/\bd\/st\b/g,"").replace(/[^a-z]/g,""); }
   function esc(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
@@ -137,9 +137,10 @@
   }
 
   // ---------- Waivers tab ----------
+  function excluded(){ const s = new Set(); (X.players||[]).forEach(p=>s.add(norm(p.name))); return s; }
   function freeAgents(){
-    const taken = allRostered();
-    return S.ros.filter(p=>!taken.has(p.n)).map(p=>info({name:p.name,pos:p.pos,team:p.team}));
+    const taken = allRostered(), ex = excluded();
+    return S.ros.filter(p=>!taken.has(p.n) && !ex.has(p.n)).map(p=>info({name:p.name,pos:p.pos,team:p.team}));
   }
   function renderWaivers(){
     const me = myTeam();
@@ -260,13 +261,13 @@
 
   async function load(){
     try {
-      const [s, r] = await Promise.all([fetch("data/season.json?v="+Date.now()).then(x=>x.json()), fetch("data/rosters.json?v="+Date.now()).then(x=>x.json())]);
-      S = s; R = r; buildIndex(); renderAll();
+      const [s, r, x] = await Promise.all([fetch("data/season.json?v="+Date.now()).then(x=>x.json()), fetch("data/rosters.json?v="+Date.now()).then(x=>x.json()), fetch("data/exclusions.json?v="+Date.now()).then(x=>x.json()).catch(()=>({players:[]}))]);
+      S = s; R = r; X = x || {players:[]}; buildIndex(); renderAll();
     } catch(e){
       document.getElementById("stamp").textContent = "failed to load data ("+e.message+")";
     }
   }
-  window.__seasonTest = { inject:(s,r)=>{ S=s; R=r; buildIndex(); renderAll(); }, info, optimalLineup, strength, findTrades, freeAgents, norm };
+  window.__seasonTest = { inject:(s,r,x)=>{ S=s; R=r; X=x||{players:[]}; buildIndex(); renderAll(); }, info, optimalLineup, strength, findTrades, freeAgents, norm };
   if (!window.__seasonNoAutoLoad) load();
 })();
 </script>

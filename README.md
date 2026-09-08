@@ -162,6 +162,9 @@ node test_season.js                 # sanity-checks the page against the real da
 git add -A && git commit -m "season data refresh" && git push
 ```
 
+If ESPN doesn't have a player that FantasyPros ranks (it happens), add him to
+`data/exclusions.json` and he disappears from waiver suggestions.
+
 Keep rosters current after every move (the page is only as right as this file):
 
 ```bash
