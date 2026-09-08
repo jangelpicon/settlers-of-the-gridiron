@@ -186,26 +186,47 @@
           const myGain = strength(me2) - myBase;
           const theirGain = strength(them2) - theirBase;
           if (myGain <= 0) return;
-          if (theirGain < -6) return; // they'd be worse off — won't accept
+          if (theirGain < -12) return; // no realistic pitch
           const fairness = give.ros - get.ros; // + = I'm getting the higher-ranked player
-          out.push({ team:t, give, get, myGain, theirGain, fairness });
+          out.push({ team:t, give, get, myGain, theirGain, fairness, odds: acceptOdds(theirGain) });
         });
       });
     });
-    out.sort((a,b)=> (b.myGain + Math.min(b.theirGain,10)) - (a.myGain + Math.min(a.theirGain,10)));
-    return out;
+    return sortTrades(out, tradeSort);
+  }
+  // How the other side sees it: their own lineup change is what they'll judge on.
+  function acceptOdds(theirGain){
+    if (theirGain >= 0) return { label:"easy yes", score:3 };
+    if (theirGain >= -3) return { label:"likely", score:2 };
+    if (theirGain >= -6) return { label:"coin flip", score:1 };
+    return { label:"long shot", score:0 };
+  }
+  let tradeSort = "balanced";
+  function sortTrades(list, mode){
+    const l = list.slice();
+    if (mode === "upside")   l.sort((a,b)=> b.myGain - a.myGain || b.theirGain - a.theirGain);
+    else if (mode === "accept") l.sort((a,b)=> b.theirGain - a.theirGain || b.myGain - a.myGain);
+    else l.sort((a,b)=> (b.myGain + Math.min(b.theirGain,10)) - (a.myGain + Math.min(a.theirGain,10)) || b.myGain - a.myGain);
+    return l;
   }
   function renderTrades(){
     const trades = findTrades();
-    let h = "<div class='panel'><h2>Trades worth proposing</h2><div class='muted' style='margin-bottom:6px'>1-for-1 swaps where your best starting lineup gets better (by rest-of-season rank) and theirs doesn't get worse — so they have a reason to say yes. 'Their gain' near zero or positive = easy sell.</div>";
-    if (!trades.length) h += "<div class='muted'>No win-win 1-for-1 found right now.</div>";
+    const opt = (v,l)=>"<option value='"+v+"'"+(tradeSort===v?" selected":"")+">"+l+"</option>";
+    let h = "<div class='panel'><h2>Trades worth proposing</h2>"+
+      "<div class='row' style='border:0;padding:0 0 8px'><span class='muted'>Sort by</span><select id='tradeSort' style='background:var(--panel2);color:var(--text);border:1px solid #38424d;border-radius:6px;padding:5px 8px;font-family:inherit'>"+
+      opt("upside","Upside for me")+opt("accept","Likely to be accepted")+opt("balanced","Balanced (both)")+"</select></div>"+
+      "<div class='muted' style='margin-bottom:6px'>1-for-1 swaps, judged by rest-of-season rank. <b>Your gain</b> = how much your best starting lineup improves. <b>Their side</b> = how their lineup changes, which is what they'll say yes or no on: easy yes / likely / coin flip / long shot.</div>";
+    if (!trades.length) h += "<div class='muted'>No 1-for-1 that helps you found right now.</div>";
     const seen = new Set();
-    trades.filter(t=>{ const k=t.team+"|"+t.get.n; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0,8).forEach(t=>{
-      h += "<div class='suggest'>🤝 <b class='hl'>"+esc(t.team)+":</b> give <b>"+esc(t.give.name)+"</b> ("+t.give.pos+" ROS #"+t.give.ros+") for <b>"+esc(t.get.name)+"</b> ("+t.get.pos+" ROS #"+t.get.ros+(t.get.inj?", "+esc(t.get.inj.code):"")+")"+
-        "<br><span class='muted'>your lineup +"+t.myGain+" · their lineup "+(t.theirGain>=0?"+":"")+t.theirGain+" · "+(t.fairness>=0?"you get the higher-ranked player by "+t.fairness:"you give up "+(-t.fairness)+" spots of rank")+"</span></div>";
+    trades.filter(t=>{ const k=t.team+"|"+t.get.n; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0,10).forEach(t=>{
+      const oddsCls = t.odds.score>=2?"good":t.odds.score===1?"warn":"bad";
+      h += "<div class='suggest'>🤝 <b class='hl'>"+esc(t.team)+":</b> give <b>"+esc(t.give.name)+"</b> ("+t.give.pos+" ROS #"+t.give.ros+") for <b>"+esc(t.get.name)+"</b> ("+t.get.pos+" ROS #"+t.get.ros+(t.get.inj?", "+esc(t.get.inj.code):"")+") <span class='tag "+oddsCls+"'>"+t.odds.label+"</span>"+
+        "<br><span class='muted'>your gain +"+t.myGain+" · their side "+(t.theirGain>=0?"+":"")+t.theirGain+" · "+(t.fairness>=0?"you get the higher-ranked player by "+t.fairness:"you give up "+(-t.fairness)+" spots of rank")+"</span></div>";
     });
     h += "</div>";
     document.getElementById("tab-trades").innerHTML = h;
+    const sel = document.getElementById("tradeSort");
+    if (sel) sel.addEventListener("change", ()=>{ tradeSort = sel.value; renderTrades(); });
   }
 
   // ---------- Byes tab ----------
@@ -254,7 +275,7 @@
       document.getElementById("stamp").textContent = "failed to load data ("+e.message+")";
     }
   }
-  window.__seasonTest = { inject:(s,r)=>{ S=s; R=r; buildIndex(); renderAll(); }, info, optimalLineup, strength, findTrades, freeAgents, norm };
+  window.__seasonTest = { inject:(s,r)=>{ S=s; R=r; buildIndex(); renderAll(); }, info, optimalLineup, strength, findTrades, freeAgents, norm, setTradeSort:(m)=>{ tradeSort=m; renderTrades(); } };
   if (!window.__seasonNoAutoLoad) load();
 })();
 </script>
