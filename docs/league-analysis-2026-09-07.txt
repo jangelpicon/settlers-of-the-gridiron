@@ -31,10 +31,10 @@ LINEUP STRENGTH (starters, consensus-based) & DRAFT VALUE (sum of pick# − cons
      RBs: Derrick Henry(#34), Travis Etienne Jr.(#45), Quinshon Judkins(#60), Jadarian Price(#64)
      WRs: Amon-Ra St. Brown(#6), CeeDee Lamb(#9), Malik Nabers(#24), Emeka Egbuka(#41), Michael Pittman Jr.(#79)
      steals: Michael Pittman Jr. (pick 102, rank 79), Quinshon Judkins (pick 79, rank 60) | reaches: Derrick Henry (pick 25, rank 34), Dallas Goedert (pick 115, rank 120)
-9. The Brady Bunch          strength 1492  value -133  RB:2 WR:4 QB:2 TE:3
+9. The Brady Bunch          strength 1448  value -177  RB:2 WR:4 QB:2 TE:3
      RBs: Saquon Barkley(#22), Bhayshul Tuten(#65)
-     WRs: Jaxon Smith-Njigba(#5), Tetairoa McMillan(#36), Mike Evans(#62), Stefon Diggs(#90)
-     steals: Tetairoa McMillan (pick 121, rank 36), Caleb Williams (pick 78, rank 63) | reaches: Travis Kelce (pick 24, rank 98), Patrick Mahomes II (pick 42, rank 101)
+     WRs: Jaxon Smith-Njigba(#5), Mike Evans(#62), Brian Thomas Jr.(#80), Stefon Diggs(#90)
+     steals: Brian Thomas Jr. (pick 121, rank 80), Caleb Williams (pick 78, rank 63) | reaches: Travis Kelce (pick 24, rank 98), Patrick Mahomes II (pick 42, rank 101)
 
 INJURED PLAYERS DRAFTED:
   SACK OF WHEAT: James Conner IR Foot · back ~10/11
