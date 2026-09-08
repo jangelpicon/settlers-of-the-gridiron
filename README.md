@@ -149,8 +149,14 @@ Live at the same site: `…/settlers-of-the-gridiron/season.html`. Reads
   benched automatically; flags close calls.
 - **Waivers**: free agents (rest-of-season rank) that beat a bench player at the
   same position, plus QB/DST/K streamers ranked for this week.
-- **Trades**: 1-for-1 swaps where my rest-of-season starting lineup improves and
-  the other team's doesn't get worse (so they have a reason to accept).
+- **Trades**: one list of 1-for-1 swaps ranked by expected value (my lineup gain ×
+  odds they accept). Each offer has Proposed / Declined / Accepted buttons. A
+  decline hides that offer and raises the bar for that team (they need a deal
+  at least 3 better for them than the one they refused). An acceptance swaps
+  the rosters on the page immediately and recomputes lineup, waivers, and
+  trades. The log lives in the browser and merges with `data/trades.json`
+  (Sheldon records outcomes with `tools/trade_log.py <status> "<team>" "<give>" "<get>"`;
+  `accepted` also applies the roster swap in `data/rosters.json`).
 - **Byes**: which week each starter is out and whether the bench covers it.
 - **League**: power ranking of every team's rest-of-season starters.
 
