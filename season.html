@@ -35,6 +35,19 @@
   .tb-accepted{border-color:var(--sheep);color:#bfe8bf;} .tb-declined{border-color:var(--brick);color:#e08272;} .tb-proposed{border-color:var(--wheat);color:var(--wheat);} .tb-undo{margin:0;padding:2px 8px;font-size:.7rem;}
   .bar{height:6px;border-radius:3px;background:#2a323b;position:relative;overflow:hidden;flex:1;min-width:80px;max-width:180px;} .bar i{position:absolute;left:0;top:0;bottom:0;background:var(--sheep);}
   .live{color:var(--sheep);} .stale{color:#ffd977;}
+  /* column grids: every player list shares one column layout so the header row lines up */
+  .tbl{overflow-x:auto;} .tbl .row.grid,.tbl .hrow{display:grid;grid-template-columns:44px 40px minmax(150px,1.4fr) 44px 58px 70px 58px 66px 46px 60px 66px 44px minmax(110px,1fr);gap:6px;align-items:center;min-width:900px;}
+  .hrow{padding:4px 8px;font-size:.66rem;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #38424d;font-weight:700;}
+  .hrow span[title],.legend dt{cursor:help;border-bottom:1px dotted #4a5561;}
+  .row.grid b{min-width:0;} .row.grid .c{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;} .row.grid .num{text-align:right;font-variant-numeric:tabular-nums;}
+  .row.grid .detail{grid-column:1 / -1;padding-left:0;}
+  .tbl .g4 .row.grid,.tbl .g4 .hrow{grid-template-columns:60px minmax(200px,1.2fr) 200px minmax(160px,1fr);min-width:620px;}
+  .tbl .g3 .row.grid,.tbl .g3 .hrow{grid-template-columns:60px minmax(220px,1.5fr) minmax(160px,1fr);min-width:500px;}
+  .tbl .gl .row.grid,.tbl .gl .hrow{grid-template-columns:44px minmax(180px,1.5fr) 110px 130px;min-width:480px;}
+  .tbl .gt .row.grid,.tbl .gt .hrow{grid-template-columns:80px minmax(220px,1.5fr) 90px minmax(200px,1fr) 60px;min-width:640px;}
+  .tbl .gd .row.grid,.tbl .gd .hrow{grid-template-columns:56px minmax(180px,1fr) minmax(180px,1fr) minmax(90px,.6fr) minmax(170px,1fr);min-width:700px;}
+  .legend{font-size:.8rem;color:var(--muted);} .legend dl{display:grid;grid-template-columns:max-content 1fr;gap:3px 12px;margin:6px 0 0;} .legend dt{color:var(--text);font-weight:700;} .legend dd{margin:0;}
+  details summary{cursor:pointer;color:var(--wheat);font-weight:600;}
   @media (max-width:700px){ .row b{min-width:100px;} .detail{padding-left:0;} }
 </style>
 </head>
@@ -51,6 +64,23 @@
   <button data-tab="league">League</button>
 </nav>
 <main>
+  <details class="panel legend" id="legend"><summary>What the columns mean (tap to open)</summary>
+    <dl>
+      <dt>Proj</dt><dd>Predicted fantasy points <b>this week</b>: the average of ESPN's projection, Sleeper's projection and what a player at his expert-consensus rank usually scores, nudged by the Vegas line and by his chance of playing.</dd>
+      <dt>Floor–Ceil</dt><dd>A bad week and a good week for him (20th and 80th percentile). Wide range = boom-or-bust.</dd>
+      <dt>Wk rank</dt><dd>FantasyPros expert consensus rank for this week. QB, K and DST are ranked within their position; RB/WR/TE are ranked together (that's the flex pool). Lower is better.</dd>
+      <dt>Opp</dt><dd>This week's opponent. "vs." = home, "at" = away.</dd>
+      <dt>Grade</dt><dd>FantasyPros start/sit letter grade for this week (A = start with confidence, D/F = sit).</dd>
+      <dt>ROS rank</dt><dd>Rest-of-season rank across ALL positions (FantasyPros, refreshed Tuesdays). This is the season-long value number. Lower is better.</dd>
+      <dt>Season pts</dt><dd>ESPN's live projection of his total fantasy points for the whole season. Second season-long signal.</dd>
+      <dt>Bye</dt><dd>The week his NFL team doesn't play.</dd>
+      <dt>Status</dt><dd>Injury tag (Q = questionable, D = doubtful, OUT, IR) with his chance of playing; "locked" = his game already kicked off; BYE = off this week.</dd>
+      <dt>Odds (start/sit)</dt><dd>Chance the bench player outscores the starter he would replace. Under 35% leave it; 35–55% coin flip, check news; over 55% the tool already swapped him in.</dd>
+      <dt>Your gain / their side (trades)</dt><dd>Change in rest-of-season lineup strength for each team if the trade happens. Strength = sum over your 9 starters of (420 − ROS rank), so +10 ≈ upgrading one starter by 10 rank spots.</dd>
+      <dt>EV (trades)</dt><dd>Your gain × the chance they say yes. The one number to sort trades by.</dd>
+      <dt>Strength (league)</dt><dd>Same rest-of-season lineup strength for every team; the power ranking. "This week" = that team's projected points with its best lineup.</dd>
+    </dl>
+  </details>
   <div id="tab-lineup"></div>
   <div id="tab-waivers" class="hidden"></div>
   <div id="tab-trades" class="hidden"></div>
@@ -345,15 +375,19 @@
     if (p.actual!=null && p.gameState && p.gameState!=="pre") return "<span class='proj'>"+p.actual.toFixed(1)+" <small>"+(p.gameState==="post"?"final":"live")+"</small></span>";
     return "<span class='proj' title='predicted points (floor–ceiling)'>"+p.mu.toFixed(1)+" <small>"+p.floor.toFixed(0)+"–"+p.ceil.toFixed(0)+"</small></span>";
   }
-  function playerLine(p, extra){
-    return posTag(p.pos)+"<b>"+esc(p.name)+" <span class='muted'>"+esc(p.liveTeam||p.team||"")+"</span></b>"+ projTag(p)+
-      (p.wkRank!=null ? "<span class='tag' title='This week rank at position group'>wk #"+p.wkRank+"</span>" : "<span class='tag bad'>no weekly rank</span>")+
-      (p.opp ? "<span class='tag'>"+esc(p.opp)+"</span>" : "")+ gradeTag(p.grade)+
-      (p.ros!=null ? "<span class='tag' title='Rest-of-season rank'>ROS #"+p.ros+"</span>" : "")+
-      (P && p.seasonProj!=null ? "<span class='tag' title='ESPN full-season projection (live)'>szn "+p.seasonProj.toFixed(0)+"</span>" : "")+
-      (p.onBye ? "<span class='tag bad'>BYE</span>" : (p.bye!=null ? "<span class='tag'>bye "+p.bye+"</span>" : ""))+
-      (P && p.locked ? "<span class='tag warn'>locked</span>" : "")+
-      injBadge(p)+(extra||"");
+  // One player = one grid row. Column order must match playerHeader().
+  const PCOLS = [["Slot","Lineup slot (BN = bench, FA = free agent)"],["Pos","Position"],["Player",""],["NFL","His NFL team"],["Proj","Predicted fantasy points this week"],["Floor–Ceil","Bad week – good week (20th–80th percentile)"],["Wk rank","FantasyPros consensus rank this week (RB/WR/TE ranked together)"],["Opp","Opponent this week"],["Grade","FantasyPros start/sit grade"],["ROS rank","Rest-of-season rank, all positions, lower = better"],["Season pts","ESPN projected points for the full season"],["Bye","Bye week"],["Status","Injury / locked / bye"]];
+  function playerHeader(){ return "<div class='hrow'>"+PCOLS.map(c=>"<span"+(c[1]?" title='"+esc(c[1])+"'":"")+">"+esc(c[0])+"</span>").join("")+"</div>"; }
+  function playerLine(p, extra, slot){
+    const num = v => "<span class='c num'>"+v+"</span>";
+    const proj = (!P || p.mu==null) ? num(P ? "<span class='bad'>–</span>" : "")
+      : (p.actual!=null && p.gameState && p.gameState!=="pre") ? num("<span class='proj'>"+p.actual.toFixed(1)+"</span> <small class='muted'>"+(p.gameState==="post"?"final":"live")+"</small>")
+      : num("<span class='proj'>"+p.mu.toFixed(1)+"</span>");
+    const range = (!P || p.mu==null || (p.actual!=null && p.gameState && p.gameState!=="pre")) ? num("") : num(p.floor.toFixed(0)+"–"+p.ceil.toFixed(0));
+    const status = (p.onBye ? "<span class='tag bad'>BYE</span>" : "")+(P && p.locked ? "<span class='tag warn'>locked</span>" : "")+injBadge(p)+(extra||"");
+    return "<span class='slot'>"+esc(slot||"")+"</span>"+posTag(p.pos)+"<b class='c'>"+esc(p.name)+"</b><span class='c muted'>"+esc(p.liveTeam||p.team||"")+"</span>"+proj+range+
+      num(p.wkRank!=null ? "#"+p.wkRank : "<span class='bad' title='no weekly rank'>–</span>")+"<span class='c'>"+esc(p.opp||"")+"</span>"+"<span class='c grade'>"+(p.grade?gradeTag(p.grade):"")+"</span>"+
+      num(p.ros!=null ? "#"+p.ros : "–")+num(P && p.seasonProj!=null ? p.seasonProj.toFixed(0) : "")+num(p.bye!=null ? p.bye : "")+"<span class='c' style='white-space:normal'>"+status+"</span>";
   }
   function projDetail(p){
     if (!P || p.mu==null) return "";
@@ -386,20 +420,24 @@
     let h = "<div class='panel'><h2>Week "+S.week+" — start these</h2><div class='muted' style='margin-bottom:6px'>"+
       (P ? "Best lineup by <b>predicted points</b> (ESPN + Sleeper projections + FantasyPros consensus rank, adjusted for Vegas totals and injury status). Number = expected points; small numbers = typical floor–ceiling."
          : "Best lineup by this week's consensus ranks (live projections unavailable).")+" Bye-week and OUT/IR players are automatically benched.</div>";
-    slots.forEach(s=>{ h += "<div class='row start'><span class='slot'>"+s.slot+"</span>"+(s.p ? playerLine(s.p)+projDetail(s.p) : "<span class='bad'>— nobody available — grab a streamer on the Waivers tab</span>")+"</div>"; });
-    h += "<h3>Bench</h3>";
-    bench.forEach(p=>{ h += "<div class='row sit'><span class='slot'>BN</span>"+playerLine(p)+projDetail(p)+"</div>"; });
+    h += "<div class='tbl'>"+playerHeader();
+    slots.forEach(s=>{ h += "<div class='row grid start'>"+(s.p ? playerLine(s.p, "", s.slot)+projDetail(s.p) : "<span class='slot'>"+s.slot+"</span><span class='bad' style='grid-column:2 / -1'>— nobody available — grab a streamer on the Waivers tab</span>")+"</div>"; });
+    h += "</div><h3>Bench</h3><div class='tbl'>"+playerHeader();
+    bench.forEach(p=>{ h += "<div class='row grid sit'>"+playerLine(p, "", "BN")+projDetail(p)+"</div>"; });
+    h += "</div>";
     if (P){
       const total = slots.reduce((s,x)=>s+(x.p&&x.p.mu!=null?x.p.mu:0),0);
       h += "<div class='muted' style='margin-top:8px'>Projected total for this lineup: <b>"+total.toFixed(1)+"</b> points.</div>";
       const dec = decisions(me, slots, bench);
       h += "<h3>Start/sit calls</h3><div class='muted' style='margin-bottom:6px'>Chance a bench player outscores the starter he would replace. Under 35% = leave it alone; 35–55% = genuine coin flip, check Sunday-morning news; over 55% = the tool already swapped him in.</div>";
       if (!dec.length) h += "<div class='muted'>No bench player is close to a starter.</div>";
+      else h += "<div class='tbl'><div class='gd'><div class='hrow'><span title='Chance the bench player outscores the starter'>Odds</span><span>Bench player (proj ± swing)</span><span>Starter he'd replace (proj ± swing)</span><span></span><span>Verdict</span></div>";
       dec.forEach(d=>{
         const pct = Math.round(d.p*100); const cls = pct>=45?"warn":pct>=30?"":"good";
         const verdict = pct>=45 ? "coin flip — check news before lock" : pct>=30 ? "lean starter" : "clear: keep the starter";
-        h += "<div class='row'><span class='tag "+cls+"' style='min-width:44px;text-align:center'>"+pct+"%</span><b>"+esc(d.bench.name)+" <span class='muted'>("+d.bench.mu.toFixed(1)+" ± "+d.bench.sd.toFixed(1)+")</span> over "+esc(d.starter.name)+" <span class='muted'>("+d.starter.mu.toFixed(1)+" ± "+d.starter.sd.toFixed(1)+")</span></b><span class='bar'><i style='width:"+pct+"%'></i></span><span class='muted'>"+verdict+(d.starter.locked?" · starter already locked":"")+"</span></div>";
+        h += "<div class='row grid'><span class='tag "+cls+"' style='text-align:center'>"+pct+"%</span><b class='c'>"+esc(d.bench.name)+" <span class='muted'>("+d.bench.mu.toFixed(1)+" ± "+d.bench.sd.toFixed(1)+")</span></b><span class='c'>over "+esc(d.starter.name)+" <span class='muted'>("+d.starter.mu.toFixed(1)+" ± "+d.starter.sd.toFixed(1)+")</span></span><span class='bar'><i style='width:"+pct+"%'></i></span><span class='muted'>"+verdict+(d.starter.locked?" · starter already locked":"")+"</span></div>";
       });
+      if (dec.length) h += "</div></div>";
       const risky = slots.filter(s=>s.p && s.p.pPlay<1 && s.p.pPlay>0).map(s=>s.p);
       if (risky.length) h += "<div class='suggest'>⚠️ <b class='hl'>Injury watch:</b> "+risky.map(p=>esc(p.name)+" ("+esc(p.injLive)+(p.injNote?", "+esc(p.injNote):"")+", "+Math.round(p.pPlay*100)+"% to play, "+esc(kickText(p.game))+")").join("; ")+". Check the inactives list ~90 minutes before kickoff; if he's out, the bench alternative above is the swap.</div>";
     } else {
@@ -455,16 +493,17 @@
       const mineList = me.filter(p=>p.pos===pos && !p.onBye && !undraftable(p) && p[wkey]!=null);
       const mine = mineList.sort((a,b)=> wkey==="mu" ? b.mu-a.mu : a.wkRank-b.wkRank)[0];
       const best = fa.filter(p=>p.pos===pos && p[wkey]!=null && !p.onBye).sort((a,b)=> wkey==="mu" ? b.mu-a.mu : a.wkRank-b.wkRank).slice(0,3);
-      h += "<div class='row'><span class='slot'>"+pos+"</span><span class='muted'>yours: "+(mine? esc(mine.name)+(P?" ("+mine.mu.toFixed(1)+" proj)":" (wk #"+(mine.wkRank!=null?mine.wkRank:"–")+")") : "none this week — stream one")+"</span></div>";
+      h += "<div class='muted' style='margin:6px 0 2px'><b>"+pos+"</b> — yours: "+(mine? esc(mine.name)+(P?" ("+mine.mu.toFixed(1)+" proj)":" (wk #"+(mine.wkRank!=null?mine.wkRank:"–")+")") : "none this week — stream one")+"</div><div class='tbl'>"+playerHeader();
       best.forEach(p=>{
         const b = mine && better(p, mine);
         const tag = !mine ? "<span class='tag good'>fills the hole this week</span>" : (b ? (pos==="QB" ? "<span class='tag warn'>1-week rental only — keep "+esc(mine.name)+"</span>" : "<span class='tag good'>better than yours this week</span>") : "");
-        h += "<div class='row'><span class='slot'></span>"+playerLine(p, tag)+"</div>";
+        h += "<div class='row grid'>"+playerLine(p, tag, "FA")+"</div>";
       });
+      h += "</div>";
     });
-    h += "<h3>Top free agents (rest of season)</h3>";
-    fa.filter(p=>!["K","DST"].includes(p.pos)).sort((a,b)=>a.ros-b.ros).slice(0,15).forEach(p=>{ h += "<div class='row'>"+playerLine(p)+"</div>"; });
-    h += "</div>";
+    h += "<h3>Top free agents (rest of season)</h3><div class='tbl'>"+playerHeader();
+    fa.filter(p=>!["K","DST"].includes(p.pos)).sort((a,b)=>a.ros-b.ros).slice(0,15).forEach(p=>{ h += "<div class='row grid'>"+playerLine(p, "", "FA")+"</div>"; });
+    h += "</div></div>";
     document.getElementById("tab-waivers").innerHTML = h;
   }
 
@@ -564,7 +603,9 @@
     const hist = TL.filter(e=>e.status!=="proposed").sort((a,b)=> (b.date||"").localeCompare(a.date||""));
     h += "<div class='panel'><h2>Trade log</h2><div class='muted' style='margin-bottom:6px'>Declines teach the model: a team that said no needs a better deal next time. Accepted trades update the rosters on this page right away — also tell Sheldon so the weekly runs use the new rosters.</div>";
     if (!hist.length && !open.length) h += "<div class='muted'>No proposals logged yet. Use the buttons above as you send offers.</div>";
-    hist.forEach(e=>{ const cls = e.status==="accepted"?"good":e.status==="declined"?"bad":"warn"; const st = e.status==="accepted" ? null : tradeStats(e.team,e.give,e.get); h += "<div class='row'><span class='tag "+cls+"'>"+esc(e.status)+"</span><b>"+esc(e.team)+": "+esc(e.give)+" → "+esc(e.get)+"</b><span class='muted'>"+esc(e.date||"")+(e.local?"":" · from Sheldon's log")+(st?" · me +"+st.myGain+" / them "+(st.theirGain>=0?"+":"")+st.theirGain+" ("+st.odds.label+")":"")+"</span>"+(e.local?"<button class='tb tb-undo' data-key='"+esc(e.key)+"'>undo</button>":"")+"</div>"; });
+    if (hist.length) h += "<div class='tbl'><div class='gt'><div class='hrow'><span>Outcome</span><span>Deal (team: you give → you get)</span><span>Date</span><span title='Your gain / their side in rest-of-season lineup strength, and how likely they accept'>Your gain / their side (odds)</span><span></span></div>";
+    hist.forEach(e=>{ const cls = e.status==="accepted"?"good":e.status==="declined"?"bad":"warn"; const st = e.status==="accepted" ? null : tradeStats(e.team,e.give,e.get); h += "<div class='row grid'><span class='tag "+cls+"'>"+esc(e.status)+"</span><b class='c'>"+esc(e.team)+": "+esc(e.give)+" → "+esc(e.get)+"</b><span class='c muted'>"+esc(e.date||"")+(e.local?"":" · Sheldon")+"</span><span class='c muted'>"+(st?"+"+st.myGain+" / "+(st.theirGain>=0?"+":"")+st.theirGain+" ("+st.odds.label+")":"")+"</span><span>"+(e.local?"<button class='tb tb-undo' data-key='"+esc(e.key)+"'>undo</button>":"")+"</span></div>"; });
+    if (hist.length) h += "</div></div>";
     h += "<div style='margin-top:8px'><button class='tb' id='copyLog'>Copy log for Sheldon</button> <span class='muted' id='copyMsg'></span></div></div>";
     document.getElementById("tab-trades").innerHTML = h;
     document.querySelectorAll("#tab-trades .tbtns button").forEach(b=>b.addEventListener("click", ()=>{
@@ -591,7 +632,7 @@
   // ---------- Byes tab ----------
   function renderByes(){
     const me = myTeam();
-    let h = "<div class='panel'><h2>Bye-week map</h2><div class='muted' style='margin-bottom:6px'>Who's out each week, and whether your bench covers it.</div>";
+    let h = "<div class='panel'><h2>Bye-week map</h2><div class='muted' style='margin-bottom:6px'>Who's out each week, and whether your bench covers it.</div><div class='tbl'><div class='g3'><div class='hrow'><span>Week</span><span>Your players on bye</span><span title='Can your bench fill every starting slot that week?'>Coverage</span></div>";
     const weeks = {}; me.forEach(p=>{ if (p.bye!=null){ (weeks[p.bye] = weeks[p.bye]||[]).push(p); } });
     Object.keys(weeks).map(Number).sort((a,b)=>a-b).forEach(w=>{
       const out = weeks[w];
@@ -599,18 +640,18 @@
       const fake = remaining.map(p=>({...p, onBye:false, pPlay:1}));
       const { slots } = optimalLineup(fake, "ros");
       const holes = slots.filter(s=>!s.p).map(s=>s.slot);
-      h += "<div class='row'><span class='slot'>Wk "+w+"</span><b>"+out.map(p=>esc(p.name)+" ("+p.pos+")").join(", ")+"</b>"+(holes.length?"<span class='tag bad'>hole: "+holes.join(", ")+" — stream</span>":"<span class='tag good'>bench covers it</span>")+"</div>";
+      h += "<div class='row grid'><span class='slot'>Wk "+w+"</span><b class='c' style='white-space:normal'>"+out.map(p=>esc(p.name)+" ("+p.pos+")").join(", ")+"</b><span>"+(holes.length?"<span class='tag bad'>hole: "+holes.join(", ")+" — stream</span>":"<span class='tag good'>bench covers it</span>")+"</span></div>";
     });
-    h += "</div>";
+    h += "</div></div></div>";
     document.getElementById("tab-byes").innerHTML = h;
   }
 
   // ---------- League tab ----------
   function renderLeague(){
     const rows = Object.keys(R.teams).map(t=>{ const tm = teamOf(t); const wk = P ? optimalLineup(tm,"mu").slots.reduce((s,x)=>s+(x.p&&x.p.mu!=null?x.p.mu:0),0) : null; return { team:t, s: strength(tm), wk }; }).sort((a,b)=>b.s-a.s);
-    let h = "<div class='panel'><h2>Power ranking (rest-of-season starters)</h2>";
-    rows.forEach((r,i)=>{ h += "<div class='row"+(r.team===R.me?" start":"")+"'><span class='slot'>"+(i+1)+"</span><b>"+esc(r.team)+(r.team===R.me?" 🐑":"")+"</b>"+(r.wk!=null?"<span class='tag' title='projected points this week, best lineup'>wk "+r.wk.toFixed(1)+"</span>":"")+"<span class='tag'>"+r.s+"</span></div>"; });
-    h += "</div>";
+    let h = "<div class='panel'><h2>Power ranking (rest-of-season starters)</h2><div class='tbl'><div class='gl'><div class='hrow'><span>Rank</span><span>Team</span><span title='Projected points this week with the best lineup'>This week (proj)</span><span title='Sum over the 9 best starters of (420 − rest-of-season rank)'>Strength (ROS)</span></div>";
+    rows.forEach((r,i)=>{ h += "<div class='row grid"+(r.team===R.me?" start":"")+"'><span class='slot'>"+(i+1)+"</span><b class='c'>"+esc(r.team)+(r.team===R.me?" 🐑":"")+"</b><span class='c num'>"+(r.wk!=null?r.wk.toFixed(1):"")+"</span><span class='c num'>"+r.s+"</span></div>"; });
+    h += "</div></div></div>";
     document.getElementById("tab-league").innerHTML = h;
   }
 

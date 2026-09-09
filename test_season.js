@@ -87,9 +87,10 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const wtxt = d.getElementById("tab-waivers").textContent;
   assert(/season-long only/.test(wtxt) && /never a reason to drop/.test(wtxt), "waiver tab states the season-long rule in plain language");
   assert(/1-week rental only — keep Drake Maye/.test(wtxt) || !/Jared Goff/.test(wtxt), "a QB streamer who out-projects Maye this week is labelled a 1-week rental, not an upgrade");
-  const qbBlock = wtxt.slice(wtxt.indexOf("QByours:"), wtxt.indexOf("DSTyours:"));
+  const qbBlock = wtxt.slice(wtxt.indexOf("QB — yours:"), wtxt.indexOf("DST — yours:"));
   assert(qbBlock.length > 0 && !/better than yours this week/.test(qbBlock), "'better than yours this week' is never shown for a QB streamer while Jose has a healthy QB");
-  assert(/szn \d+/.test(wtxt), "free agents show their live season projection");
+  const faRows = [...d.querySelectorAll("#tab-waivers .row.grid")];
+  assert(faRows.length > 0 && faRows.some(r => /^\d+$/.test(r.children[10].textContent.trim())), "free agents show their live season projection in the Season pts column");
 
   console.log("== Trades ==");
   const trades = T.findTrades();
@@ -115,7 +116,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(T.teamFloor(top.team) === top.theirGain + 3, "declining teaches the model: that team's floor rises to (declined their-side + 3)");
   assert(after.filter(x => x.team === top.team).every(x => x.theirGain >= top.theirGain + 3), "remaining offers to that team are all sweeter for them than the declined one");
   assert(/declined/.test(d.getElementById("tab-trades").textContent) && /Trade log/.test(d.getElementById("tab-trades").textContent), "decline shows up in the trade log");
-  assert(new RegExp("me \\+" + top.myGain + " / them").test(d.getElementById("tab-trades").textContent), "trade log row shows the deal's numbers");
+  assert(new RegExp("\\+" + top.myGain + " / [+-]?" + Math.abs(top.theirGain) + " \\(" + top.odds.label + "\\)").test(d.getElementById("tab-trades").textContent), "trade log row shows the deal's numbers (your gain / their side (odds))");
   d.querySelector("#tab-trades .tb-undo").click();                                 // undo it
   assert(T.findTrades().length === before, "undo restores the list");
   // propose the #1 and #2 offers -> open proposals with stats
@@ -165,10 +166,23 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const faPool = T.freeAgents();
   assert(faPool.length === 1 && faPool[0].n === "jaredgoff", "with an ESPN league pool synced, only players in that pool count as free agents");
   T.inject(season, rosters, exclusions, tradeLog, projections);
+  console.log("== Column headers ==");
+  const headers = tab => [...d.querySelectorAll("#tab-" + tab + " .hrow")];
+  assert(headers("lineup").length >= 3 && headers("waivers").length >= 4 && headers("trades").length >= 0 && headers("byes").length === 1 && headers("league").length === 1, "every tab's list has a header row (lineup " + headers("lineup").length + ", waivers " + headers("waivers").length + ", byes 1, league 1)");
+  const h0 = headers("lineup")[0].textContent;
+  assert(/Slot/.test(h0) && /Proj/.test(h0) && /Floor–Ceil/.test(h0) && /Wk rank/.test(h0) && /ROS rank/.test(h0) && /Season pts/.test(h0) && /Status/.test(h0), "player header names every column: " + h0.replace(/\s+/g, " ").trim());
+  assert(headers("lineup")[0].children.length === d.querySelector("#tab-lineup .row.grid.start").querySelectorAll(":scope > *:not(.detail)").length, "player rows have exactly as many cells as the header");
+  assert(/Odds/.test(d.getElementById("tab-lineup").textContent) && headers("lineup").some(x => /Verdict/.test(x.textContent)), "start/sit table has its own header (Odds … Verdict)");
+  assert(/Rank/.test(headers("league")[0].textContent) && /Strength/.test(headers("league")[0].textContent), "league header names rank / this week / strength");
+  assert(/Coverage/.test(headers("byes")[0].textContent), "byes header names coverage");
+  assert(d.getElementById("legend") && /What the columns mean/.test(d.getElementById("legend").textContent) && d.querySelectorAll("#legend dt").length >= 12, "plain-language legend explains every column");
+  d.querySelector("#tab-trades .tbtns button[data-status='declined']").click();
+  assert(headers("trades").some(x => /Outcome/.test(x.textContent) && /Your gain/.test(x.textContent)), "trade log has a header once it has entries");
+  while (d.querySelector("#tab-trades .tb-undo")) d.querySelector("#tab-trades .tb-undo").click();
   console.log("== Byes / League ==");
   assert([...d.querySelectorAll("#tab-byes .row")].length >= 5, "bye map has rows");
   assert([...d.querySelectorAll("#tab-league .row")].length === 9, "power ranking lists all 9 teams");
-  assert([...d.querySelectorAll("#tab-league .row")].every(r => /wk \d+\.\d/.test(r.textContent)), "power ranking shows each team's projected points this week");
+  assert([...d.querySelectorAll("#tab-league .row")].every(r => /^\d+\.\d$/.test(r.children[2].textContent.trim())), "power ranking shows each team's projected points this week in its own column");
 
   // ======================= Printouts for the weekly Discord report =======================
   console.log("\n--- OPTIMAL TRADES ---");
