@@ -218,3 +218,30 @@ node test.js
 ```
 
 All 124 assertions currently pass.
+
+## Predicted performance (start/sit) — added 2026-09-09
+
+`season.html` fetches three public feeds **live in the browser on every load** (all send
+`Access-Control-Allow-Origin: *`), so the lineup call always reflects the latest projections,
+injury designations and betting lines:
+
+- ESPN fantasy projections + injury status — `lm-api-reads.fantasy.espn.com … view=kona_player_info` (week N)
+- Sleeper projections + injury status — `api.sleeper.com/projections/nfl/<season>/<week>`
+- Vegas lines, kickoffs, game state, weather — `site.api.espn.com … /scoreboard?week=N`
+
+`tools/refresh_projections.py` snapshots the same feeds into `data/projections.json` (fallback when a feed is
+down; input for `test_season.js` and the weekly Discord report). The header says which one is in use
+(`LIVE …` in green vs `snapshot … (Nh old)` in yellow) and has a refresh button.
+
+Model (per player, per week): predicted = mean(ESPN, Sleeper, rank-implied points from the FantasyPros
+consensus rank) × Vegas factor × chance-to-play. Vegas factor = 1 + 0.5·(team implied total / league
+average − 1), capped ±15% (defenses use the opponent's total, inverted). Chance-to-play from the worst live
+designation: Q 75% (and ×0.95 if he plays), D 25%, OUT/IR/SUSP 0, bye 0. Spread = position-typical
+week-to-week coefficient of variation (QB .35, RB .50, WR .55, TE .60, K .45, DST .70); floor/ceiling =
+20th/80th percentile if he plays, floor 0 when chance-to-play < 90%. Start/sit calls = P(bench player
+outscores the starter he would replace) from the normal difference. Lineup is the optimal set by predicted
+points; falls back to consensus ranks if no projections are available.
+
+Trades tab: open proposals show give/get ROS ranks + this-week projections, your gain, their side,
+acceptance odds, EV, days waiting, a summary line, and an **All declined** button. Declines logged in the repo
+(`tools/trade_log.py`) now raise that team's floor too (their-side number is recomputed from current rosters).

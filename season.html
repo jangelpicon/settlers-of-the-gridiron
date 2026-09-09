@@ -26,18 +26,22 @@
   .inj{font-size:.62rem;font-weight:800;padding:0 5px;border-radius:4px;} .inj-hard{background:var(--brick);color:#fff;} .inj-soft{background:#5a4a12;color:#ffd977;}
   .start{background:#16301a;} .sit{opacity:.75;} .muted{color:var(--muted);font-size:.8rem;}
   .grade{font-weight:800;min-width:22px;text-align:center;}
+  .proj{font-weight:800;color:var(--wheat);min-width:44px;text-align:right;} .proj small{color:var(--muted);font-weight:500;}
+  .detail{flex-basis:100%;color:var(--muted);font-size:.72rem;padding-left:52px;}
   .hidden{display:none;}
   .suggest{background:var(--panel2);border-radius:8px;padding:10px;margin:8px 0;font-size:.86rem;line-height:1.45;}
   .suggest b.hl{color:var(--wheat);}
   .tb{background:var(--panel);color:var(--text);border:1px solid #38424d;border-radius:6px;padding:4px 10px;font-size:.78rem;font-weight:600;cursor:pointer;font-family:inherit;margin:6px 6px 0 0;}
   .tb-accepted{border-color:var(--sheep);color:#bfe8bf;} .tb-declined{border-color:var(--brick);color:#e08272;} .tb-proposed{border-color:var(--wheat);color:var(--wheat);} .tb-undo{margin:0;padding:2px 8px;font-size:.7rem;}
-  @media (max-width:700px){ .row b{min-width:100px;} }
+  .bar{height:6px;border-radius:3px;background:#2a323b;position:relative;overflow:hidden;flex:1;min-width:80px;max-width:180px;} .bar i{position:absolute;left:0;top:0;bottom:0;background:var(--sheep);}
+  .live{color:var(--sheep);} .stale{color:#ffd977;}
+  @media (max-width:700px){ .row b{min-width:100px;} .detail{padding-left:0;} }
 </style>
 </head>
 <body>
 <header>
   <h1><span>🐑 I got sheep FF</span>In-Season — <span id="teamTitle" style="display:inline;color:var(--text);text-transform:none;letter-spacing:0;font-size:1.3rem;font-weight:700;">…</span></h1>
-  <div class="sub"><a href="index.html">Draft board</a> · Week <b id="wk">–</b> · Data: <b id="stamp">loading…</b><br>Rosters as of <b id="rosterStamp">–</b> (update after every trade/waiver move)</div>
+  <div class="sub"><a href="index.html">Draft board</a> · Week <b id="wk">–</b> · Rankings: <b id="stamp">loading…</b><br>Projections: <b id="pstamp">loading…</b> <button class="tb" id="refreshLive" style="margin:0;padding:1px 8px;font-size:.7rem">refresh</button><br>Rosters as of <b id="rosterStamp">–</b> (update after every trade/waiver move)</div>
 </header>
 <nav>
   <button data-tab="lineup" class="active">Lineup</button>
@@ -59,7 +63,152 @@
   const LINEUP = { QB:1, RB:2, WR:2, TE:1, FLEX:1, DST:1, K:1 };
   const FLEX = ["RB","WR","TE"];
   const ROS_MAX = 420; // value = ROS_MAX - rank
-  let S = null, R = null, X = { players: [] }; // season data, rosters, exclusions
+  let S = null, R = null, X = { players: [] }, P = null; // season data, rosters, exclusions, projections
+  let PSTAMP = { text:"–", cls:"" };
+
+  // ================= Live projections (ESPN + Sleeper + Vegas) =================
+  // Same three public feeds as tools/refresh_projections.py, fetched in the browser on every load so the
+  // start/sit call always reflects the latest projections, injury designations and betting lines.
+  const SEASON = 2026;
+  const ESPN_TEAM = {1:"ATL",2:"BUF",3:"CHI",4:"CIN",5:"CLE",6:"DAL",7:"DEN",8:"DET",9:"GB",10:"TEN",11:"IND",12:"KC",13:"LV",14:"LAR",15:"MIA",16:"MIN",17:"NE",18:"NO",19:"NYG",20:"NYJ",21:"PHI",22:"ARI",23:"PIT",24:"LAC",25:"SF",26:"SEA",27:"TB",28:"WAS",29:"CAR",30:"JAX",33:"BAL",34:"HOU"};
+  const TEAM_NAME = {ATL:"Atlanta Falcons",BUF:"Buffalo Bills",CHI:"Chicago Bears",CIN:"Cincinnati Bengals",CLE:"Cleveland Browns",DAL:"Dallas Cowboys",DEN:"Denver Broncos",DET:"Detroit Lions",GB:"Green Bay Packers",TEN:"Tennessee Titans",IND:"Indianapolis Colts",KC:"Kansas City Chiefs",LV:"Las Vegas Raiders",LAR:"Los Angeles Rams",MIA:"Miami Dolphins",MIN:"Minnesota Vikings",NE:"New England Patriots",NO:"New Orleans Saints",NYG:"New York Giants",NYJ:"New York Jets",PHI:"Philadelphia Eagles",ARI:"Arizona Cardinals",PIT:"Pittsburgh Steelers",LAC:"Los Angeles Chargers",SF:"San Francisco 49ers",SEA:"Seattle Seahawks",TB:"Tampa Bay Buccaneers",WAS:"Washington Commanders",CAR:"Carolina Panthers",JAX:"Jacksonville Jaguars",BAL:"Baltimore Ravens",HOU:"Houston Texans"};
+  const ESPN_POS = {1:"QB",2:"RB",3:"WR",4:"TE",5:"K",16:"DST"};
+  const ALIAS = {WSH:"WAS",JAC:"JAX",LA:"LAR",OAK:"LV",SD:"LAC",STL:"LAR"};
+  const ESPN_INJ = {ACTIVE:"ACT",DAY_TO_DAY:"DTD",QUESTIONABLE:"Q",DOUBTFUL:"D",OUT:"O",INJURY_RESERVE:"IR",SUSPENSION:"SUSP"};
+  const SLEEPER_INJ = {Questionable:"Q",Doubtful:"D",Out:"O",IR:"IR",PUP:"IR",Sus:"SUSP",NA:"O",COV:"O"};
+  function teamCode(c){ c = String(c||"").toUpperCase(); return ALIAS[c] || c; }
+  function normalize(espnRaw, sleeperRaw, sbRaw, week){
+    const games = {};
+    (sbRaw.events||[]).forEach(e=>{
+      const c = e.competitions[0]; const odds = (c.odds||[{}])[0] || {};
+      const ou = odds.overUnder!=null ? Number(odds.overUnder) : null; const det = odds.details || "";
+      const m = /^([A-Z]{2,4})\s*([-+]?\d+(?:\.\d+)?)/.exec(det); const fav = m ? teamCode(m[1]) : null, line = m ? Math.abs(Number(m[2])) : null;
+      const st = (c.status||{}).type || {}; const w = c.weather || {};
+      c.competitors.forEach(t=>{
+        const code = teamCode(t.team.abbreviation), other = c.competitors.find(x=>x!==t);
+        const spread = line==null ? null : (code===fav ? -line : line);
+        games[code] = { opp: teamCode(other.team.abbreviation), home: t.homeAway==="home", kick: e.date, ou, spread,
+          implied: (ou==null||spread==null) ? null : Math.round((ou - spread)/2*100)/100, state: st.state, status: st.shortDetail || st.name,
+          score: /^\d+$/.test(String(t.score)) ? Number(t.score) : null, weather: (w.displayValue||"") + (w.temperature!=null ? " "+w.temperature+"°" : "") };
+      });
+    });
+    const players = {};
+    (espnRaw.players||[]).forEach(x=>{
+      const p = x.player; const pos = ESPN_POS[p.defaultPositionId]; if (!pos) return;
+      const tm = ESPN_TEAM[p.proTeamId]; const name = pos==="DST" ? (TEAM_NAME[tm] || p.fullName) : p.fullName;
+      let proj = null, actual = null;
+      (p.stats||[]).forEach(s=>{ if (s.scoringPeriodId===week && s.statSplitTypeId===1){ if (s.statSourceId===1) proj = s.appliedTotal; else if (s.statSourceId===0) actual = s.appliedTotal; } });
+      players[norm(name)] = { name, pos, team: tm, espn: proj==null?null:Math.round(proj*100)/100, actual: actual==null?null:Math.round(actual*100)/100,
+        injE: ESPN_INJ[p.injuryStatus||"ACTIVE"] || "ACT", own: Math.round(((p.ownership||{}).percentOwned||0)*10)/10 };
+    });
+    (sleeperRaw||[]).forEach(r=>{
+      const p = r.player||{}, st = r.stats||{}; if (st.pts_ppr==null) return;
+      const pos = p.position==="DEF" ? "DST" : p.position; const name = ((p.first_name||"")+" "+(p.last_name||"")).trim();
+      const n = norm(name); const q = players[n] || (players[n] = { name, pos, team: teamCode(r.team) });
+      q.sleeper = Math.round(st.pts_ppr*100)/100; q.injS = SLEEPER_INJ[p.injury_status||""] || "ACT"; if (p.injury_body_part) q.injNote = p.injury_body_part; if (!q.team) q.team = teamCode(r.team);
+    });
+    return { generated: new Date().toLocaleString("en-US",{timeZone:"America/Chicago",month:"numeric",day:"numeric",hour:"numeric",minute:"2-digit"}) + " CT", generatedMs: Date.now(), week, season: SEASON,
+      sources: { espn: Object.keys(players).filter(k=>players[k].espn!=null).length, sleeper: Object.keys(players).filter(k=>players[k].sleeper!=null).length, games: Object.keys(games).length }, games, players };
+  }
+  function fetchJson(url, headers){
+    const ctl = new AbortController(); const t = setTimeout(()=>ctl.abort(), 12000);
+    return fetch(url, { headers: headers||{}, signal: ctl.signal }).then(r=>{ if (!r.ok) throw new Error(url.split("/")[2]+" "+r.status); return r.json(); }).finally(()=>clearTimeout(t));
+  }
+  async function fetchLive(week){
+    const sb0 = await fetchJson("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard");
+    const wk = week || ((sb0.week||{}).number) || 1;
+    const flt = JSON.stringify({players:{filterSlotIds:{value:[0,2,4,6,17,16]},limit:900,sortPercOwned:{sortPriority:1,sortAsc:false},filterStatsForTopScoringPeriodIds:{value:2,additionalValue:["00"+SEASON,"10"+SEASON,"11"+SEASON+wk,"02"+SEASON]}}});
+    const [sb, es, sl] = await Promise.all([
+      (sb0.week && sb0.week.number===wk) ? sb0 : fetchJson("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?seasontype=2&week="+wk),
+      fetchJson("https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/"+SEASON+"/segments/0/leaguedefaults/3?scoringPeriodId="+wk+"&view=kona_player_info", {"x-fantasy-filter": flt, "Accept":"application/json"}),
+      fetchJson("https://api.sleeper.com/projections/nfl/"+SEASON+"/"+wk+"?season_type=regular&position[]=QB&position[]=RB&position[]=WR&position[]=TE&position[]=K&position[]=DEF&order_by=pts_ppr")
+    ]);
+    const out = normalize(es, sl, sb, wk);
+    if (out.sources.espn < 200 || out.sources.sleeper < 200 || out.sources.games < 20) throw new Error("feed too small (espn "+out.sources.espn+", sleeper "+out.sources.sleeper+", games "+out.sources.games+")");
+    return out;
+  }
+
+  // ================= Prediction model =================
+  // Predicted points = average of (ESPN projection, Sleeper projection, points implied by the FantasyPros
+  // consensus rank) × Vegas adjustment (half-weight on the team's implied total vs league average) × chance
+  // he plays (from the live injury designation). Spread = position-typical week-to-week variance.
+  const CV = { QB:.35, RB:.50, WR:.55, TE:.60, K:.45, DST:.70 };
+  const PPLAY = { ACT:1, DTD:.9, Q:.75, D:.25, O:0, IR:0, SUSP:0 };
+  const INJ_RANK = { ACT:0, DTD:1, Q:2, D:3, O:4, SUSP:4, IR:5 };
+  const Z80 = 0.8416;
+  function phi(z){ const t = 1/(1+0.2316419*Math.abs(z)); const d = 0.3989423*Math.exp(-z*z/2); const p = d*t*(0.3193815+t*(-0.3565638+t*(1.781478+t*(-1.821256+t*1.330274)))); return z>=0 ? 1-p : p; }
+  const M = { curves:{}, avgImplied:null };
+  function buildModel(){
+    M.curves = {}; M.avgImplied = null;
+    if (!P) return;
+    const groups = { QB:[], FLEX:[], DST:[], K:[] };
+    Object.values(P.players).forEach(q=>{
+      const vals = [q.espn, q.sleeper].filter(v=>typeof v==="number");
+      if (!vals.length) return;
+      const g = weeklyKey(q.pos); if (!groups[g]) return;
+      groups[g].push(vals.reduce((a,b)=>a+b,0)/vals.length);
+    });
+    Object.keys(groups).forEach(g=>{ M.curves[g] = groups[g].sort((a,b)=>b-a); });
+    const imp = Object.values(P.games).map(g=>g.implied).filter(v=>typeof v==="number");
+    M.avgImplied = imp.length ? imp.reduce((a,b)=>a+b,0)/imp.length : null;
+  }
+  function rankPts(group, r){ // points a player ranked r-th usually projects to (3-rank smoothing)
+    const c = M.curves[group]; if (!c || !c.length || r==null) return null;
+    if (r > c.length) return Math.round(c[c.length-1]*0.8*100)/100;
+    const lo = Math.max(0, r-2), hi = Math.min(c.length-1, r);
+    let s = 0, n = 0; for (let i=lo;i<=hi;i++){ s += c[i]; n++; }
+    return Math.round(s/n*100)/100;
+  }
+  function predict(p){ // p = info() output; adds projection fields in place
+    p.mu = null; p.sd = null; p.floor = null; p.ceil = null; p.pPlay = null; p.srcs = [];
+    if (!P) return p;
+    const q = P.players[p.n] || null;
+    const tm = (q && q.team) || p.team; const g = P.games[teamCode(tm)] || null;
+    p.liveTeam = tm; p.game = g;
+    p.espn = q && typeof q.espn==="number" ? q.espn : null;
+    p.sleeper = q && typeof q.sleeper==="number" ? q.sleeper : null;
+    p.rankPts = rankPts(weeklyKey(p.pos), p.wkRank);
+    p.actual = q && typeof q.actual==="number" ? q.actual : null;
+    // injury: worst of the live designations; fall back to the (older) ESPN injury report only if he's in neither live feed
+    const codes = []; if (q && q.injE) codes.push(q.injE); if (q && q.injS) codes.push(q.injS);
+    if (!codes.length && p.inj) codes.push(p.inj.code);
+    p.injLive = codes.length ? codes.sort((a,b)=>(INJ_RANK[b]||0)-(INJ_RANK[a]||0))[0] : "ACT";
+    p.injNote = (q && q.injNote) || (p.inj && p.inj.note) || "";
+    p.pPlay = PPLAY[p.injLive]!=null ? PPLAY[p.injLive] : 1;
+    if (p.onBye) p.pPlay = 0;
+    const srcs = [];
+    if (p.espn!=null) srcs.push({k:"ESPN", v:p.espn}); if (p.sleeper!=null) srcs.push({k:"Sleeper", v:p.sleeper}); if (p.rankPts!=null) srcs.push({k:"rank #"+p.wkRank, v:p.rankPts});
+    p.srcs = srcs;
+    if (!srcs.length){ return p; }
+    const base = srcs.reduce((a,s)=>a+s.v,0)/srcs.length;
+    // Vegas: implied team total vs league average (opponent's total for a defense), half weight, capped ±15%
+    let mult = 1, implied = null;
+    if (g && M.avgImplied){
+      if (p.pos==="DST"){ const og = P.games[g.opp]; implied = og ? og.implied : null; if (implied!=null) mult = 1 + 0.5*(M.avgImplied/implied - 1); }
+      else { implied = g.implied; if (implied!=null) mult = 1 + 0.5*(implied/M.avgImplied - 1); }
+      mult = Math.min(1.15, Math.max(0.85, mult));
+    }
+    p.implied = implied; p.vegasMult = Math.round(mult*1000)/1000;
+    const eff = p.injLive==="Q" ? 0.95 : 1;
+    const m = base*mult*eff;                 // expected points IF he plays
+    const sc = (CV[p.pos]||.5)*m;            // spread if he plays
+    p.base = Math.round(base*100)/100; p.ifPlays = Math.round(m*10)/10;
+    p.mu = Math.round(p.pPlay*m*10)/10;
+    const v = p.pPlay*(sc*sc + m*m) - (p.pPlay*m)*(p.pPlay*m);
+    p.sd = Math.round(Math.sqrt(Math.max(0, v))*10)/10;
+    p.floor = p.pPlay>=0.9 ? Math.round(Math.max(0, m - Z80*sc)*10)/10 : 0;
+    p.ceil = Math.round((m + Z80*sc)*10)/10;
+    p.locked = !!(g && g.kick && Date.parse(g.kick) <= Date.now());
+    p.gameState = g ? g.state : null;
+    return p;
+  }
+  function pBeats(a, b){ // P(a outscores b) for two projected players
+    if (a.mu==null || b.mu==null) return null;
+    const s = Math.sqrt((a.sd||0)*(a.sd||0) + (b.sd||0)*(b.sd||0)); if (!s) return a.mu>b.mu ? 1 : a.mu<b.mu ? 0 : .5;
+    return phi((a.mu - b.mu)/s);
+  }
+  function kickText(g){ if (!g || !g.kick) return ""; const d = new Date(g.kick); return d.toLocaleString("en-US",{timeZone:"America/Chicago",weekday:"short",hour:"numeric",minute:"2-digit"}); }
+
   // ---------- Trade log (repo copy + this browser's local copy; local wins) ----------
   const TL_KEY = "sotg_trades_v1";
   let TL = []; // [{key, team, give, get, status, date, theirGain?}]
@@ -79,6 +228,9 @@
     saveLocalLog();
   }
   function logEntry(team, give, get){ return TL.find(e=>e.key===tradeKey(team,give,get)) || null; }
+  // Entries that came from Sheldon's repo log carry no their-side number; work it out from the current rosters so a
+  // logged decline still raises that team's floor.
+  function hydrateLog(){ TL.forEach(e=>{ if (typeof e.theirGain!=="number"){ const st = tradeStats(e.team, e.give, e.get); if (st) e.theirGain = st.theirGain; } }); }
   // Accepted trades newer than the repo's roster file get applied locally so the page is right immediately.
   function applyAcceptedTrades(){
     TL.filter(e=>e.status==="accepted" && (!R.updated || e.date >= R.updated)).forEach(e=>{
@@ -101,9 +253,10 @@
   function buildIndex(){
     idx.ros = {}; S.ros.forEach(p=>{ idx.ros[p.n] = p; });
     idx.week = {}; Object.keys(S.weekly).forEach(k=>{ S.weekly[k].forEach(p=>{ idx.week[k+"|"+p.n] = p; }); });
+    buildModel();
   }
   function weeklyKey(pos){ return pos==="QB"?"QB":pos==="DST"?"DST":pos==="K"?"K":"FLEX"; }
-  // Enrich a roster entry {name,pos,team} with ROS rank, weekly rank/opp/grade, injury, bye.
+  // Enrich a roster entry {name,pos,team} with ROS rank, weekly rank/opp/grade, injury, bye, and the prediction.
   function info(p){
     const n = norm(p.name);
     const ros = idx.ros[n] || null;
@@ -111,16 +264,17 @@
     const inj = S.injuries[n] || null;
     const bye = ros ? ros.bye : null;
     const onBye = bye != null && S.week != null && bye === S.week;
-    return { ...p, n, ros: ros?ros.rank:null, tier: ros?ros.tier:null, bye, onBye,
-      wkRank: wk?wk.rank:null, opp: wk?wk.opp:null, grade: wk?wk.grade:null, inj };
+    return predict({ ...p, n, ros: ros?ros.rank:null, tier: ros?ros.tier:null, bye, onBye,
+      wkRank: wk?wk.rank:null, opp: wk?wk.opp:null, grade: wk?wk.grade:null, inj });
   }
   function rosVal(p){ return p.ros!=null ? ROS_MAX - p.ros : 0; }
-  function undraftable(p){ return p.inj && ["IR","O","SUSP"].includes(p.inj.code); }
+  function undraftable(p){ return (p.inj && ["IR","O","SUSP"].includes(p.inj.code)) || (P && p.pPlay===0 && !p.onBye); }
 
-  // Optimal lineup by a scoring fn (weekly rank for this week, ROS rank for trade math).
+  // Optimal lineup by a scoring fn: "mu" (predicted points, higher is better), "wkRank"/"ros" (ranks, lower is better).
   function optimalLineup(players, key){
+    const desc = key==="mu";
     const usable = players.filter(p=>!p.onBye && !undraftable(p) && p[key]!=null);
-    const sortBy = (arr)=>arr.slice().sort((a,b)=>a[key]-b[key]);
+    const sortBy = (arr)=>arr.slice().sort((a,b)=> desc ? b[key]-a[key] : a[key]-b[key]);
     const by = {}; ["QB","RB","WR","TE","DST","K"].forEach(pos=>{ by[pos] = sortBy(usable.filter(p=>p.pos===pos)); });
     const slots = [];
     const used = new Set();
@@ -136,39 +290,93 @@
     const { slots } = optimalLineup(players, "ros");
     return slots.reduce((s,x)=> s + (x.p ? rosVal(x.p) : 0), 0);
   }
+  function lineupKey(){ return P ? "mu" : "wkRank"; }
 
   function myTeam(){ return R.teams[R.me].map(info); }
   function teamOf(name){ return R.teams[name].map(info); }
   function allRostered(){ const s = new Set(); Object.values(R.teams).forEach(t=>t.forEach(p=>s.add(norm(p.name)))); return s; }
 
-  function injBadge(p){ if (!p.inj) return ""; const hard = ["IR","O","SUSP"].includes(p.inj.code); return " <span class='inj "+(hard?"inj-hard":"inj-soft")+"' title='"+esc(p.inj.note||"")+"'>"+esc(p.inj.code==="O"?"OUT":p.inj.code)+(p.inj.note?" · "+esc(p.inj.note):"")+"</span>"; }
+  function injBadge(p){
+    const code = P ? p.injLive : (p.inj ? p.inj.code : null);
+    if (!code || code==="ACT") return "";
+    const hard = ["IR","O","SUSP"].includes(code);
+    const note = p.injNote || (p.inj && p.inj.note) || "";
+    return " <span class='inj "+(hard?"inj-hard":"inj-soft")+"' title='"+esc(note)+"'>"+esc(code==="O"?"OUT":code)+(note?" · "+esc(note):"")+(P && p.pPlay>0 && p.pPlay<1 ? " · "+Math.round(p.pPlay*100)+"% to play" : "")+"</span>";
+  }
   function posTag(pos){ return "<span class='pos-tag pos-"+pos+"'>"+pos+"</span>"; }
   function gradeTag(g){ if (!g) return ""; const cls = /^A/.test(g)?"good":/^B/.test(g)?"":/^[DF]/.test(g)?"bad":"warn"; return "<span class='tag grade "+cls+"' title='FantasyPros start/sit grade'>"+esc(g)+"</span>"; }
+  function projTag(p){
+    if (!P || p.mu==null) return P ? "<span class='tag bad'>no projection</span>" : "";
+    if (p.actual!=null && p.gameState && p.gameState!=="pre") return "<span class='proj'>"+p.actual.toFixed(1)+" <small>"+(p.gameState==="post"?"final":"live")+"</small></span>";
+    return "<span class='proj' title='predicted points (floor–ceiling)'>"+p.mu.toFixed(1)+" <small>"+p.floor.toFixed(0)+"–"+p.ceil.toFixed(0)+"</small></span>";
+  }
   function playerLine(p, extra){
-    return posTag(p.pos)+"<b>"+esc(p.name)+" <span class='muted'>"+esc(p.team||"")+"</span></b>"+
+    return posTag(p.pos)+"<b>"+esc(p.name)+" <span class='muted'>"+esc(p.liveTeam||p.team||"")+"</span></b>"+ projTag(p)+
       (p.wkRank!=null ? "<span class='tag' title='This week rank at position group'>wk #"+p.wkRank+"</span>" : "<span class='tag bad'>no weekly rank</span>")+
       (p.opp ? "<span class='tag'>"+esc(p.opp)+"</span>" : "")+ gradeTag(p.grade)+
       (p.ros!=null ? "<span class='tag' title='Rest-of-season rank'>ROS #"+p.ros+"</span>" : "")+
       (p.onBye ? "<span class='tag bad'>BYE</span>" : (p.bye!=null ? "<span class='tag'>bye "+p.bye+"</span>" : ""))+
+      (P && p.locked ? "<span class='tag warn'>locked</span>" : "")+
       injBadge(p)+(extra||"");
+  }
+  function projDetail(p){
+    if (!P || p.mu==null) return "";
+    const g = p.game;
+    const parts = p.srcs.map(s=>esc(s.k)+" "+s.v.toFixed(1));
+    let h = "<span class='detail'>"+parts.join(" · ")+" → avg "+p.base.toFixed(1);
+    if (p.implied!=null) h += " · Vegas "+(p.pos==="DST"?"opp":"team")+" total "+p.implied.toFixed(1)+" (×"+p.vegasMult.toFixed(2)+")";
+    if (p.pPlay<1 && p.pPlay>0) h += " · "+Math.round(p.pPlay*100)+"% to play";
+    if (g) h += " · "+(g.home?"vs":"at")+" "+esc(g.opp)+" "+esc(kickText(g))+(g.weather?" · "+esc(g.weather):"");
+    return h+"</span>";
   }
 
   // ---------- Lineup tab ----------
+  function decisions(me, slots, bench){
+    // For every bench player who could start, the starter he'd replace and the chance he outscores him.
+    const out = [];
+    bench.forEach(b=>{
+      if (b.mu==null || b.onBye || undraftable(b)) return;
+      const cands = slots.filter(s=>s.p && (s.slot.replace(/\d$/,"")===b.pos || (s.slot==="FLEX" && FLEX.includes(b.pos))));
+      if (!cands.length) return;
+      const worst = cands.slice().sort((x,y)=>x.p.mu-y.p.mu)[0].p;
+      out.push({ bench:b, starter:worst, p: pBeats(b, worst) });
+    });
+    return out.sort((a,b)=>b.p-a.p);
+  }
   function renderLineup(){
     const me = myTeam();
-    const { slots, bench } = optimalLineup(me, "wkRank");
-    let h = "<div class='panel'><h2>Week "+S.week+" — start these</h2><div class='muted' style='margin-bottom:6px'>Best lineup by this week's consensus ranks. Bye-week and OUT/IR players are automatically benched.</div>";
-    slots.forEach(s=>{ h += "<div class='row start'><span class='slot'>"+s.slot+"</span>"+(s.p ? playerLine(s.p) : "<span class='bad'>— nobody available — grab a streamer on the Waivers tab</span>")+"</div>"; });
+    const key = lineupKey();
+    const { slots, bench } = optimalLineup(me, key);
+    let h = "<div class='panel'><h2>Week "+S.week+" — start these</h2><div class='muted' style='margin-bottom:6px'>"+
+      (P ? "Best lineup by <b>predicted points</b> (ESPN + Sleeper projections + FantasyPros consensus rank, adjusted for Vegas totals and injury status). Number = expected points; small numbers = typical floor–ceiling."
+         : "Best lineup by this week's consensus ranks (live projections unavailable).")+" Bye-week and OUT/IR players are automatically benched.</div>";
+    slots.forEach(s=>{ h += "<div class='row start'><span class='slot'>"+s.slot+"</span>"+(s.p ? playerLine(s.p)+projDetail(s.p) : "<span class='bad'>— nobody available — grab a streamer on the Waivers tab</span>")+"</div>"; });
     h += "<h3>Bench</h3>";
-    bench.forEach(p=>{ h += "<div class='row sit'><span class='slot'>BN</span>"+playerLine(p)+"</div>"; });
-    // close calls
-    const flexStart = slots.filter(s=>s.p && FLEX.includes(s.p.pos)).map(s=>s.p);
-    const flexBench = bench.filter(p=>FLEX.includes(p.pos) && p.wkRank!=null && !p.onBye && !undraftable(p)).sort((a,b)=>a.wkRank-b.wkRank);
-    const worstStarter = flexStart.slice().sort((a,b)=>b.wkRank-a.wkRank)[0];
-    if (worstStarter && flexBench[0] && flexBench[0].wkRank - worstStarter.wkRank <= 8){
-      h += "<div class='suggest'>⚖️ <b class='hl'>Close call:</b> "+esc(flexBench[0].name)+" (wk #"+flexBench[0].wkRank+") is within a few spots of "+esc(worstStarter.name)+" (wk #"+worstStarter.wkRank+"). Check Sunday-morning news before locking.</div>";
+    bench.forEach(p=>{ h += "<div class='row sit'><span class='slot'>BN</span>"+playerLine(p)+projDetail(p)+"</div>"; });
+    if (P){
+      const total = slots.reduce((s,x)=>s+(x.p&&x.p.mu!=null?x.p.mu:0),0);
+      h += "<div class='muted' style='margin-top:8px'>Projected total for this lineup: <b>"+total.toFixed(1)+"</b> points.</div>";
+      const dec = decisions(me, slots, bench);
+      h += "<h3>Start/sit calls</h3><div class='muted' style='margin-bottom:6px'>Chance a bench player outscores the starter he would replace. Under 35% = leave it alone; 35–55% = genuine coin flip, check Sunday-morning news; over 55% = the tool already swapped him in.</div>";
+      if (!dec.length) h += "<div class='muted'>No bench player is close to a starter.</div>";
+      dec.forEach(d=>{
+        const pct = Math.round(d.p*100); const cls = pct>=45?"warn":pct>=30?"":"good";
+        const verdict = pct>=45 ? "coin flip — check news before lock" : pct>=30 ? "lean starter" : "clear: keep the starter";
+        h += "<div class='row'><span class='tag "+cls+"' style='min-width:44px;text-align:center'>"+pct+"%</span><b>"+esc(d.bench.name)+" <span class='muted'>("+d.bench.mu.toFixed(1)+" ± "+d.bench.sd.toFixed(1)+")</span> over "+esc(d.starter.name)+" <span class='muted'>("+d.starter.mu.toFixed(1)+" ± "+d.starter.sd.toFixed(1)+")</span></b><span class='bar'><i style='width:"+pct+"%'></i></span><span class='muted'>"+verdict+(d.starter.locked?" · starter already locked":"")+"</span></div>";
+      });
+      const risky = slots.filter(s=>s.p && s.p.pPlay<1 && s.p.pPlay>0).map(s=>s.p);
+      if (risky.length) h += "<div class='suggest'>⚠️ <b class='hl'>Injury watch:</b> "+risky.map(p=>esc(p.name)+" ("+esc(p.injLive)+(p.injNote?", "+esc(p.injNote):"")+", "+Math.round(p.pPlay*100)+"% to play, "+esc(kickText(p.game))+")").join("; ")+". Check the inactives list ~90 minutes before kickoff; if he's out, the bench alternative above is the swap.</div>";
+    } else {
+      // close calls by rank (fallback)
+      const flexStart = slots.filter(s=>s.p && FLEX.includes(s.p.pos)).map(s=>s.p);
+      const flexBench = bench.filter(p=>FLEX.includes(p.pos) && p.wkRank!=null && !p.onBye && !undraftable(p)).sort((a,b)=>a.wkRank-b.wkRank);
+      const worstStarter = flexStart.slice().sort((a,b)=>b.wkRank-a.wkRank)[0];
+      if (worstStarter && flexBench[0] && flexBench[0].wkRank - worstStarter.wkRank <= 8){
+        h += "<div class='suggest'>⚖️ <b class='hl'>Close call:</b> "+esc(flexBench[0].name)+" (wk #"+flexBench[0].wkRank+") is within a few spots of "+esc(worstStarter.name)+" (wk #"+worstStarter.wkRank+"). Check Sunday-morning news before locking.</div>";
+      }
     }
     h += "</div>";
+    if (P) h += "<div class='panel'><h2>How the prediction works</h2><div class='muted'>1) Average three independent views of the week: ESPN's projection, Sleeper's projection, and the points a player at his FantasyPros consensus rank usually projects for. 2) Nudge by the betting market: teams expected to score more than the league average get up to +15%, less gets down to −15% (defenses use the opponent's total, inverted). 3) Multiply by the chance he plays from the live injury designation (Questionable 75%, Doubtful 25%, Out 0%). The floor–ceiling is the typical 20th–80th percentile week for his position. Data: <b>"+esc(P.generated)+"</b> · ESPN "+P.sources.espn+" players · Sleeper "+P.sources.sleeper+" · "+P.sources.games+" teams with lines.</div></div>";
     document.getElementById("tab-lineup").innerHTML = h;
   }
 
@@ -182,7 +390,8 @@
     const me = myTeam();
     const { bench } = optimalLineup(me, "ros");
     const fa = freeAgents().filter(p=>!undraftable(p));
-    let h = "<div class='panel'><h2>Waiver moves that beat your bench</h2><div class='muted' style='margin-bottom:6px'>A free agent is suggested only when his rest-of-season rank is better than a bench player at the same position (or FLEX-eligible). K/DST are streamed by this week's rank instead.</div>";
+    const wkey = lineupKey(), better = (a,b)=> wkey==="mu" ? a.mu > b.mu : a.wkRank < b.wkRank;
+    let h = "<div class='panel'><h2>Waiver moves that beat your bench</h2><div class='muted' style='margin-bottom:6px'>A free agent is suggested only when his rest-of-season rank is better than a bench player at the same position (or FLEX-eligible). K/DST are streamed by this week's "+(P?"predicted points":"rank")+" instead.</div>";
     const sugg = [];
     bench.filter(p=>!["K","DST"].includes(p.pos)).forEach(b=>{
       const cands = fa.filter(f=>f.ros!=null && (f.pos===b.pos) && (b.ros==null || f.ros < b.ros)).sort((a,c)=>a.ros-c.ros);
@@ -191,12 +400,13 @@
     sugg.sort((a,b)=>b.gain-a.gain);
     if (!sugg.length) h += "<div class='muted'>Nothing on the wire outranks your bench right now. Good sign.</div>";
     sugg.slice(0,6).forEach(s=>{ h += "<div class='suggest'>➕ <b class='hl'>Add "+esc(s.add.name)+"</b> ("+s.add.pos+", ROS #"+s.add.ros+(s.add.inj?" — "+esc(s.add.inj.code):"")+") &nbsp;➖ drop "+esc(s.drop.name)+" (ROS "+(s.drop.ros!=null?"#"+s.drop.ros:"unranked")+(s.drop.inj?", "+esc(s.drop.inj.code):"")+")</div>"; });
-    h += "<h3>Streamers this week (best available by Week "+S.week+" rank)</h3>";
+    h += "<h3>Streamers this week (best available by Week "+S.week+" "+(P?"predicted points":"rank")+")</h3>";
     ["QB","DST","K"].forEach(pos=>{
-      const mine = me.filter(p=>p.pos===pos && !p.onBye && !undraftable(p)).sort((a,b)=>(a.wkRank||999)-(b.wkRank||999))[0];
-      const best = fa.filter(p=>p.pos===pos && p.wkRank!=null && !p.onBye).sort((a,b)=>a.wkRank-b.wkRank).slice(0,3);
-      h += "<div class='row'><span class='slot'>"+pos+"</span><span class='muted'>yours: "+(mine? esc(mine.name)+" (wk #"+(mine.wkRank!=null?mine.wkRank:"–")+")" : "none")+"</span></div>";
-      best.forEach(p=>{ const better = mine && mine.wkRank!=null && p.wkRank < mine.wkRank; h += "<div class='row'><span class='slot'></span>"+playerLine(p, better?"<span class='tag good'>better than yours this week</span>":"")+"</div>"; });
+      const mineList = me.filter(p=>p.pos===pos && !p.onBye && !undraftable(p) && p[wkey]!=null);
+      const mine = mineList.sort((a,b)=> wkey==="mu" ? b.mu-a.mu : a.wkRank-b.wkRank)[0];
+      const best = fa.filter(p=>p.pos===pos && p[wkey]!=null && !p.onBye).sort((a,b)=> wkey==="mu" ? b.mu-a.mu : a.wkRank-b.wkRank).slice(0,3);
+      h += "<div class='row'><span class='slot'>"+pos+"</span><span class='muted'>yours: "+(mine? esc(mine.name)+(P?" ("+mine.mu.toFixed(1)+" proj)":" (wk #"+(mine.wkRank!=null?mine.wkRank:"–")+")") : "none")+"</span></div>";
+      best.forEach(p=>{ const b = mine && better(p, mine); h += "<div class='row'><span class='slot'></span>"+playerLine(p, b?"<span class='tag good'>better than yours this week</span>":"")+"</div>"; });
     });
     h += "<h3>Top free agents (rest of season)</h3>";
     fa.filter(p=>!["K","DST"].includes(p.pos)).sort((a,b)=>a.ros-b.ros).slice(0,15).forEach(p=>{ h += "<div class='row'>"+playerLine(p)+"</div>"; });
@@ -205,6 +415,18 @@
   }
 
   // ---------- Trades tab ----------
+  // Numbers for one specific 1-for-1 against the CURRENT rosters (used for open proposals and the log).
+  function tradeStats(team, giveName, getName){
+    if (!R.teams[team]) return null;
+    const me = myTeam(), them = teamOf(team);
+    const give = me.find(p=>p.n===norm(giveName)), get = them.find(p=>p.n===norm(getName));
+    if (!give || !get) return null;
+    const myBase = strength(me), theirBase = strength(them);
+    const myGain = strength(me.filter(p=>p.n!==give.n).concat([get])) - myBase;
+    const theirGain = strength(them.filter(p=>p.n!==get.n).concat([give])) - theirBase;
+    const odds = acceptOdds(theirGain);
+    return { give, get, myGain, theirGain, odds, ev: Math.round(myGain*odds.p*10)/10, fairness: (give.ros||ROS_MAX)-(get.ros||ROS_MAX) };
+  }
   // 1-for-1 swaps: I give a player, get one back. Keep only trades where my ROS starting
   // strength goes up AND theirs doesn't go down by more than a sliver (so it's acceptable).
   function findTrades(){
@@ -249,15 +471,28 @@
     return "<span class='tbtns' data-team='"+esc(t.team)+"' data-give='"+esc(t.give.name||t.give)+"' data-get='"+esc(t.get.name||t.get)+"' data-tg='"+(typeof t.theirGain==="number"?t.theirGain:"")+"'>"+
       statuses.map(s=>"<button class='tb tb-"+s+"' data-status='"+s+"'>"+({proposed:"Proposed",declined:"Declined",countered:"Countered",accepted:"Accepted ✓",withdrawn:"Withdraw"}[s])+"</button>").join("")+"</span>";
   }
+  function playerBrief(p){ return esc(p.name)+" ("+p.pos+" ROS #"+(p.ros!=null?p.ros:"–")+(P&&p.mu!=null?", wk proj "+p.mu.toFixed(1):"")+(P&&p.injLive&&p.injLive!=="ACT"?", "+esc(p.injLive):"")+")"; }
+  function statsLine(st){
+    if (!st) return "<span class='muted'>stats n/a — a player in this deal is no longer on the roster I have; tell Sheldon if rosters changed</span>";
+    const oddsCls = st.odds.p>=0.7?"good":st.odds.p>=0.45?"warn":"bad";
+    return "<span class='muted'>give "+playerBrief(st.give)+" · get "+playerBrief(st.get)+"<br>your gain +"+st.myGain+" · their side "+(st.theirGain>=0?"+":"")+st.theirGain+" <span class='tag "+oddsCls+"'>"+st.odds.label+"</span> · EV "+st.ev+"</span>";
+  }
+  function daysSince(d){ if (!d) return null; const ms = Date.now() - Date.parse(d+"T12:00:00"); return Math.max(0, Math.round(ms/86400000)); }
   function renderTrades(){
+    hydrateLog();
     const trades = findTrades();
     let h = "";
     const open = TL.filter(e=>e.status==="proposed");
-    const teamOf2 = n=>{ for (const t of Object.keys(R.teams)) { const p = R.teams[t].find(x=>norm(x.name)===norm(n)); if (p) return t; } return null; };
     if (open.length){
-      h += "<div class='panel'><h2>Open proposals (waiting on them)</h2>";
-      open.forEach(e=>{ h += "<div class='suggest'>⏳ <b class='hl'>"+esc(e.team)+":</b> you give <b>"+esc(e.give)+"</b> for <b>"+esc(e.get)+"</b> <span class='muted'>· sent "+esc(e.date)+"</span><br>"+tradeButtons({team:e.team,give:e.give,get:e.get,theirGain:e.theirGain},["accepted","declined","countered","withdrawn"])+"</div>"; });
-      h += "</div>";
+      h += "<div class='panel'><h2>Open proposals (waiting on them) — "+open.length+"</h2>";
+      open.forEach(e=>{
+        const st = tradeStats(e.team, e.give, e.get); const ds = daysSince(e.date);
+        h += "<div class='suggest'>⏳ <b class='hl'>"+esc(e.team)+":</b> you give <b>"+esc(e.give)+"</b> for <b>"+esc(e.get)+"</b> <span class='muted'>· sent "+esc(e.date)+(ds!=null?" · waiting "+ds+"d":"")+"</span><br>"+statsLine(st)+"<br>"+tradeButtons({team:e.team,give:e.give,get:e.get,theirGain:st?st.theirGain:e.theirGain},["accepted","declined","countered","withdrawn"])+"</div>";
+      });
+      const sumMy = open.reduce((s,e)=>{ const st = tradeStats(e.team,e.give,e.get); return s + (st?st.myGain:0); },0);
+      const expAcc = open.reduce((s,e)=>{ const st = tradeStats(e.team,e.give,e.get); return s + (st?st.odds.p:0); },0);
+      h += "<div class='muted' style='margin-top:6px'>If everything landed: +"+sumMy+" lineup strength · expected acceptances "+expAcc.toFixed(1)+" of "+open.length+"</div>";
+      h += "<button class='tb tb-declined' id='declineAll'>All declined</button> <span class='muted'>marks every open proposal declined (each team's floor goes up accordingly)</span></div>";
     }
     h += "<div class='panel'><h2>Optimal trades</h2>"+
       "<div class='muted' style='margin-bottom:6px'>One list, ranked by <b>expected value</b> = what your starting lineup gains (rest-of-season rank) × how likely they accept (from what it does to <i>their</i> lineup). Big upside with a real chance of a yes floats to the top; long shots only appear when the upside is huge.</div>";
@@ -275,7 +510,7 @@
     const hist = TL.filter(e=>e.status!=="proposed").sort((a,b)=> (b.date||"").localeCompare(a.date||""));
     h += "<div class='panel'><h2>Trade log</h2><div class='muted' style='margin-bottom:6px'>Declines teach the model: a team that said no needs a better deal next time. Accepted trades update the rosters on this page right away — also tell Sheldon so the weekly runs use the new rosters.</div>";
     if (!hist.length && !open.length) h += "<div class='muted'>No proposals logged yet. Use the buttons above as you send offers.</div>";
-    hist.forEach(e=>{ const cls = e.status==="accepted"?"good":e.status==="declined"?"bad":"warn"; h += "<div class='row'><span class='tag "+cls+"'>"+esc(e.status)+"</span><b>"+esc(e.team)+": "+esc(e.give)+" → "+esc(e.get)+"</b><span class='muted'>"+esc(e.date||"")+(e.local?"":" · from Sheldon's log")+"</span>"+(e.local?"<button class='tb tb-undo' data-key='"+esc(e.key)+"'>undo</button>":"")+"</div>"; });
+    hist.forEach(e=>{ const cls = e.status==="accepted"?"good":e.status==="declined"?"bad":"warn"; const st = e.status==="accepted" ? null : tradeStats(e.team,e.give,e.get); h += "<div class='row'><span class='tag "+cls+"'>"+esc(e.status)+"</span><b>"+esc(e.team)+": "+esc(e.give)+" → "+esc(e.get)+"</b><span class='muted'>"+esc(e.date||"")+(e.local?"":" · from Sheldon's log")+(st?" · me +"+st.myGain+" / them "+(st.theirGain>=0?"+":"")+st.theirGain+" ("+st.odds.label+")":"")+"</span>"+(e.local?"<button class='tb tb-undo' data-key='"+esc(e.key)+"'>undo</button>":"")+"</div>"; });
     h += "<div style='margin-top:8px'><button class='tb' id='copyLog'>Copy log for Sheldon</button> <span class='muted' id='copyMsg'></span></div></div>";
     document.getElementById("tab-trades").innerHTML = h;
     document.querySelectorAll("#tab-trades .tbtns button").forEach(b=>b.addEventListener("click", ()=>{
@@ -285,6 +520,11 @@
       if (st==="accepted"){ applyAcceptedTrades(); renderAll(); return; }
       renderTrades();
     }));
+    const da = document.getElementById("declineAll");
+    if (da) da.addEventListener("click", ()=>{
+      TL.filter(e=>e.status==="proposed").forEach(e=>{ const st = tradeStats(e.team,e.give,e.get); logTrade(e.team, e.give, e.get, "declined", st?{theirGain:st.theirGain}:(typeof e.theirGain==="number"?{theirGain:e.theirGain}:{})); });
+      renderTrades();
+    });
     document.querySelectorAll("#tab-trades .tb-undo").forEach(b=>b.addEventListener("click", ()=>{ TL = TL.filter(e=>e.key!==b.dataset.key); saveLocalLog(); renderAll(); }));
     const cp = document.getElementById("copyLog");
     if (cp) cp.addEventListener("click", ()=>{
@@ -301,11 +541,11 @@
     const weeks = {}; me.forEach(p=>{ if (p.bye!=null){ (weeks[p.bye] = weeks[p.bye]||[]).push(p); } });
     Object.keys(weeks).map(Number).sort((a,b)=>a-b).forEach(w=>{
       const out = weeks[w];
-      const remaining = me.filter(p=>p.bye!==w && !undraftable(p));
-      const fake = remaining.map(p=>({...p, onBye:false}));
+      const remaining = me.filter(p=>p.bye!==w && !(p.inj && ["IR","O","SUSP"].includes(p.inj.code)));
+      const fake = remaining.map(p=>({...p, onBye:false, pPlay:1}));
       const { slots } = optimalLineup(fake, "ros");
       const holes = slots.filter(s=>!s.p).map(s=>s.slot);
-      h += "<div class='row"+(holes.length?" ":" ")+"'><span class='slot'>Wk "+w+"</span><b>"+out.map(p=>esc(p.name)+" ("+p.pos+")").join(", ")+"</b>"+(holes.length?"<span class='tag bad'>hole: "+holes.join(", ")+" — stream</span>":"<span class='tag good'>bench covers it</span>")+"</div>";
+      h += "<div class='row'><span class='slot'>Wk "+w+"</span><b>"+out.map(p=>esc(p.name)+" ("+p.pos+")").join(", ")+"</b>"+(holes.length?"<span class='tag bad'>hole: "+holes.join(", ")+" — stream</span>":"<span class='tag good'>bench covers it</span>")+"</div>";
     });
     h += "</div>";
     document.getElementById("tab-byes").innerHTML = h;
@@ -313,9 +553,9 @@
 
   // ---------- League tab ----------
   function renderLeague(){
-    const rows = Object.keys(R.teams).map(t=>({ team:t, s: strength(teamOf(t)) })).sort((a,b)=>b.s-a.s);
+    const rows = Object.keys(R.teams).map(t=>{ const tm = teamOf(t); const wk = P ? optimalLineup(tm,"mu").slots.reduce((s,x)=>s+(x.p&&x.p.mu!=null?x.p.mu:0),0) : null; return { team:t, s: strength(tm), wk }; }).sort((a,b)=>b.s-a.s);
     let h = "<div class='panel'><h2>Power ranking (rest-of-season starters)</h2>";
-    rows.forEach((r,i)=>{ h += "<div class='row"+(r.team===R.me?" start":"")+"'><span class='slot'>"+(i+1)+"</span><b>"+esc(r.team)+(r.team===R.me?" 🐑":"")+"</b><span class='tag'>"+r.s+"</span></div>"; });
+    rows.forEach((r,i)=>{ h += "<div class='row"+(r.team===R.me?" start":"")+"'><span class='slot'>"+(i+1)+"</span><b>"+esc(r.team)+(r.team===R.me?" 🐑":"")+"</b>"+(r.wk!=null?"<span class='tag' title='projected points this week, best lineup'>wk "+r.wk.toFixed(1)+"</span>":"")+"<span class='tag'>"+r.s+"</span></div>"; });
     h += "</div>";
     document.getElementById("tab-league").innerHTML = h;
   }
@@ -325,6 +565,7 @@
     document.getElementById("wk").textContent = S.week!=null ? S.week : "–";
     document.getElementById("stamp").textContent = S.generated;
     document.getElementById("rosterStamp").textContent = R.updated || "–";
+    const ps = document.getElementById("pstamp"); ps.textContent = PSTAMP.text; ps.className = PSTAMP.cls;
     renderLineup(); renderWaivers(); renderTrades(); renderByes(); renderLeague();
   }
   document.querySelectorAll("nav button").forEach(b=>b.addEventListener("click", ()=>{
@@ -332,15 +573,33 @@
     ["lineup","waivers","trades","byes","league"].forEach(t=>document.getElementById("tab-"+t).classList.toggle("hidden", t!==b.dataset.tab));
   }));
 
+  async function loadProjections(){
+    try {
+      P = await fetchLive(S.week);
+      PSTAMP = { text: "LIVE "+P.generated+" (ESPN + Sleeper + Vegas)", cls:"live" };
+    } catch(e){
+      try {
+        P = await fetch("data/projections.json?v="+Date.now()).then(x=>x.json());
+        const age = P.generatedMs ? Math.round((Date.now()-P.generatedMs)/3600000) : null;
+        PSTAMP = { text: "snapshot "+P.generated+(age!=null?" ("+age+"h old)":"")+" — live fetch failed: "+e.message, cls:"stale" };
+      } catch(e2){ P = null; PSTAMP = { text: "unavailable ("+e.message+") — using consensus ranks", cls:"stale" }; }
+    }
+  }
   async function load(){
     try {
       const [s, r, x, tl] = await Promise.all([fetch("data/season.json?v="+Date.now()).then(x=>x.json()), fetch("data/rosters.json?v="+Date.now()).then(x=>x.json()), fetch("data/exclusions.json?v="+Date.now()).then(x=>x.json()).catch(()=>({players:[]})), fetch("data/trades.json?v="+Date.now()).then(x=>x.json()).catch(()=>({entries:[]}))]);
-      S = s; R = r; X = x || {players:[]}; mergeLog((tl||{}).entries); applyAcceptedTrades(); buildIndex(); renderAll();
+      S = s; R = r; X = x || {players:[]}; mergeLog((tl||{}).entries); applyAcceptedTrades();
+      PSTAMP = { text:"fetching live…", cls:"" };
+      buildIndex(); renderAll();
+      await loadProjections();
+      buildIndex(); renderAll();
     } catch(e){
       document.getElementById("stamp").textContent = "failed to load data ("+e.message+")";
     }
   }
-  window.__seasonTest = { inject:(s,r,x,tl)=>{ S=s; R=JSON.parse(JSON.stringify(r)); X=x||{players:[]}; mergeLog((tl||{}).entries); applyAcceptedTrades(); buildIndex(); renderAll(); }, logTrade, teamFloor, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, strength, findTrades, freeAgents, norm };
+  document.getElementById("refreshLive").addEventListener("click", async ()=>{ if (!S) return; PSTAMP = { text:"fetching live…", cls:"" }; renderAll(); await loadProjections(); buildIndex(); renderAll(); });
+  window.__seasonTest = { inject:(s,r,x,tl,pj)=>{ S=s; R=JSON.parse(JSON.stringify(r)); X=x||{players:[]}; P=pj||null; PSTAMP = pj ? {text:"snapshot "+pj.generated, cls:"stale"} : {text:"none", cls:""}; mergeLog((tl||{}).entries); applyAcceptedTrades(); buildIndex(); renderAll(); },
+    logTrade, teamFloor, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, strength, findTrades, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, model:M };
   if (!window.__seasonNoAutoLoad) load();
 })();
 </script>
