@@ -459,18 +459,13 @@
   const ROS_MARGIN = 10; // a free agent must be this many rest-of-season rank spots better before we suggest an add/drop
   // Season-long rule: the add must beat the drop on FantasyPros ROS rank by ROS_MARGIN AND on ESPN's live full-season
   // projection (when both have one). One-week matchups never drive an add/drop — that's what streamers are for.
+  // The suggestion box and the per-player "Drop for him" column are the SAME rule: one drop candidate (least
+  // rest-of-season value on the bench), one verdict. The box just lists the ADDs (and marginals) from the board.
   function waiverSuggestions(me, bench, fa){
-    const sugg = [], marginal = [];
-    bench.filter(p=>!["K","DST"].includes(p.pos)).forEach(b=>{
-      const cands = fa.filter(f=>f.ros!=null && f.pos===b.pos && (b.ros==null || f.ros < b.ros)
-        && (b.seasonProj==null || f.seasonProj==null || f.seasonProj >= b.seasonProj)).sort((a,c)=>a.ros-c.ros);
-      const f = cands[0]; if (!f) return;
-      const gain = (b.ros||ROS_MAX) - f.ros;
-      const agree = f.seasonProj!=null && b.seasonProj!=null;
-      const item = { drop:b, add:f, gain, agree, seasonDelta: agree ? Math.round(f.seasonProj - b.seasonProj) : null };
-      (gain >= ROS_MARGIN ? sugg : marginal).push(item);
-    });
-    sugg.sort((a,b)=>b.gain-a.gain); marginal.sort((a,b)=>b.gain-a.gain);
+    const board = waiverBoard(me, bench, fa.filter(f=>f.ros!=null && !["K","DST","QB"].includes(f.pos)));
+    const toItem = b => ({ drop:b.drop, add:b.fa, gain:b.verdict.rosDelta, agree: b.verdict.seasonDelta!=null, seasonDelta: b.verdict.seasonDelta });
+    const sugg = board.filter(b=>b.verdict.key==="add").map(toItem).sort((a,b)=>b.gain-a.gain);
+    const marginal = board.filter(b=>b.verdict.key==="marginal").map(toItem).sort((a,b)=>b.gain-a.gain);
     return { sugg, marginal };
   }
   // Who would you drop to add this free agent, and is it worth it? Roster spots are fixed, so every add is a drop.
@@ -485,15 +480,17 @@
   function dropVerdict(fa, drop){
     if (!drop) return { key:"none", text:"no one to drop" };
     const rosDelta = (drop.ros||ROS_MAX) - (fa.ros||ROS_MAX);
-    const seasonDelta = (fa.seasonProj!=null && drop.seasonProj!=null) ? Math.round(fa.seasonProj - drop.seasonProj) : null;
+    const seasonRaw = (fa.seasonProj!=null && drop.seasonProj!=null) ? fa.seasonProj - drop.seasonProj : null;
+    const seasonDelta = seasonRaw==null ? null : (Math.abs(seasonRaw) < 1 ? Math.round(seasonRaw*10)/10 : Math.round(seasonRaw));
+    const seasonOk = seasonRaw==null || seasonRaw >= 0;   // unrounded, same test the suggestion box uses
     if (["K","DST"].includes(fa.pos)){
       const wk = (fa.mu!=null && drop.mu!=null) ? Math.round((fa.mu - drop.mu)*10)/10 : null;
       return { key: wk!=null && wk>=1.5 ? "add" : wk!=null && wk>0 ? "marginal" : "pass", rosDelta, seasonDelta, wkDelta: wk,
         text: wk==null ? "no projection" : (wk>=1.5 ? "swap: +"+wk.toFixed(1)+" pts this week" : wk>0 ? "+"+wk.toFixed(1)+" this week — barely" : "keep yours ("+wk.toFixed(1)+" this week)") };
     }
     if (fa.pos==="QB") return { key:"rental", rosDelta, seasonDelta, text:"1-week rental — costs a bench spot, only if your QB is out/bye" };
-    if (rosDelta >= ROS_MARGIN && (seasonDelta==null || seasonDelta>=0)) return { key:"add", rosDelta, seasonDelta, text:"ADD: +"+rosDelta+" ROS spots"+(seasonDelta!=null?", +"+seasonDelta+" season pts":"") };
-    if (rosDelta > 0 && (seasonDelta==null || seasonDelta>=0)) return { key:"marginal", rosDelta, seasonDelta, text:"marginal: +"+rosDelta+" ROS spots"+(seasonDelta!=null?", "+(seasonDelta>=0?"+":"")+seasonDelta+" season pts":"")+" — not worth the churn" };
+    if (rosDelta >= ROS_MARGIN && seasonOk) return { key:"add", rosDelta, seasonDelta, text:"ADD: +"+rosDelta+" ROS spots"+(seasonDelta!=null?", +"+seasonDelta+" season pts":"") };
+    if (rosDelta > 0 && seasonOk) return { key:"marginal", rosDelta, seasonDelta, text:"marginal: +"+rosDelta+" ROS spots"+(seasonDelta!=null?", +"+seasonDelta+" season pts":"")+" — not worth the churn" };
     if (rosDelta > 0) return { key:"pass", rosDelta, seasonDelta, text:"pass: rank says yes but ESPN season projection says no ("+seasonDelta+" pts)" };
     return { key:"pass", rosDelta, seasonDelta, text:"pass: worse than "+drop.name+" for the season ("+rosDelta+" spots)" };
   }
