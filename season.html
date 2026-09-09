@@ -41,6 +41,7 @@
   .hrow span[title],.legend dt{cursor:help;border-bottom:1px dotted #4a5561;}
   .row.grid b{min-width:0;} .row.grid .c{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;} .row.grid .num{text-align:right;font-variant-numeric:tabular-nums;}
   .row.grid .detail{grid-column:1 / -1;padding-left:0;}
+  .row.grid .sub{grid-column:1 / -1;font-size:.8rem;color:var(--text);padding:3px 0 2px 52px;white-space:normal;} .row.grid .sub .tag{white-space:normal;display:inline-block;line-height:1.3;padding:1px 6px;}
   .tbl .gw .row.grid,.tbl .gw .hrow{grid-template-columns:44px 40px minmax(150px,1.4fr) 44px 58px 70px 58px 66px 46px 60px 66px 44px minmax(90px,.8fr) minmax(170px,1.2fr) minmax(150px,1fr);min-width:1200px;}
   .tbl .g4 .row.grid,.tbl .g4 .hrow{grid-template-columns:60px minmax(200px,1.2fr) 200px minmax(160px,1fr);min-width:620px;}
   .tbl .g3 .row.grid,.tbl .g3 .hrow{grid-template-columns:60px minmax(220px,1.5fr) minmax(160px,1fr);min-width:500px;}
@@ -498,11 +499,11 @@
     return fa.map(f=>{ const drop = dropCandidate(bench, me, f); return { fa:f, drop, verdict: dropVerdict(f, drop) }; });
   }
   const WCOLS = [["Drop for him","The bench player you'd drop to add him (least rest-of-season value on your bench; K/DST = straight swap)"],["Verdict","Is the swap worth it under the season-long rule?"]];
-  function waiverHeader(){ return "<div class='hrow'>"+PCOLS.concat(WCOLS).map(c=>"<span"+(c[1]?" title='"+esc(c[1])+"'":"")+">"+esc(c[0])+"</span>").join("")+"</div>"; }
+  function waiverHeader(){ return playerHeader(); } // drop + verdict sit on a full-width line under each player so nothing is cut off
   function waiverRow(b, tag){
     const v = b.verdict; const cls = v.key==="add"?"good":v.key==="marginal"||v.key==="rental"?"warn":v.key==="pass"?"bad":"";
-    const drop = b.drop ? esc(b.drop.name)+" <span class='muted'>("+b.drop.pos+" ROS #"+(b.drop.ros!=null?b.drop.ros:"–")+(b.drop.seasonProj!=null?", "+b.drop.seasonProj.toFixed(0)+" szn":"")+(b.drop.mu!=null?", "+b.drop.mu.toFixed(1)+" wk":"")+")</span>" : "<span class='muted'>—</span>";
-    return "<div class='row grid'>"+playerLine(b.fa, tag||"", "FA")+"<span class='c' style='white-space:normal'>"+drop+"</span><span class='c' style='white-space:normal'><span class='tag "+cls+"'>"+esc(v.text)+"</span></span></div>";
+    const drop = b.drop ? "<b>"+esc(b.drop.name)+"</b> <span class='muted'>("+b.drop.pos+", ROS #"+(b.drop.ros!=null?b.drop.ros:"–")+(b.drop.seasonProj!=null?", "+b.drop.seasonProj.toFixed(0)+" season pts":"")+(b.drop.mu!=null?", "+b.drop.mu.toFixed(1)+" proj this week":"")+")</span>" : "<span class='muted'>nobody</span>";
+    return "<div class='row grid'>"+playerLine(b.fa, tag||"", "FA")+"<span class='sub'><span class='muted'>"+WCOLS[0][0]+":</span> "+drop+" &nbsp;→&nbsp; <span class='muted'>"+WCOLS[1][0]+":</span> <span class='tag "+cls+"'>"+esc(v.text)+"</span></span></div>";
   }
   function excluded(){ const s = new Set(); (X.players||[]).forEach(p=>s.add(norm(p.name))); return s; }
   function freeAgents(){
@@ -519,7 +520,7 @@
     const { sugg, marginal } = waiverSuggestions(me, bench, fa);
     if (!sugg.length) h += "<div class='muted'>Nothing on the wire is a clear season-long upgrade over your bench. Good sign.</div>";
     sugg.slice(0,6).forEach(s=>{ h += "<div class='suggest'>➕ <b class='hl'>Add "+esc(s.add.name)+"</b> ("+s.add.pos+", ROS #"+s.add.ros+(s.add.seasonProj!=null?", ESPN season "+s.add.seasonProj.toFixed(0)+" pts":"")+(s.add.inj?" — "+esc(s.add.inj.code):"")+") &nbsp;➖ drop "+esc(s.drop.name)+" (ROS "+(s.drop.ros!=null?"#"+s.drop.ros:"unranked")+(s.drop.seasonProj!=null?", "+s.drop.seasonProj.toFixed(0)+" pts":"")+(s.drop.inj?", "+esc(s.drop.inj.code):"")+")<br><span class='muted'>+"+s.gain+" rest-of-season spots"+(s.seasonDelta!=null?" · "+(s.seasonDelta>=0?"+":"")+s.seasonDelta+" projected season points":" · ESPN season projection missing for one of them")+" — "+(s.agree?"both sources agree":"rank only")+"</span></div>"; });
-    if (marginal.length) h += "<div class='muted' style='margin-top:6px'>Marginal (under "+ROS_MARGIN+" spots, not worth the churn): "+marginal.slice(0,4).map(s=>esc(s.add.name)+" over "+esc(s.drop.name)+" (+"+s.gain+")").join("; ")+"</div>";
+    marginal.slice(0,4).forEach(s=>{ h += "<div class='suggest'>⚖️ <b class='hl'>Marginal: "+esc(s.add.name)+"</b> ("+s.add.pos+", ROS #"+s.add.ros+(s.add.seasonProj!=null?", ESPN season "+s.add.seasonProj.toFixed(0)+" pts":"")+") over "+esc(s.drop.name)+" (ROS #"+s.drop.ros+(s.drop.seasonProj!=null?", "+s.drop.seasonProj.toFixed(0)+" pts":"")+")<br><span class='muted'>+"+s.gain+" rest-of-season spots"+(s.seasonDelta!=null?" · "+(s.seasonDelta>=0?"+":"")+s.seasonDelta+" projected season points":"")+" — under the "+ROS_MARGIN+"-spot bar, so not worth the churn unless you want that position's depth</span></div>"; });
     h += "<h3>One-week streamers (Week "+S.week+", by "+(P?"predicted points":"rank")+")</h3><div class='muted' style='margin-bottom:6px'>Kickers and defenses are meant to be streamed. A quarterback listed here is a one-week rental only — worth it when your QB is on bye or out, never as a reason to drop him.</div>";
     ["QB","DST","K"].forEach(pos=>{
       const mineList = me.filter(p=>p.pos===pos && !p.onBye && !undraftable(p) && p[wkey]!=null);
@@ -528,13 +529,20 @@
       h += "<div class='muted' style='margin:6px 0 2px'><b>"+pos+"</b> — yours: "+(mine? esc(mine.name)+(P?" ("+mine.mu.toFixed(1)+" proj)":" (wk #"+(mine.wkRank!=null?mine.wkRank:"–")+")") : "none this week — stream one")+"</div><div class='tbl'><div class='gw'>"+waiverHeader();
       waiverBoard(me, bench, best).forEach(b=>{
         const p = b.fa, bt = mine && better(p, mine);
-        const tag = !mine ? "<span class='tag good'>fills the hole this week</span>" : (bt ? (pos==="QB" ? "<span class='tag warn'>1-week rental only — keep "+esc(mine.name)+"</span>" : "<span class='tag good'>better than yours this week</span>") : "");
+        const tag = !mine ? "<span class='tag good'>fills the hole this week</span>" : (bt ? (pos==="QB" ? "<span class='tag warn' title='1-week rental only — keep "+esc(mine.name)+"'>1-wk rental</span>" : "<span class='tag good'>better than yours this week</span>") : "");
         h += waiverRow(b, tag);
       });
       h += "</div></div>";
     });
     h += "<h3>Top free agents (rest of season) — and who you'd drop</h3><div class='muted' style='margin-bottom:6px'>Every add is a drop. \"Drop for him\" is the bench player with the least rest-of-season value; the verdict applies the season-long rule (+"+ROS_MARGIN+" ROS spots and ESPN's season projection not lower).</div><div class='tbl'><div class='gw'>"+waiverHeader();
-    waiverBoard(me, bench, fa.filter(p=>!["K","DST"].includes(p.pos)).sort((a,b)=>a.ros-b.ros).slice(0,15)).forEach(b=>{ h += waiverRow(b); });
+    // ADDs and marginals always make the table (even if outside the top 15 by rank), and sort to the top.
+    const order = { add:0, marginal:1, rental:2, pass:3, none:4 };
+    const boardAll = waiverBoard(me, bench, fa.filter(p=>!["K","DST"].includes(p.pos) && p.ros!=null));
+    const seenN = new Set();
+    boardAll.filter(b=>["add","marginal"].includes(b.verdict.key)).concat(boardAll.slice().sort((a,b)=>a.fa.ros-b.fa.ros).slice(0,15))
+      .filter(b=>{ if (seenN.has(b.fa.n)) return false; seenN.add(b.fa.n); return true; })
+      .sort((a,b)=> (order[a.verdict.key]-order[b.verdict.key]) || (a.fa.ros-b.fa.ros))
+      .forEach(b=>{ h += waiverRow(b); });
     h += "</div></div></div>";
     document.getElementById("tab-waivers").innerHTML = h;
   }
