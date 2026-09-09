@@ -96,9 +96,9 @@
     (espnRaw.players||[]).forEach(x=>{
       const p = x.player; const pos = ESPN_POS[p.defaultPositionId]; if (!pos) return;
       const tm = ESPN_TEAM[p.proTeamId]; const name = pos==="DST" ? (TEAM_NAME[tm] || p.fullName) : p.fullName;
-      let proj = null, actual = null;
-      (p.stats||[]).forEach(s=>{ if (s.scoringPeriodId===week && s.statSplitTypeId===1){ if (s.statSourceId===1) proj = s.appliedTotal; else if (s.statSourceId===0) actual = s.appliedTotal; } });
-      players[norm(name)] = { name, pos, team: tm, espn: proj==null?null:Math.round(proj*100)/100, actual: actual==null?null:Math.round(actual*100)/100,
+      let proj = null, actual = null, seasonProj = null;
+      (p.stats||[]).forEach(s=>{ if (s.scoringPeriodId===week && s.statSplitTypeId===1){ if (s.statSourceId===1) proj = s.appliedTotal; else if (s.statSourceId===0) actual = s.appliedTotal; } else if (s.scoringPeriodId===0 && s.statSourceId===1) seasonProj = s.appliedTotal; });
+      players[norm(name)] = { name, pos, team: tm, espn: proj==null?null:Math.round(proj*100)/100, espnSeason: seasonProj==null?null:Math.round(seasonProj*10)/10, actual: actual==null?null:Math.round(actual*100)/100,
         injE: ESPN_INJ[p.injuryStatus||"ACTIVE"] || "ACT", own: Math.round(((p.ownership||{}).percentOwned||0)*10)/10 };
     });
     (sleeperRaw||[]).forEach(r=>{
@@ -169,6 +169,7 @@
     p.sleeper = q && typeof q.sleeper==="number" ? q.sleeper : null;
     p.rankPts = rankPts(weeklyKey(p.pos), p.wkRank);
     p.actual = q && typeof q.actual==="number" ? q.actual : null;
+    p.seasonProj = q && typeof q.espnSeason==="number" ? q.espnSeason : null; // ESPN full-season projection (live)
     // injury: worst of the live designations; fall back to the (older) ESPN injury report only if he's in neither live feed
     const codes = []; if (q && q.injE) codes.push(q.injE); if (q && q.injS) codes.push(q.injS);
     if (!codes.length && p.inj) codes.push(p.inj.code);
@@ -315,6 +316,7 @@
       (p.wkRank!=null ? "<span class='tag' title='This week rank at position group'>wk #"+p.wkRank+"</span>" : "<span class='tag bad'>no weekly rank</span>")+
       (p.opp ? "<span class='tag'>"+esc(p.opp)+"</span>" : "")+ gradeTag(p.grade)+
       (p.ros!=null ? "<span class='tag' title='Rest-of-season rank'>ROS #"+p.ros+"</span>" : "")+
+      (P && p.seasonProj!=null ? "<span class='tag' title='ESPN full-season projection (live)'>szn "+p.seasonProj.toFixed(0)+"</span>" : "")+
       (p.onBye ? "<span class='tag bad'>BYE</span>" : (p.bye!=null ? "<span class='tag'>bye "+p.bye+"</span>" : ""))+
       (P && p.locked ? "<span class='tag warn'>locked</span>" : "")+
       injBadge(p)+(extra||"");
@@ -381,6 +383,23 @@
   }
 
   // ---------- Waivers tab ----------
+  const ROS_MARGIN = 10; // a free agent must be this many rest-of-season rank spots better before we suggest an add/drop
+  // Season-long rule: the add must beat the drop on FantasyPros ROS rank by ROS_MARGIN AND on ESPN's live full-season
+  // projection (when both have one). One-week matchups never drive an add/drop — that's what streamers are for.
+  function waiverSuggestions(me, bench, fa){
+    const sugg = [], marginal = [];
+    bench.filter(p=>!["K","DST"].includes(p.pos)).forEach(b=>{
+      const cands = fa.filter(f=>f.ros!=null && f.pos===b.pos && (b.ros==null || f.ros < b.ros)
+        && (b.seasonProj==null || f.seasonProj==null || f.seasonProj >= b.seasonProj)).sort((a,c)=>a.ros-c.ros);
+      const f = cands[0]; if (!f) return;
+      const gain = (b.ros||ROS_MAX) - f.ros;
+      const agree = f.seasonProj!=null && b.seasonProj!=null;
+      const item = { drop:b, add:f, gain, agree, seasonDelta: agree ? Math.round(f.seasonProj - b.seasonProj) : null };
+      (gain >= ROS_MARGIN ? sugg : marginal).push(item);
+    });
+    sugg.sort((a,b)=>b.gain-a.gain); marginal.sort((a,b)=>b.gain-a.gain);
+    return { sugg, marginal };
+  }
   function excluded(){ const s = new Set(); (X.players||[]).forEach(p=>s.add(norm(p.name))); return s; }
   function freeAgents(){
     const taken = allRostered(), ex = excluded();
@@ -391,22 +410,22 @@
     const { bench } = optimalLineup(me, "ros");
     const fa = freeAgents().filter(p=>!undraftable(p));
     const wkey = lineupKey(), better = (a,b)=> wkey==="mu" ? a.mu > b.mu : a.wkRank < b.wkRank;
-    let h = "<div class='panel'><h2>Waiver moves that beat your bench</h2><div class='muted' style='margin-bottom:6px'>A free agent is suggested only when his rest-of-season rank is better than a bench player at the same position (or FLEX-eligible). K/DST are streamed by this week's "+(P?"predicted points":"rank")+" instead.</div>";
-    const sugg = [];
-    bench.filter(p=>!["K","DST"].includes(p.pos)).forEach(b=>{
-      const cands = fa.filter(f=>f.ros!=null && (f.pos===b.pos) && (b.ros==null || f.ros < b.ros)).sort((a,c)=>a.ros-c.ros);
-      if (cands[0]) sugg.push({ drop:b, add:cands[0], gain:(b.ros||ROS_MAX)-cands[0].ros });
-    });
-    sugg.sort((a,b)=>b.gain-a.gain);
-    if (!sugg.length) h += "<div class='muted'>Nothing on the wire outranks your bench right now. Good sign.</div>";
-    sugg.slice(0,6).forEach(s=>{ h += "<div class='suggest'>➕ <b class='hl'>Add "+esc(s.add.name)+"</b> ("+s.add.pos+", ROS #"+s.add.ros+(s.add.inj?" — "+esc(s.add.inj.code):"")+") &nbsp;➖ drop "+esc(s.drop.name)+" (ROS "+(s.drop.ros!=null?"#"+s.drop.ros:"unranked")+(s.drop.inj?", "+esc(s.drop.inj.code):"")+")</div>"; });
-    h += "<h3>Streamers this week (best available by Week "+S.week+" "+(P?"predicted points":"rank")+")</h3>";
+    let h = "<div class='panel'><h2>Waiver moves that beat your bench — season-long only</h2><div class='muted' style='margin-bottom:6px'>An add/drop is suggested only when the free agent is better for the <b>rest of the season</b>, judged two ways at once: FantasyPros rest-of-season rank (refreshed Tuesdays) must be at least "+ROS_MARGIN+" spots better, and ESPN's live full-season projection must agree. This week's matchup is never a reason to drop a player. Smaller edges are listed as marginal so you don't churn.</div>";
+    const { sugg, marginal } = waiverSuggestions(me, bench, fa);
+    if (!sugg.length) h += "<div class='muted'>Nothing on the wire is a clear season-long upgrade over your bench. Good sign.</div>";
+    sugg.slice(0,6).forEach(s=>{ h += "<div class='suggest'>➕ <b class='hl'>Add "+esc(s.add.name)+"</b> ("+s.add.pos+", ROS #"+s.add.ros+(s.add.seasonProj!=null?", ESPN season "+s.add.seasonProj.toFixed(0)+" pts":"")+(s.add.inj?" — "+esc(s.add.inj.code):"")+") &nbsp;➖ drop "+esc(s.drop.name)+" (ROS "+(s.drop.ros!=null?"#"+s.drop.ros:"unranked")+(s.drop.seasonProj!=null?", "+s.drop.seasonProj.toFixed(0)+" pts":"")+(s.drop.inj?", "+esc(s.drop.inj.code):"")+")<br><span class='muted'>+"+s.gain+" rest-of-season spots"+(s.seasonDelta!=null?" · "+(s.seasonDelta>=0?"+":"")+s.seasonDelta+" projected season points":" · ESPN season projection missing for one of them")+" — "+(s.agree?"both sources agree":"rank only")+"</span></div>"; });
+    if (marginal.length) h += "<div class='muted' style='margin-top:6px'>Marginal (under "+ROS_MARGIN+" spots, not worth the churn): "+marginal.slice(0,4).map(s=>esc(s.add.name)+" over "+esc(s.drop.name)+" (+"+s.gain+")").join("; ")+"</div>";
+    h += "<h3>One-week streamers (Week "+S.week+", by "+(P?"predicted points":"rank")+")</h3><div class='muted' style='margin-bottom:6px'>Kickers and defenses are meant to be streamed. A quarterback listed here is a one-week rental only — worth it when your QB is on bye or out, never as a reason to drop him.</div>";
     ["QB","DST","K"].forEach(pos=>{
       const mineList = me.filter(p=>p.pos===pos && !p.onBye && !undraftable(p) && p[wkey]!=null);
       const mine = mineList.sort((a,b)=> wkey==="mu" ? b.mu-a.mu : a.wkRank-b.wkRank)[0];
       const best = fa.filter(p=>p.pos===pos && p[wkey]!=null && !p.onBye).sort((a,b)=> wkey==="mu" ? b.mu-a.mu : a.wkRank-b.wkRank).slice(0,3);
-      h += "<div class='row'><span class='slot'>"+pos+"</span><span class='muted'>yours: "+(mine? esc(mine.name)+(P?" ("+mine.mu.toFixed(1)+" proj)":" (wk #"+(mine.wkRank!=null?mine.wkRank:"–")+")") : "none")+"</span></div>";
-      best.forEach(p=>{ const b = mine && better(p, mine); h += "<div class='row'><span class='slot'></span>"+playerLine(p, b?"<span class='tag good'>better than yours this week</span>":"")+"</div>"; });
+      h += "<div class='row'><span class='slot'>"+pos+"</span><span class='muted'>yours: "+(mine? esc(mine.name)+(P?" ("+mine.mu.toFixed(1)+" proj)":" (wk #"+(mine.wkRank!=null?mine.wkRank:"–")+")") : "none this week — stream one")+"</span></div>";
+      best.forEach(p=>{
+        const b = mine && better(p, mine);
+        const tag = !mine ? "<span class='tag good'>fills the hole this week</span>" : (b ? (pos==="QB" ? "<span class='tag warn'>1-week rental only — keep "+esc(mine.name)+"</span>" : "<span class='tag good'>better than yours this week</span>") : "");
+        h += "<div class='row'><span class='slot'></span>"+playerLine(p, tag)+"</div>";
+      });
     });
     h += "<h3>Top free agents (rest of season)</h3>";
     fa.filter(p=>!["K","DST"].includes(p.pos)).sort((a,b)=>a.ros-b.ros).slice(0,15).forEach(p=>{ h += "<div class='row'>"+playerLine(p)+"</div>"; });
@@ -599,7 +618,8 @@
   }
   document.getElementById("refreshLive").addEventListener("click", async ()=>{ if (!S) return; PSTAMP = { text:"fetching live…", cls:"" }; renderAll(); await loadProjections(); buildIndex(); renderAll(); });
   window.__seasonTest = { inject:(s,r,x,tl,pj)=>{ S=s; R=JSON.parse(JSON.stringify(r)); X=x||{players:[]}; P=pj||null; PSTAMP = pj ? {text:"snapshot "+pj.generated, cls:"stale"} : {text:"none", cls:""}; mergeLog((tl||{}).entries); applyAcceptedTrades(); buildIndex(); renderAll(); },
-    logTrade, teamFloor, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, strength, findTrades, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, model:M };
+    logTrade, teamFloor, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, strength, findTrades, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, model:M,
+    waiverSuggestions:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN };
   if (!window.__seasonNoAutoLoad) load();
 })();
 </script>

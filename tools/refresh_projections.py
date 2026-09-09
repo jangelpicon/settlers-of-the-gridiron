@@ -69,12 +69,14 @@ def espn(week):
         if not pos: continue
         tm = ESPN_TEAM.get(p.get("proTeamId"))
         name = TEAM_NAME.get(tm, p["fullName"]) if pos == "DST" else p["fullName"]
-        proj = actual = None
+        proj = actual = season = None
         for s in p.get("stats", []):
             if s.get("scoringPeriodId") == week and s.get("statSplitTypeId") == 1:
                 if s.get("statSourceId") == 1: proj = s.get("appliedTotal")
                 elif s.get("statSourceId") == 0: actual = s.get("appliedTotal")
-        out[norm(name)] = {"name": name, "pos": pos, "team": tm, "proj": None if proj is None else round(proj, 2),
+            elif s.get("scoringPeriodId") == 0 and s.get("statSourceId") == 1:
+                season = s.get("appliedTotal")   # ESPN full-season projection (rest-of-season signal for waivers)
+        out[norm(name)] = {"name": name, "pos": pos, "team": tm, "proj": None if proj is None else round(proj, 2), "season": None if season is None else round(season, 1),
                            "actual": None if actual is None else round(actual, 2), "inj": ESPN_INJ.get(p.get("injuryStatus") or "ACTIVE", "ACT"),
                            "own": round((p.get("ownership") or {}).get("percentOwned") or 0, 1)}
     return out
@@ -101,7 +103,7 @@ def main():
     if len(e) < 200 or len(s) < 200 or len(games) < 20:
         sys.exit(f"feed too small — refusing (espn {len(e)}, sleeper {len(s)}, games {len(games)})")
     players = {}
-    for n, r in e.items(): players[n] = {"name": r["name"], "pos": r["pos"], "team": r["team"], "espn": r["proj"], "actual": r["actual"], "injE": r["inj"], "own": r["own"]}
+    for n, r in e.items(): players[n] = {"name": r["name"], "pos": r["pos"], "team": r["team"], "espn": r["proj"], "espnSeason": r["season"], "actual": r["actual"], "injE": r["inj"], "own": r["own"]}
     for n, r in s.items():
         q = players.setdefault(n, {"name": r["name"], "pos": r["pos"], "team": r["team"]})
         q["sleeper"] = r["proj"]; q["injS"] = r["inj"]
