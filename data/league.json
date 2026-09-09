@@ -1,0 +1,1 @@
+{"note": "ESPN league link. leagueId comes from the league URL (fantasy.espn.com/football/league?leagueId=XXXXXXX). public=true lets season.html read rosters live in the browser; otherwise tools/sync_league.py (with .espn_auth.json cookies) writes rosters.json on every weekly run.", "leagueId": null, "season": 2026, "public": false, "myTeam": "I'll be white!!"}

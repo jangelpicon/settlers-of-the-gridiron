@@ -64,7 +64,8 @@
   const FLEX = ["RB","WR","TE"];
   const ROS_MAX = 420; // value = ROS_MAX - rank
   let S = null, R = null, X = { players: [] }, P = null; // season data, rosters, exclusions, projections
-  let PSTAMP = { text:"–", cls:"" };
+  let LG = null, POOL = null; // data/league.json (ESPN league link), data/espn_pool.json (this league's ESPN player universe)
+  let PSTAMP = { text:"–", cls:"" }, RSTAMP = { text:"–", cls:"" };
 
   // ================= Live projections (ESPN + Sleeper + Vegas) =================
   // Same three public feeds as tools/refresh_projections.py, fetched in the browser on every load so the
@@ -126,6 +127,39 @@
     const out = normalize(es, sl, sb, wk);
     if (out.sources.espn < 200 || out.sources.sleeper < 200 || out.sources.games < 20) throw new Error("feed too small (espn "+out.sources.espn+", sleeper "+out.sources.sleeper+", games "+out.sources.games+")");
     return out;
+  }
+
+  // ================= Live rosters from the ESPN league =================
+  // Same shape tools/sync_league.py writes. Read live in the browser when data/league.json says the league is public.
+  const IR_SLOT = 21;
+  function rostersFromLeague(d){
+    const teams = {};
+    (d.teams||[]).forEach(t=>{
+      const name = (t.name || ((t.location||"")+" "+(t.nickname||""))).trim();
+      const rows = [];
+      ((t.roster||{}).entries||[]).forEach(e=>{
+        const p = (e.playerPoolEntry||{}).player || e.player || {};
+        const pos = ESPN_POS[p.defaultPositionId]; if (!pos) return;
+        const tm = ESPN_TEAM[p.proTeamId];
+        const row = { name: pos==="DST" ? (TEAM_NAME[tm] || p.fullName) : p.fullName, pos, team: tm };
+        if (e.lineupSlotId===IR_SLOT) row.ir = true;
+        rows.push(row);
+      });
+      teams[name] = rows;
+    });
+    return teams;
+  }
+  async function loadLiveRosters(){
+    if (!LG || !LG.leagueId){ RSTAMP = { text:(R.updated||"–")+" (hand-kept — no ESPN league id yet)", cls:"stale" }; return; }
+    if (!LG.public){ RSTAMP = { text:(R.updated||"–")+(R.source?" ("+R.source+")":" (synced by the weekly run)"), cls:"" }; return; }
+    try {
+      const d = await fetchJson("https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/"+(LG.season||SEASON)+"/segments/0/leagues/"+LG.leagueId+"?view=mTeam&view=mRoster");
+      const teams = rostersFromLeague(d);
+      if (Object.keys(teams).length < 2) throw new Error("no teams returned");
+      if (!teams[R.me]) throw new Error("my team '"+R.me+"' not in league team names");
+      R = { me: R.me, updated: new Date().toISOString().slice(0,10), teams, live:true };
+      RSTAMP = { text:"LIVE from ESPN "+new Date().toLocaleString("en-US",{timeZone:"America/Chicago",month:"numeric",day:"numeric",hour:"numeric",minute:"2-digit"})+" CT", cls:"live" };
+    } catch(e){ RSTAMP = { text:(R.updated||"–")+" (repo copy — live ESPN read failed: "+e.message+")", cls:"stale" }; }
   }
 
   // ================= Prediction model =================
@@ -403,7 +437,8 @@
   function excluded(){ const s = new Set(); (X.players||[]).forEach(p=>s.add(norm(p.name))); return s; }
   function freeAgents(){
     const taken = allRostered(), ex = excluded();
-    return S.ros.filter(p=>!taken.has(p.n) && !ex.has(p.n)).map(p=>info({name:p.name,pos:p.pos,team:p.team}));
+    const pool = POOL && POOL.players && POOL.players.length ? new Set(POOL.players) : null; // this league's ESPN universe, when synced
+    return S.ros.filter(p=>!taken.has(p.n) && !ex.has(p.n) && (!pool || pool.has(p.n))).map(p=>info({name:p.name,pos:p.pos,team:p.team}));
   }
   function renderWaivers(){
     const me = myTeam();
@@ -583,7 +618,7 @@
     document.getElementById("teamTitle").textContent = R.me;
     document.getElementById("wk").textContent = S.week!=null ? S.week : "–";
     document.getElementById("stamp").textContent = S.generated;
-    document.getElementById("rosterStamp").textContent = R.updated || "–";
+    const rs = document.getElementById("rosterStamp"); rs.textContent = RSTAMP.text; rs.className = RSTAMP.cls;
     const ps = document.getElementById("pstamp"); ps.textContent = PSTAMP.text; ps.className = PSTAMP.cls;
     renderLineup(); renderWaivers(); renderTrades(); renderByes(); renderLeague();
   }
@@ -606,18 +641,21 @@
   }
   async function load(){
     try {
-      const [s, r, x, tl] = await Promise.all([fetch("data/season.json?v="+Date.now()).then(x=>x.json()), fetch("data/rosters.json?v="+Date.now()).then(x=>x.json()), fetch("data/exclusions.json?v="+Date.now()).then(x=>x.json()).catch(()=>({players:[]})), fetch("data/trades.json?v="+Date.now()).then(x=>x.json()).catch(()=>({entries:[]}))]);
-      S = s; R = r; X = x || {players:[]}; mergeLog((tl||{}).entries); applyAcceptedTrades();
-      PSTAMP = { text:"fetching live…", cls:"" };
+      const [s, r, x, tl, lg, pool] = await Promise.all([fetch("data/season.json?v="+Date.now()).then(x=>x.json()), fetch("data/rosters.json?v="+Date.now()).then(x=>x.json()), fetch("data/exclusions.json?v="+Date.now()).then(x=>x.json()).catch(()=>({players:[]})), fetch("data/trades.json?v="+Date.now()).then(x=>x.json()).catch(()=>({entries:[]})),
+        fetch("data/league.json?v="+Date.now()).then(x=>x.json()).catch(()=>null), fetch("data/espn_pool.json?v="+Date.now()).then(x=>x.json()).catch(()=>null)]);
+      S = s; R = r; X = x || {players:[]}; LG = lg; POOL = pool; mergeLog((tl||{}).entries);
+      PSTAMP = { text:"fetching live…", cls:"" }; RSTAMP = { text:(R.updated||"–")+" (checking ESPN…)", cls:"" };
       buildIndex(); renderAll();
-      await loadProjections();
+      await Promise.all([loadProjections(), loadLiveRosters()]);
+      applyAcceptedTrades();
       buildIndex(); renderAll();
     } catch(e){
       document.getElementById("stamp").textContent = "failed to load data ("+e.message+")";
     }
   }
   document.getElementById("refreshLive").addEventListener("click", async ()=>{ if (!S) return; PSTAMP = { text:"fetching live…", cls:"" }; renderAll(); await loadProjections(); buildIndex(); renderAll(); });
-  window.__seasonTest = { inject:(s,r,x,tl,pj)=>{ S=s; R=JSON.parse(JSON.stringify(r)); X=x||{players:[]}; P=pj||null; PSTAMP = pj ? {text:"snapshot "+pj.generated, cls:"stale"} : {text:"none", cls:""}; mergeLog((tl||{}).entries); applyAcceptedTrades(); buildIndex(); renderAll(); },
+  window.__seasonTest = { inject:(s,r,x,tl,pj,pool)=>{ S=s; R=JSON.parse(JSON.stringify(r)); X=x||{players:[]}; P=pj||null; POOL=pool||null; LG=null; PSTAMP = pj ? {text:"snapshot "+pj.generated, cls:"stale"} : {text:"none", cls:""}; RSTAMP = {text:R.updated||"–", cls:""}; mergeLog((tl||{}).entries); applyAcceptedTrades(); buildIndex(); renderAll(); },
+    rostersFromLeague, setRosters:(r)=>{ R = JSON.parse(JSON.stringify(r)); buildIndex(); renderAll(); },
     logTrade, teamFloor, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, strength, findTrades, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, model:M,
     waiverSuggestions:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN };
   if (!window.__seasonNoAutoLoad) load();

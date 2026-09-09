@@ -148,6 +148,22 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   while (d.querySelector("#tab-trades .tb-undo")) d.querySelector("#tab-trades .tb-undo").click();
   T.inject(season, rosters, exclusions, tradeLog, projections);
 
+  console.log("== ESPN league roster sync ==");
+  const leagueFix = { teams: [
+    { id: 1, name: rosters.me, roster: { entries: [
+      { lineupSlotId: 0, playerPoolEntry: { player: { fullName: "Drake Maye", defaultPositionId: 1, proTeamId: 17 } } },
+      { lineupSlotId: 16, playerPoolEntry: { player: { fullName: "Vikings D/ST", defaultPositionId: 16, proTeamId: 16 } } },
+      { lineupSlotId: 21, playerPoolEntry: { player: { fullName: "Hurt Guy", defaultPositionId: 2, proTeamId: 8 } } } ] } },
+    { id: 2, location: "SACK OF", nickname: "WHEAT", roster: { entries: [ { lineupSlotId: 2, playerPoolEntry: { player: { fullName: "Kyren Williams", defaultPositionId: 2, proTeamId: 14 } } } ] } } ] };
+  const lt = T.rostersFromLeague(leagueFix);
+  assert(Object.keys(lt).length === 2 && lt[rosters.me] && lt["SACK OF WHEAT"], "league payload parsed into team rosters (both ESPN team-name shapes)");
+  assert(lt[rosters.me].map(p => p.name).join(",") === "Drake Maye,Minnesota Vikings,Hurt Guy" && lt[rosters.me][1].pos === "DST" && lt[rosters.me][1].team === "MIN" && lt[rosters.me][2].ir === true, "players, D/ST full name, NFL team and IR flag come through");
+  T.setRosters({ me: rosters.me, updated: "2026-09-09", teams: lt, live: true });
+  assert([...d.querySelectorAll("#tab-lineup .row")].some(r => /Drake Maye/.test(r.textContent)) && [...d.querySelectorAll("#tab-league .row")].length === 2, "page re-renders from live ESPN rosters");
+  T.inject(season, rosters, exclusions, tradeLog, projections, { players: ["jaredgoff"] });
+  const faPool = T.freeAgents();
+  assert(faPool.length === 1 && faPool[0].n === "jaredgoff", "with an ESPN league pool synced, only players in that pool count as free agents");
+  T.inject(season, rosters, exclusions, tradeLog, projections);
   console.log("== Byes / League ==");
   assert([...d.querySelectorAll("#tab-byes .row")].length >= 5, "bye map has rows");
   assert([...d.querySelectorAll("#tab-league .row")].length === 9, "power ranking lists all 9 teams");
