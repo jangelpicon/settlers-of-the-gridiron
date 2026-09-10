@@ -36,21 +36,20 @@
   .bar{height:6px;border-radius:3px;background:#2a323b;position:relative;overflow:hidden;flex:1;min-width:80px;max-width:180px;} .bar i{position:absolute;left:0;top:0;bottom:0;background:var(--sheep);}
   .live{color:var(--sheep);} .stale{color:#ffd977;}
   /* column grids: every player list shares one column layout so the header row lines up */
-  .tbl{overflow-x:auto;} .tbl .row.grid,.tbl .hrow{display:grid;grid-template-columns:44px 40px minmax(150px,1.4fr) 44px 58px 70px 58px 66px 46px 60px 66px 44px minmax(110px,1fr);gap:6px;align-items:center;min-width:900px;}
-  .hrow{padding:4px 8px;font-size:.66rem;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #38424d;font-weight:700;}
-  .hrow span[title],.legend dt{cursor:help;border-bottom:1px dotted #4a5561;}
+  .tbl{overflow-x:auto;} .tbl .row.grid,.tbl .hrow{display:grid;grid-template-columns:40px 38px minmax(130px,1.3fr) 40px 56px 72px 60px 64px 44px 62px 70px 36px minmax(140px,1fr);gap:6px;align-items:center;min-width:930px;}
+  .hrow{padding:4px 8px;font-size:.64rem;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;border-bottom:1px solid #38424d;font-weight:700;white-space:nowrap;} .hrow .num{text-align:right;} .hrow .ctr{text-align:center;}
+  .hrow span[title],.legend dt{cursor:help;text-decoration:underline dotted #4a5561;text-underline-offset:3px;}
   .row.grid b{min-width:0;} .row.grid .c{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;} .row.grid .num{text-align:right;font-variant-numeric:tabular-nums;}
-  .row.grid .detail{grid-column:1 / -1;padding-left:0;}
-  .row.grid .sub{grid-column:1 / -1;font-size:.8rem;color:var(--text);padding:3px 0 2px 52px;white-space:normal;} .row.grid .sub .tag{white-space:normal;display:inline-block;line-height:1.3;padding:1px 6px;}
-  .tbl .gw .row.grid,.tbl .gw .hrow{grid-template-columns:44px 40px minmax(150px,1.4fr) 44px 58px 70px 58px 66px 46px 60px 66px 44px minmax(90px,.8fr) minmax(170px,1.2fr) minmax(150px,1fr);min-width:1200px;}
+  .row.grid .grade{text-align:center;} .row.grid .detail{grid-column:1 / -1;padding-left:96px;}
+  .row.grid .sub{grid-column:1 / -1;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 16px;align-items:center;font-size:.78rem;color:var(--text);padding:2px 0 2px 96px;white-space:normal;} .row.grid .sub .lbl{color:var(--muted);font-size:.64rem;text-transform:uppercase;letter-spacing:.3px;margin-right:4px;} .row.grid .sub .tag{white-space:normal;display:inline-block;line-height:1.3;padding:1px 6px;}
   .tbl .g4 .row.grid,.tbl .g4 .hrow{grid-template-columns:60px minmax(200px,1.2fr) 200px minmax(160px,1fr);min-width:620px;}
   .tbl .g3 .row.grid,.tbl .g3 .hrow{grid-template-columns:60px minmax(220px,1.5fr) minmax(160px,1fr);min-width:500px;}
   .tbl .gl .row.grid,.tbl .gl .hrow{grid-template-columns:44px minmax(180px,1.5fr) 110px 130px;min-width:480px;}
   .tbl .gt .row.grid,.tbl .gt .hrow{grid-template-columns:80px minmax(220px,1.5fr) 90px minmax(200px,1fr) 60px;min-width:640px;}
-  .tbl .gd .row.grid,.tbl .gd .hrow{grid-template-columns:56px minmax(180px,1fr) minmax(180px,1fr) minmax(90px,.6fr) minmax(170px,1fr);min-width:700px;}
+  .tbl .gd .row.grid,.tbl .gd .hrow{grid-template-columns:60px minmax(180px,1fr) minmax(180px,1fr) minmax(90px,.6fr) minmax(170px,1fr);min-width:700px;} .gd .row.grid .tag{text-align:center;}
   .legend{font-size:.8rem;color:var(--muted);} .legend dl{display:grid;grid-template-columns:max-content 1fr;gap:3px 12px;margin:6px 0 0;} .legend dt{color:var(--text);font-weight:700;} .legend dd{margin:0;}
   details summary{cursor:pointer;color:var(--wheat);font-weight:600;}
-  @media (max-width:700px){ .row b{min-width:100px;} .detail{padding-left:0;} }
+  @media (max-width:700px){ .row b{min-width:100px;} .detail{padding-left:0;} .row.grid .detail,.row.grid .sub{padding-left:0;} }
 </style>
 </head>
 <body>
@@ -368,7 +367,8 @@
     if (!code || code==="ACT") return "";
     const hard = ["IR","O","SUSP"].includes(code);
     const note = p.injNote || (p.inj && p.inj.note) || "";
-    return " <span class='inj "+(hard?"inj-hard":"inj-soft")+"' title='"+esc(note)+"'>"+esc(code==="O"?"OUT":code)+(note?" · "+esc(note):"")+(P && p.pPlay>0 && p.pPlay<1 ? " · "+Math.round(p.pPlay*100)+"% to play" : "")+"</span>";
+    const pct = (P && p.pPlay>0 && p.pPlay<1) ? Math.round(p.pPlay*100)+"%" : "";
+    return " <span class='inj "+(hard?"inj-hard":"inj-soft")+"' title='"+esc(code==="O"?"OUT":code)+(pct?" — "+pct+" chance to play":"")+(note?" ("+esc(note)+")":"")+"'>"+esc(code==="O"?"OUT":code)+(pct?" · "+pct:"")+(note?" · "+esc(note):"")+"</span>";
   }
   function posTag(pos){ return "<span class='pos-tag pos-"+pos+"'>"+pos+"</span>"; }
   function gradeTag(g){ if (!g) return ""; const cls = /^A/.test(g)?"good":/^B/.test(g)?"":/^[DF]/.test(g)?"bad":"warn"; return "<span class='tag grade "+cls+"' title='FantasyPros start/sit grade'>"+esc(g)+"</span>"; }
@@ -378,8 +378,8 @@
     return "<span class='proj' title='predicted points (floor–ceiling)'>"+p.mu.toFixed(1)+" <small>"+p.floor.toFixed(0)+"–"+p.ceil.toFixed(0)+"</small></span>";
   }
   // One player = one grid row. Column order must match playerHeader().
-  const PCOLS = [["Slot","Lineup slot (BN = bench, FA = free agent)"],["Pos","Position"],["Player",""],["NFL","His NFL team"],["Proj","Predicted fantasy points this week"],["Floor–Ceil","Bad week – good week (20th–80th percentile)"],["Wk rank","FantasyPros consensus rank this week (RB/WR/TE ranked together)"],["Opp","Opponent this week"],["Grade","FantasyPros start/sit grade"],["ROS rank","Rest-of-season rank, all positions, lower = better"],["Season pts","ESPN projected points for the full season"],["Bye","Bye week"],["Status","Injury / locked / bye"]];
-  function playerHeader(){ return "<div class='hrow'>"+PCOLS.map(c=>"<span"+(c[1]?" title='"+esc(c[1])+"'":"")+">"+esc(c[0])+"</span>").join("")+"</div>"; }
+  const PCOLS = [["Slot","Lineup slot (BN = bench, FA = free agent)"],["Pos","Position"],["Player",""],["NFL","His NFL team"],["Proj","Predicted fantasy points this week","num"],["Floor–Ceil","Bad week – good week (20th–80th percentile)","num"],["Wk rank","FantasyPros consensus rank this week (RB/WR/TE ranked together)","num"],["Opp","Opponent this week"],["Grade","FantasyPros start/sit grade","ctr"],["ROS rank","Rest-of-season rank, all positions, lower = better","num"],["Season pts","ESPN projected points for the full season","num"],["Bye","Bye week","num"],["Status","Injury / locked / bye"]];
+  function playerHeader(){ return "<div class='hrow'>"+PCOLS.map(c=>"<span"+(c[2]?" class='"+c[2]+"'":"")+(c[1]?" title='"+esc(c[1])+"'":"")+">"+esc(c[0])+"</span>").join("")+"</div>"; }
   function playerLine(p, extra, slot){
     const num = v => "<span class='c num'>"+v+"</span>";
     const proj = (!P || p.mu==null) ? num(P ? "<span class='bad'>–</span>" : "")
@@ -489,11 +489,11 @@
       return { key: wk!=null && wk>=1.5 ? "add" : wk!=null && wk>0 ? "marginal" : "pass", rosDelta, seasonDelta, wkDelta: wk,
         text: wk==null ? "no projection" : (wk>=1.5 ? "swap: +"+wk.toFixed(1)+" pts this week" : wk>0 ? "+"+wk.toFixed(1)+" this week — barely" : "keep yours ("+wk.toFixed(1)+" this week)") };
     }
-    if (fa.pos==="QB") return { key:"rental", rosDelta, seasonDelta, text:"1-week rental — costs a bench spot, only if your QB is out/bye" };
+    if (fa.pos==="QB") return { key:"rental", rosDelta, seasonDelta, text:"1-week rental — only if your QB is out or on bye" };
     if (rosDelta >= ROS_MARGIN && seasonOk) return { key:"add", rosDelta, seasonDelta, text:"ADD: +"+rosDelta+" ROS spots"+(seasonDelta!=null?", +"+seasonDelta+" season pts":"") };
     if (rosDelta > 0 && seasonOk) return { key:"marginal", rosDelta, seasonDelta, text:"marginal: +"+rosDelta+" ROS spots"+(seasonDelta!=null?", +"+seasonDelta+" season pts":"")+" — not worth the churn" };
-    if (rosDelta > 0) return { key:"pass", rosDelta, seasonDelta, text:"pass: rank says yes but ESPN season projection says no ("+seasonDelta+" pts)" };
-    return { key:"pass", rosDelta, seasonDelta, text:"pass: worse than "+drop.name+" for the season ("+rosDelta+" spots)" };
+    if (rosDelta > 0) return { key:"pass", rosDelta, seasonDelta, text:"pass — ESPN season projection says no ("+seasonDelta+" pts)" };
+    return { key:"pass", rosDelta, seasonDelta, text:"pass — worse than "+drop.name+" for the season ("+rosDelta+" spots)" };
   }
   function waiverBoard(me, bench, fa){
     return fa.map(f=>{ const drop = dropCandidate(bench, me, f); return { fa:f, drop, verdict: dropVerdict(f, drop) }; });
@@ -501,9 +501,10 @@
   const WCOLS = [["Drop for him","The bench player you'd drop to add him (least rest-of-season value on your bench; K/DST = straight swap)"],["Verdict","Is the swap worth it under the season-long rule?"]];
   function waiverHeader(){ return playerHeader(); } // drop + verdict sit on a full-width line under each player so nothing is cut off
   function waiverRow(b, tag){
-    const v = b.verdict; const cls = v.key==="add"?"good":v.key==="marginal"||v.key==="rental"?"warn":v.key==="pass"?"bad":"";
-    const drop = b.drop ? "<b>"+esc(b.drop.name)+"</b> <span class='muted'>("+b.drop.pos+", ROS #"+(b.drop.ros!=null?b.drop.ros:"–")+(b.drop.seasonProj!=null?", "+b.drop.seasonProj.toFixed(0)+" season pts":"")+(b.drop.mu!=null?", "+b.drop.mu.toFixed(1)+" proj this week":"")+")</span>" : "<span class='muted'>nobody</span>";
-    return "<div class='row grid'>"+playerLine(b.fa, tag||"", "FA")+"<span class='sub'><span class='muted'>"+WCOLS[0][0]+":</span> "+drop+" &nbsp;→&nbsp; <span class='muted'>"+WCOLS[1][0]+":</span> <span class='tag "+cls+"'>"+esc(v.text)+"</span></span></div>";
+    const v = b.verdict; const cls = v.key==="add"?"good":v.key==="marginal"||v.key==="rental"?"warn":"";
+    const wkly = ["K","DST"].includes(b.fa.pos);
+    const drop = b.drop ? "<b>"+esc(b.drop.name)+"</b> <span class='muted'>"+b.drop.pos+" · ROS #"+(b.drop.ros!=null?b.drop.ros:"–")+(b.drop.seasonProj!=null?" · "+b.drop.seasonProj.toFixed(0)+" season pts":"")+(wkly && b.drop.mu!=null?" · "+b.drop.mu.toFixed(1)+" proj this week":"")+"</span>" : "<span class='muted'>nobody</span>";
+    return "<div class='row grid'>"+playerLine(b.fa, tag||"", "FA")+"<span class='sub'><span><span class='lbl' title='"+esc(WCOLS[0][1])+"'>"+WCOLS[0][0]+":</span> "+drop+"</span><span><span class='lbl' title='"+esc(WCOLS[1][1])+"'>"+WCOLS[1][0]+":</span> <span class='tag "+cls+"'>"+esc(v.text)+"</span></span></span></div>";
   }
   function excluded(){ const s = new Set(); (X.players||[]).forEach(p=>s.add(norm(p.name))); return s; }
   function freeAgents(){
