@@ -83,23 +83,35 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(WS.sugg.every(s => s.gain >= T.ROS_MARGIN), "every add/drop suggestion is at least " + T.ROS_MARGIN + " rest-of-season rank spots better (" + WS.sugg.length + " suggestions)");
   assert(WS.sugg.concat(WS.marginal).every(s => s.add.seasonProj == null || s.drop.seasonProj == null || s.add.seasonProj >= s.drop.seasonProj), "no suggestion drops a player with a higher ESPN full-season projection than the add");
   const benchSkill = T.optimalLineup(me, "ros").bench.filter(p => !["K","DST"].includes(p.pos)).sort((a, b) => (b.ros || 420) - (a.ros || 420));
-  assert(WS.sugg.concat(WS.marginal).every(s => !["K","DST","QB"].includes(s.add.pos) && s.drop.n === benchSkill[0].n), "add/drop suggestions drop your least-valuable bench player (" + benchSkill[0].name + ") and never touch K/DST/QB");
+  assert(WS.sugg.concat(WS.marginal).every(s => !["K","DST"].includes(s.add.pos) && (s.add.pos === "QB" ? s.drop.pos === "QB" : s.drop.n === benchSkill[0].n)), "suggestions drop your least-valuable bench player (" + benchSkill[0].name + "); a QB suggestion is a straight QB swap; K/DST never suggested");
   assert(WS.sugg.every(s => T.waiverBoard([s.add])[0].verdict.key === "add") && WS.marginal.every(s => T.waiverBoard([s.add])[0].verdict.key === "marginal"), "suggestion box and per-player verdict column agree (one rule)");
   assert(me.every(p => typeof p.seasonProj === "number"), "every rostered player has a live ESPN full-season projection");
   const wtxt = d.getElementById("tab-waivers").textContent;
   assert(/season-long only/.test(wtxt) && /never a reason to drop/.test(wtxt), "waiver tab states the season-long rule in plain language");
-  assert(/1-wk rental/.test(wtxt) || !/Jared Goff/.test(wtxt), "a QB streamer who out-projects Maye this week is labelled a 1-week rental, not an upgrade");
   const qbBlock = wtxt.slice(wtxt.indexOf("QB — yours:"), wtxt.indexOf("DST — yours:"));
-  assert(qbBlock.length > 0 && !/better than yours this week/.test(qbBlock), "'better than yours this week' is never shown for a QB streamer while Jose has a healthy QB");
+  assert(qbBlock.length > 0 && !/better than yours this week/.test(qbBlock), "a QB streamer is a rental or a season swap — never a one-week 'better than yours'");
   console.log("== Waivers: who to drop ==");
   const WB = T.waiverBoard();
   const benchRos = T.optimalLineup(me, "ros").bench.filter(p => !["K","DST"].includes(p.pos));
   const worstBench = benchRos.slice().sort((a, b) => (b.ros || 420) - (a.ros || 420))[0];
-  assert(WB.length > 0 && WB.filter(b => !["K","DST"].includes(b.fa.pos)).every(b => b.drop && b.drop.n === worstBench.n), "every skill free agent names the same drop candidate: the bench player with the least rest-of-season value (" + worstBench.name + ")");
+  assert(WB.length > 0 && WB.filter(b => !["K","DST","QB"].includes(b.fa.pos)).every(b => b.drop && b.drop.n === worstBench.n), "every skill free agent names the same drop candidate: the bench player with the least rest-of-season value (" + worstBench.name + ")");
+  assert(WB.filter(b => b.fa.pos === "QB").every(b => b.drop && b.drop.pos === "QB"), "QB free agents are a straight swap for your QB, never a bench drop");
   assert(WB.filter(b => b.fa.pos === "DST").every(b => b.drop && b.drop.pos === "DST") && WB.filter(b => b.fa.pos === "K").every(b => b.drop && b.drop.pos === "K"), "K/DST free agents are a straight swap for your K/DST");
   assert(WB.every(b => ["add","marginal","pass","rental","none"].includes(b.verdict.key) && b.verdict.text.length > 3), "every free agent has a verdict (add / marginal / pass / rental)");
   assert(WB.filter(b => ["RB","WR","TE"].includes(b.fa.pos)).every(b => (b.verdict.key === "add") === (b.verdict.rosDelta >= T.ROS_MARGIN && (b.verdict.seasonDelta == null || b.verdict.seasonDelta >= 0))), "ADD verdict matches the season-long rule exactly");
-  assert(WB.filter(b => b.fa.pos === "QB").every(b => b.verdict.key === "rental"), "QB free agents are always labelled 1-week rentals");
+  assert(WB.filter(b => b.fa.pos === "QB").every(b => b.verdict.key === (b.verdict.rosDelta >= T.ROS_MARGIN && (b.verdict.seasonDelta == null || b.verdict.seasonDelta >= 0) ? "add" : b.verdict.rosDelta > 0 && (b.verdict.seasonDelta == null || b.verdict.seasonDelta >= 0) ? "marginal" : "rental")), "a QB free agent is a SWAP when he beats your QB season-long, a rental otherwise — the season-long rule applies to QBs too");
+  // capability check: hand Jose a weak QB and the tool must recommend the swap (Brock Purdy over Malik Willis)
+  {
+    const save = JSON.parse(JSON.stringify(T.getRosters()));
+    const weak = JSON.parse(JSON.stringify(save)); weak.teams[weak.me] = weak.teams[weak.me].map(p => p.name === "Drake Maye" ? { name:"Malik Willis", pos:"QB", team:"MIA" } : p);
+    T.setRosters(weak);
+    const qb = T.waiverBoard().filter(b => b.fa.pos === "QB" && /purdy/.test(b.fa.n));
+    assert(qb.length === 1 && qb[0].verdict.key === "add" && /willis/.test(qb[0].drop.n), "with a weak QB rostered, the tool recommends the season-long QB swap (Purdy over Willis)");
+    assert(T.waiverSuggestions().sugg.some(s => /purdy/.test(s.add.n)), "the QB swap shows up in the suggestion box, not just the table");
+    T.setRosters(save);
+  }
+  // fairness: a deal where they hand over the far bigger name craters the accept odds; landing the bigger name raises them
+  assert(T.acceptOdds(0, 30).p <= 0.1 && T.acceptOdds(0, 15).p < T.acceptOdds(0, 0).p && T.acceptOdds(-4, -20).p > T.acceptOdds(-4, 0).p, "accept odds fall when the deal looks lopsided against them by consensus rank, rise when they land the bigger name");
   const whdr = [...d.querySelectorAll("#tab-waivers .hrow")];
   const wrows = [...d.querySelectorAll("#tab-waivers .row.grid")];
   assert(whdr.length >= 4 && wrows.length > 0 && wrows.every(r => r.querySelector(".sub") && /Drop for him:/.test(r.querySelector(".sub").textContent) && /Verdict:/.test(r.querySelector(".sub").textContent) && r.querySelector(".sub .tag")), "every waiver row carries a full-width 'Drop for him → Verdict' line (nothing hidden off-screen)");
@@ -219,6 +231,20 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   L.slots.forEach(s => { const p = s.p; console.log(`  ${s.slot.padEnd(4)} ${p ? `${p.name} (${p.pos} ${p.liveTeam}) ${p.mu.toFixed(1)} [${p.floor.toFixed(0)}–${p.ceil.toFixed(0)}] | ${p.srcs.map(x => x.k + " " + x.v.toFixed(1)).join(", ")} | Vegas ×${p.vegasMult.toFixed(2)}${p.injLive !== "ACT" ? " | " + p.injLive + " " + Math.round(p.pPlay*100) + "% to play" : ""}${p.game ? " | " + (p.game.home ? "vs " : "at ") + p.game.opp + " " + p.game.status : ""}` : "— empty —"}`); });
   console.log("  BENCH:");
   L.bench.forEach(p => console.log(`       ${p.name} (${p.pos}) ${p.mu != null ? p.mu.toFixed(1) + " [" + p.floor.toFixed(0) + "–" + p.ceil.toFixed(0) + "]" : "n/a"}${p.injLive !== "ACT" ? " | " + p.injLive + " " + Math.round(p.pPlay*100) + "%" : ""}`));
+  // ======================= WR1-out alert =======================
+  {
+    const pjO = JSON.parse(JSON.stringify(projections));
+    Object.values(pjO.players).forEach(q => { if (q.name === "A.J. Brown") { q.injE = "O"; q.injS = "O"; } });
+    T.inject(season, rosters, exclusions, tradeLog, pjO);
+    const lu = d.getElementById("tab-lineup").textContent;
+    assert(/Drake Maye alert/.test(lu) && /A\.J\. Brown/.test(lu) && /rest-of-season rank reprices slowly/.test(lu), "when the QB's No.1 receiver is OUT, the Lineup tab shows the alert naming both players");
+    const pjH = JSON.parse(JSON.stringify(projections));
+    Object.values(pjH.players).forEach(q => { if (q.name === "A.J. Brown") { q.injE = "ACT"; q.injS = "ACT"; delete q.injNote; } });
+    T.inject(season, rosters, exclusions, tradeLog, pjH);
+    assert(!/Drake Maye alert/.test(d.getElementById("tab-lineup").textContent), "no WR1 alert when the receiver is healthy");
+    T.inject(season, rosters, exclusions, tradeLog, projections);
+  }
+
   console.log("\n--- START/SIT CALLS (chance bench player outscores the starter he'd replace) ---");
   [...d.querySelectorAll("#tab-lineup .row")].filter(r => /%/.test(r.textContent) && /over/.test(r.textContent)).forEach(r => console.log("  " + r.textContent.replace(/\s+/g, " ").trim()));
   const iw = [...d.querySelectorAll("#tab-lineup .suggest")].map(x => x.textContent.replace(/\s+/g, " ").trim()).filter(x => /Injury watch/.test(x));

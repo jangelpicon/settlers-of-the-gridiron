@@ -440,6 +440,14 @@
         h += "<div class='row grid'><span class='tag "+cls+"' style='text-align:center'>"+pct+"%</span><b class='c'>"+esc(d.bench.name)+" <span class='muted'>("+d.bench.mu.toFixed(1)+" ± "+d.bench.sd.toFixed(1)+")</span></b><span class='c'>over "+esc(d.starter.name)+" <span class='muted'>("+d.starter.mu.toFixed(1)+" ± "+d.starter.sd.toFixed(1)+")</span></span><span class='bar'><i style='width:"+pct+"%'></i></span><span class='muted'>"+verdict+(d.starter.locked?" · starter already locked":"")+"</span></div>";
       });
       if (dec.length) h += "</div></div>";
+      me.filter(p=>p.pos==="QB").forEach(qb=>{
+        const tm = teamCode(qb.liveTeam||qb.team); if (!tm) return;
+        const wrs = S.ros.filter(r=>r.pos==="WR" && teamCode(r.team)===tm).sort((a,b)=>a.rank-b.rank);
+        if (!wrs.length) return;
+        const wr1 = info({name:wrs[0].name, pos:"WR", team:wrs[0].team});
+        if (!["O","IR","SUSP","D"].includes(wr1.injLive)) return;
+        h += "<div class='suggest'>🚨 <b class='hl'>"+esc(qb.name)+" alert:</b> his No.1 receiver <b>"+esc(wr1.name)+"</b> is "+esc(wr1.injLive==="O"?"OUT":wr1.injLive)+(wr1.injNote?" ("+esc(wr1.injNote)+")":"")+". This week's projections already include it, but his rest-of-season rank reprices slowly — expect it to drop at the next rankings refresh, and check the QB list on the Waivers tab for a season-long upgrade.</div>";
+      });
       const risky = slots.filter(s=>s.p && s.p.pPlay<1 && s.p.pPlay>0).map(s=>s.p);
       if (risky.length) h += "<div class='suggest'>⚠️ <b class='hl'>Injury watch:</b> "+risky.map(p=>esc(p.name)+" ("+esc(p.injLive)+(p.injNote?", "+esc(p.injNote):"")+", "+Math.round(p.pPlay*100)+"% to play, "+esc(kickText(p.game))+")").join("; ")+". Check the inactives list ~90 minutes before kickoff; if he's out, the bench alternative above is the swap.</div>";
     } else {
@@ -463,7 +471,7 @@
   // The suggestion box and the per-player "Drop for him" column are the SAME rule: one drop candidate (least
   // rest-of-season value on the bench), one verdict. The box just lists the ADDs (and marginals) from the board.
   function waiverSuggestions(me, bench, fa){
-    const board = waiverBoard(me, bench, fa.filter(f=>f.ros!=null && !["K","DST","QB"].includes(f.pos)));
+    const board = waiverBoard(me, bench, fa.filter(f=>f.ros!=null && !["K","DST"].includes(f.pos)));
     const toItem = b => ({ drop:b.drop, add:b.fa, gain:b.verdict.rosDelta, agree: b.verdict.seasonDelta!=null, seasonDelta: b.verdict.seasonDelta });
     const sugg = board.filter(b=>b.verdict.key==="add").map(toItem).sort((a,b)=>b.gain-a.gain);
     const marginal = board.filter(b=>b.verdict.key==="marginal").map(toItem).sort((a,b)=>b.gain-a.gain);
@@ -474,6 +482,7 @@
   // season-long rule as the suggestions: +ROS_MARGIN spots AND ESPN season projection not lower.
   function dropCandidate(bench, me, fa){
     if (["K","DST"].includes(fa.pos)) return me.filter(p=>p.pos===fa.pos)[0] || null;      // K/DST: straight swap for yours
+    if (fa.pos==="QB"){ const qbs = me.filter(p=>p.pos==="QB"); return qbs.length ? qbs.slice().sort((a,b)=>(b.ros||ROS_MAX)-(a.ros||ROS_MAX))[0] : null; } // QB: straight swap for your worst QB
     const pool = bench.filter(p=>!["K","DST"].includes(p.pos));
     if (!pool.length) return null;
     return pool.slice().sort((a,b)=>(b.ros||ROS_MAX)-(a.ros||ROS_MAX))[0];
@@ -489,7 +498,11 @@
       return { key: wk!=null && wk>=1.5 ? "add" : wk!=null && wk>0 ? "marginal" : "pass", rosDelta, seasonDelta, wkDelta: wk,
         text: wk==null ? "no projection" : (wk>=1.5 ? "swap: +"+wk.toFixed(1)+" pts this week" : wk>0 ? "+"+wk.toFixed(1)+" this week — barely" : "keep yours ("+wk.toFixed(1)+" this week)") };
     }
-    if (fa.pos==="QB") return { key:"rental", rosDelta, seasonDelta, text:"1-week rental — only if your QB is out or on bye" };
+    if (fa.pos==="QB"){
+      if (rosDelta >= ROS_MARGIN && seasonOk) return { key:"add", rosDelta, seasonDelta, text:"SWAP: better than "+drop.name+" for the season (+"+rosDelta+" ROS spots"+(seasonDelta!=null?", +"+seasonDelta+" season pts":"")+")" };
+      if (rosDelta > 0 && seasonOk) return { key:"marginal", rosDelta, seasonDelta, text:"marginal over "+drop.name+" (+"+rosDelta+" ROS spots) — watch him, not worth the churn yet" };
+      return { key:"rental", rosDelta, seasonDelta, text:"1-week rental — only if your QB is out or on bye" };
+    }
     if (rosDelta >= ROS_MARGIN && seasonOk) return { key:"add", rosDelta, seasonDelta, text:"ADD: +"+rosDelta+" ROS spots"+(seasonDelta!=null?", +"+seasonDelta+" season pts":"") };
     if (rosDelta > 0 && seasonOk) return { key:"marginal", rosDelta, seasonDelta, text:"marginal: +"+rosDelta+" ROS spots"+(seasonDelta!=null?", +"+seasonDelta+" season pts":"")+" — not worth the churn" };
     if (rosDelta > 0) return { key:"pass", rosDelta, seasonDelta, text:"pass — ESPN season projection says no ("+seasonDelta+" pts)" };
@@ -530,7 +543,7 @@
       h += "<div class='muted' style='margin:6px 0 2px'><b>"+pos+"</b> — yours: "+(mine? esc(mine.name)+(P?" ("+mine.mu.toFixed(1)+" proj)":" (wk #"+(mine.wkRank!=null?mine.wkRank:"–")+")") : "none this week — stream one")+"</div><div class='tbl'><div class='gw'>"+waiverHeader();
       waiverBoard(me, bench, best).forEach(b=>{
         const p = b.fa, bt = mine && better(p, mine);
-        const tag = !mine ? "<span class='tag good'>fills the hole this week</span>" : (bt ? (pos==="QB" ? "<span class='tag warn' title='1-week rental only — keep "+esc(mine.name)+"'>1-wk rental</span>" : "<span class='tag good'>better than yours this week</span>") : "");
+        const tag = b.verdict.key==="add" ? "<span class='tag good'>season upgrade over yours</span>" : !mine ? "<span class='tag good'>fills the hole this week</span>" : (bt ? (pos==="QB" ? "<span class='tag warn' title='1-week rental only — keep "+esc(mine.name)+"'>1-wk rental</span>" : "<span class='tag good'>better than yours this week</span>") : "");
         h += waiverRow(b, tag);
       });
       h += "</div></div>";
@@ -558,8 +571,9 @@
     const myBase = strength(me), theirBase = strength(them);
     const myGain = strength(me.filter(p=>p.n!==give.n).concat([get])) - myBase;
     const theirGain = strength(them.filter(p=>p.n!==get.n).concat([give])) - theirBase;
-    const odds = acceptOdds(theirGain);
-    return { give, get, myGain, theirGain, odds, ev: Math.round(myGain*odds.p*10)/10, fairness: (give.ros||ROS_MAX)-(get.ros||ROS_MAX) };
+    const fairness = (give.ros||ROS_MAX)-(get.ros||ROS_MAX);
+    const odds = acceptOdds(theirGain, fairness);
+    return { give, get, myGain, theirGain, odds, ev: Math.round(myGain*odds.p*10)/10, fairness };
   }
   // 1-for-1 swaps: I give a player, get one back. Keep only trades where my ROS starting
   // strength goes up AND theirs doesn't go down by more than a sliver (so it's acceptable).
@@ -584,7 +598,7 @@
           if (prior && prior.status!=="withdrawn") return; // already proposed / declined / accepted — shown in the log, not here
           if (theirGain < teamFloor(t)) return;            // they already said no to a better deal than this
           const fairness = give.ros - get.ros; // + = I'm getting the higher-ranked player
-          out.push({ team:t, give, get, myGain, theirGain, fairness, odds: acceptOdds(theirGain) });
+          out.push({ team:t, give, get, myGain, theirGain, fairness, odds: acceptOdds(theirGain, fairness) });
         });
       });
     });
@@ -595,11 +609,18 @@
   }
   // How the other side sees it: their own lineup change is what they'll judge on.
   // p = rough probability they accept.
-  function acceptOdds(theirGain){
-    if (theirGain >= 0) return { label:"easy yes", p:0.9 };
-    if (theirGain >= -3) return { label:"likely", p:0.7 };
-    if (theirGain >= -6) return { label:"coin flip", p:0.45 };
-    return { label:"long shot", p:0.15 };
+  function acceptOdds(theirGain, fairness){
+    let o;
+    if (theirGain >= 0) o = { label:"easy yes", p:0.9 };
+    else if (theirGain >= -3) o = { label:"likely", p:0.7 };
+    else if (theirGain >= -6) o = { label:"coin flip", p:0.45 };
+    else o = { label:"long shot", p:0.15 };
+    // People judge trades by consensus rank, not lineup math. fairness > 0 = they hand over the bigger name.
+    const f = typeof fairness==="number" ? fairness : 0;
+    if (f >= 25) o = { label:"looks insulting — they give up the far bigger name", p: Math.min(o.p, 0.1) };
+    else if (f >= 12) o = { label:o.label+", but they give the bigger name", p: Math.round(o.p*0.6*100)/100 };
+    else if (f <= -12) o = { label:o.label+" — they land the bigger name", p: Math.min(0.95, Math.round((o.p+0.1)*100)/100) };
+    return o;
   }
   function tradeButtons(t, statuses){
     return "<span class='tbtns' data-team='"+esc(t.team)+"' data-give='"+esc(t.give.name||t.give)+"' data-get='"+esc(t.get.name||t.get)+"' data-tg='"+(typeof t.theirGain==="number"?t.theirGain:"")+"'>"+
@@ -629,7 +650,7 @@
       h += "<button class='tb tb-declined' id='declineAll'>All declined</button> <span class='muted'>marks every open proposal declined (each team's floor goes up accordingly)</span></div>";
     }
     h += "<div class='panel'><h2>Optimal trades</h2>"+
-      "<div class='muted' style='margin-bottom:6px'>One list, ranked by <b>expected value</b> = what your starting lineup gains (rest-of-season rank) × how likely they accept (from what it does to <i>their</i> lineup). Big upside with a real chance of a yes floats to the top; long shots only appear when the upside is huge.</div>";
+      "<div class='muted' style='margin-bottom:6px'>One list, ranked by <b>expected value</b> = what your starting lineup gains (rest-of-season rank) × how likely they accept — from what it does to <i>their</i> lineup <b>and</b> how lopsided the deal looks by consensus rank (people turn down insulting-looking offers even when the math helps them). Big upside with a real chance of a yes floats to the top; long shots only appear when the upside is huge.</div>";
     if (!trades.length) h += "<div class='muted'>No 1-for-1 that helps you found right now.</div>";
     const seen = new Set();
     trades.filter(t=>{ const k=t.team+"|"+t.get.n; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0,8).forEach((t,i)=>{
@@ -738,7 +759,7 @@
   document.getElementById("refreshLive").addEventListener("click", async ()=>{ if (!S) return; PSTAMP = { text:"fetching live…", cls:"" }; renderAll(); await loadProjections(); buildIndex(); renderAll(); });
   window.__seasonTest = { inject:(s,r,x,tl,pj,pool)=>{ S=s; R=JSON.parse(JSON.stringify(r)); X=x||{players:[]}; P=pj||null; POOL=pool||null; LG=null; PSTAMP = pj ? {text:"snapshot "+pj.generated, cls:"stale"} : {text:"none", cls:""}; RSTAMP = {text:R.updated||"–", cls:""}; mergeLog((tl||{}).entries); applyAcceptedTrades(); buildIndex(); renderAll(); },
     rostersFromLeague, setRosters:(r)=>{ R = JSON.parse(JSON.stringify(r)); buildIndex(); renderAll(); },
-    logTrade, teamFloor, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, strength, findTrades, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, model:M,
+    logTrade, teamFloor, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, strength, findTrades, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M,
     waiverSuggestions:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,
     waiverBoard:(list)=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverBoard(me, bench, list || freeAgents().filter(p=>!undraftable(p))); } };
   if (!window.__seasonNoAutoLoad) load();
