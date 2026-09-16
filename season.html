@@ -22,6 +22,7 @@
   .pos-tag{display:inline-block;font-size:.66rem;padding:1px 6px;border-radius:4px;font-weight:700;}
   .pos-QB{background:#b5493a33;color:#e08272;} .pos-RB{background:#5a9e5a33;color:#8fd28f;} .pos-WR{background:#5b6b7833;color:#a9bdd0;} .pos-TE{background:#d9a44133;color:#ecc07a;} .pos-K{background:#7a5b9e33;color:#c2a3ec;} .pos-DST{background:#4a4a4a55;color:#c9c9c9;}
   .tag{font-size:.68rem;padding:0 6px;border-radius:4px;border:1px solid #38424d;color:var(--muted);white-space:nowrap;}
+  .suggest .tag{white-space:normal;display:inline-block;line-height:1.3;padding:1px 6px;}
   .good{color:var(--sheep);border-color:var(--sheep);} .bad{color:#e08272;border-color:var(--brick);} .warn{color:#ffd977;border-color:#5a4a12;}
   .inj{font-size:.62rem;font-weight:800;padding:0 5px;border-radius:4px;} .inj-hard{background:var(--brick);color:#fff;} .inj-soft{background:#5a4a12;color:#ffd977;}
   .start{background:#16301a;} .sit{opacity:.75;} .muted{color:var(--muted);font-size:.8rem;}
@@ -489,7 +490,28 @@
     const byFitThenGain = (a,b)=> ((a.fit?1:0)-(b.fit?1:0)) || (b.gain-a.gain);
     const sugg = board.filter(b=>b.verdict.key==="add").map(toItem).sort(byFitThenGain);
     const marginal = board.filter(b=>b.verdict.key==="marginal").map(toItem).sort(byFitThenGain);
+    chainClaims(sugg, me, bench);
     return { sugg, marginal };
+  }
+  // Chained claims: walk the ladder assuming every claim above LANDED, so each later claim knows who's
+  // actually next on the chopping block (the standalone drop may already be gone). The deeper drop gets its
+  // own verdict — if the add doesn't beat the next man up, the claim should keep its original drop and
+  // simply die when the ones above land. A landed add joins the simulated bench (he can be outdropped too).
+  function chainClaims(sugg, me, bench){
+    let sim = bench.filter(p=>!["K","DST"].includes(p.pos)).slice();
+    sugg.forEach((s,i)=>{
+      s.chain = null;
+      if (s.add.pos==="QB") return;                                  // QB swaps never touch the bench
+      const d = sim.slice().sort((a,b)=>(b.ros||ROS_MAX)-(a.ros||ROS_MAX))[0];
+      if (!d) return;
+      if (i>0 && s.drop && d.n!==s.drop.n){
+        const v = dropVerdict(s.add, d);
+        s.chain = { drop:d, verdict:v, worth: v.key==="add", samePos: d.pos===s.add.pos };
+      }
+      // consume: the drop this claim would really use if everything above landed
+      const used = s.chain ? (s.chain.worth ? s.chain.drop : null) : s.drop;
+      if (used){ sim = sim.filter(p=>p.n!==used.n); sim.push(s.add); }
+    });
   }
   // Who would you drop to add this free agent, and is it worth it? Roster spots are fixed, so every add is a drop.
   // Drop candidate = the bench player with the least rest-of-season value (worst ROS rank). Verdict uses the same
@@ -547,8 +569,16 @@
     let h = "<div class='panel'><h2>Waiver moves that beat your bench — season-long only</h2><div class='muted' style='margin-bottom:6px'>An add/drop is suggested only when the free agent is better for the <b>rest of the season</b>, judged two ways at once: FantasyPros rest-of-season rank (refreshed Tuesdays) must be at least "+ROS_MARGIN+" spots better, and ESPN's live full-season projection must agree. This week's matchup is never a reason to drop a player. Smaller edges are listed as marginal so you don't churn.</div>";
     const { sugg, marginal } = waiverSuggestions(me, bench, fa);
     if (!sugg.length) h += "<div class='muted'>Nothing on the wire is a clear season-long upgrade over your bench. Good sign.</div>";
-    if (sugg.length) h += "<div class='muted' style='margin-bottom:6px'><b>Claim ladder — ranked alternatives, not a to-do list.</b> Stack these as ranked waiver claims in ESPN, best first. Each claim stands alone (that's why several can name the same drop); whichever lands, the claims below it simply fail — no harm done. Ordered by season-long gain, then roster fit.</div>";
-    sugg.slice(0,6).forEach((s,i)=>{ h += "<div class='suggest'>➕ <b class='hl'>Claim "+(i+1)+": Add "+esc(s.add.name)+"</b> ("+s.add.pos+", ROS #"+s.add.ros+(s.add.seasonProj!=null?", ESPN season "+s.add.seasonProj.toFixed(0)+" pts":"")+(s.add.inj?" — "+esc(s.add.inj.code):"")+") &nbsp;➖ drop "+esc(s.drop.name)+" (ROS "+(s.drop.ros!=null?"#"+s.drop.ros:"unranked")+(s.drop.seasonProj!=null?", "+s.drop.seasonProj.toFixed(0)+" pts":"")+(s.drop.inj?", "+esc(s.drop.inj.code):"")+")<br><span class='muted'>+"+s.gain+" rest-of-season spots"+(s.seasonDelta!=null?" · "+(s.seasonDelta>=0?"+":"")+s.seasonDelta+" projected season points":" · ESPN season projection missing for one of them")+" — "+(s.agree?"both sources agree":"rank only")+"</span>"+(s.fit?"<br><span class='tag warn'>"+esc(s.fit)+"</span>":"")+"</div>"; });
+    if (sugg.length) h += "<div class='muted' style='margin-bottom:6px'><b>Claim ladder — ranked alternatives, stacked as ESPN waiver claims.</b> Best first. Each claim names its drop for the roster as it stands; from Claim 2 down, the second line answers \"but what if the claims above already landed and that guy is gone?\" — either the next man on the chopping block (when the add still beats him) or advice to let the claim die. Ordered by season-long gain, then roster fit.</div>";
+    sugg.slice(0,6).forEach((s,i)=>{
+      let chain = "";
+      if (s.chain){
+        const c = s.chain, cd = c.drop;
+        const cdrop = esc(cd.name)+" ("+cd.pos+" #"+(cd.ros!=null?cd.ros:"–")+")";
+        if (c.worth) chain = "<br><span class='tag good'>if the claims above land, "+esc(s.drop.name)+" is gone — submit this one with drop "+cdrop+" instead: still +"+c.verdict.rosDelta+" ROS spots"+(c.samePos?" · straight "+cd.pos+"-for-"+cd.pos+" swap, bench shape unchanged":"")+" · works whether or not the claims above land</span>";
+        else chain = "<br><span class='tag warn'>if the claims above land, next on the chopping block is "+cdrop+" — not worth dropping him for this add, so keep drop "+esc(s.drop.name)+" and let this claim die</span>";
+      }
+      h += "<div class='suggest'>➕ <b class='hl'>Claim "+(i+1)+": Add "+esc(s.add.name)+"</b> ("+s.add.pos+", ROS #"+s.add.ros+(s.add.seasonProj!=null?", ESPN season "+s.add.seasonProj.toFixed(0)+" pts":"")+(s.add.inj?" — "+esc(s.add.inj.code):"")+") &nbsp;➖ drop "+esc(s.drop.name)+" (ROS "+(s.drop.ros!=null?"#"+s.drop.ros:"unranked")+(s.drop.seasonProj!=null?", "+s.drop.seasonProj.toFixed(0)+" pts":"")+(s.drop.inj?", "+esc(s.drop.inj.code):"")+")<br><span class='muted'>+"+s.gain+" rest-of-season spots"+(s.seasonDelta!=null?" · "+(s.seasonDelta>=0?"+":"")+s.seasonDelta+" projected season points":" · ESPN season projection missing for one of them")+" — "+(s.agree?"both sources agree":"rank only")+"</span>"+chain+(s.fit?"<br><span class='tag warn'>"+esc(s.fit)+"</span>":"")+"</div>"; });
     marginal.slice(0,4).forEach(s=>{ h += "<div class='suggest'>⚖️ <b class='hl'>Marginal: "+esc(s.add.name)+"</b> ("+s.add.pos+", ROS #"+s.add.ros+(s.add.seasonProj!=null?", ESPN season "+s.add.seasonProj.toFixed(0)+" pts":"")+") over "+esc(s.drop.name)+" (ROS #"+s.drop.ros+(s.drop.seasonProj!=null?", "+s.drop.seasonProj.toFixed(0)+" pts":"")+")<br><span class='muted'>+"+s.gain+" rest-of-season spots"+(s.seasonDelta!=null?" · "+(s.seasonDelta>=0?"+":"")+s.seasonDelta+" projected season points":"")+" — under the "+ROS_MARGIN+"-spot bar, so not worth the churn unless you want that position's depth</span>"+(s.fit?"<br><span class='tag warn'>"+esc(s.fit)+"</span>":"")+"</div>"; });
     const dorder = dropOrder(me, bench);
     if (dorder.length){
