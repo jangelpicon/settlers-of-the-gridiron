@@ -116,8 +116,14 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(DO.every((p, i) => i === 0 || (DO[i-1].ros || 420) >= (p.ros || 420)), "drop order runs least season-long value first");
   assert(WS.sugg.concat(WS.marginal).filter(s => s.add.pos !== "QB").every(s => s.drop.n === DO[0].n), "every claim names #1 in the drop order (" + DO[0].name + ") — the ladder explains multi-add drops");
   const wtxt2 = d.getElementById("tab-waivers").textContent;
-  assert(/Your drop order/.test(wtxt2) && /ranked alternatives, stacked as ESPN waiver claims/.test(wtxt2), "waiver tab shows the drop order and explains the claim ladder in plain language");
-  assert(WS.sugg.slice(0,6).every((s, i) => rx("Claim " + (i+1) + ": Add " + s.add.name).test(wtxt2)), "suggestions render as numbered claims in ladder order");
+  assert(/Your drop order/.test(wtxt2) && /Your claim sheet — enter exactly this in ESPN/.test(wtxt2), "waiver tab shows the drop order and the ESPN-style claim sheet");
+  {
+    let pri = 0;
+    const rows = [];
+    WS.sugg.slice(0,6).forEach(s => { rows.push([++pri, s.add.name, s.drop.name]); if (s.chain && s.chain.worth) rows.push([++pri, s.add.name, s.chain.drop.name]); });
+    assert(rows.every(r => { const m = wtxt2.indexOf("Priority " + r[0]); if (m < 0) return false; const seg = wtxt2.slice(m, wtxt2.indexOf("Priority " + (r[0]+1)) > 0 ? wtxt2.indexOf("Priority " + (r[0]+1)) : m + 400); return rx(r[1]).test(seg) && rx(r[2]).test(seg); }), "claim sheet renders every row as 'Priority N · add X · drop Y' in exact order, backups included (" + rows.map(r => r[0] + ":" + r[1] + "/" + r[2]).join(", ") + ")");
+    assert(WS.sugg.every(s => !s.chain || !s.chain.worth || /backup for Priority/.test(wtxt2)), "a worth-it deeper drop becomes its own backup claim row, ESPN-style");
+  }
   const meTEbest = me.filter(p => p.pos === "TE").sort((a, b) => (a.ros || 420) - (b.ros || 420))[0];
   assert(meTEbest && T.fitNote({ pos: "TE", ros: (meTEbest.ros || 0) + 5, name: "Backup Te" }, me) != null && T.fitNote({ pos: "WR", ros: 10, name: "Some Wr" }, me) == null, "fit note flags a TE stuck behind your better TE, never a WR");
   const firstFit = WS.sugg.findIndex(s => s.fit), lastClean = WS.sugg.map((s, i) => s.fit ? -1 : i).reduce((a, b) => Math.max(a, b), -1);
@@ -133,7 +139,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     const usedDrops = WS.sugg.map(s => s.chain ? (s.chain.worth ? s.chain.drop.n : null) : (s.drop && s.drop.n)).filter(Boolean);
     assert(new Set(usedDrops).size === usedDrops.length, "in the all-claims-land scenario no player is dropped twice");
   }
-  assert(WS.sugg.every(s => !s.chain || s.chain.worth || /let this claim die/.test(d.getElementById("tab-waivers").textContent)), "a not-worth-it chained claim tells Jose to let it die");
+  assert(WS.sugg.every(s => !s.chain || s.chain.worth || /isn't worth dropping for him, so this claim just fails/.test(d.getElementById("tab-waivers").textContent)), "a not-worth-it deeper drop gets no backup row and says the claim just fails");
   // fairness: a deal where they hand over the far bigger name craters the accept odds; landing the bigger name raises them
   assert(T.acceptOdds(0, 30).p <= 0.1 && T.acceptOdds(0, 15).p < T.acceptOdds(0, 0).p && T.acceptOdds(-4, -20).p > T.acceptOdds(-4, 0).p, "accept odds fall when the deal looks lopsided against them by consensus rank, rise when they land the bigger name");
   const whdr = [...d.querySelectorAll("#tab-waivers .hrow")];
