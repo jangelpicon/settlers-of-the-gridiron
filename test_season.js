@@ -110,6 +110,18 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     assert(T.waiverSuggestions().sugg.some(s => /purdy/.test(s.add.n)), "the QB swap shows up in the suggestion box, not just the table");
     T.setRosters(save);
   }
+  console.log("== Waivers: drop order & roster fit ==");
+  const DO = T.dropOrder();
+  assert(DO.length > 0 && DO.every(p => !["K","DST"].includes(p.pos)), "drop order lists bench skill players only (K/DST swap for their own slot, never drop)");
+  assert(DO.every((p, i) => i === 0 || (DO[i-1].ros || 420) >= (p.ros || 420)), "drop order runs least season-long value first");
+  assert(WS.sugg.concat(WS.marginal).filter(s => s.add.pos !== "QB").every(s => s.drop.n === DO[0].n), "every claim names #1 in the drop order (" + DO[0].name + ") — the ladder explains multi-add drops");
+  const wtxt2 = d.getElementById("tab-waivers").textContent;
+  assert(/Your drop order/.test(wtxt2) && /ranked alternatives, not a to-do list/.test(wtxt2), "waiver tab shows the drop order and explains the claim ladder in plain language");
+  assert(WS.sugg.slice(0,6).every((s, i) => rx("Claim " + (i+1) + ": Add " + s.add.name).test(wtxt2)), "suggestions render as numbered claims in ladder order");
+  const meTEbest = me.filter(p => p.pos === "TE").sort((a, b) => (a.ros || 420) - (b.ros || 420))[0];
+  assert(meTEbest && T.fitNote({ pos: "TE", ros: (meTEbest.ros || 0) + 5, name: "Backup Te" }, me) != null && T.fitNote({ pos: "WR", ros: 10, name: "Some Wr" }, me) == null, "fit note flags a TE stuck behind your better TE, never a WR");
+  const firstFit = WS.sugg.findIndex(s => s.fit), lastClean = WS.sugg.map((s, i) => s.fit ? -1 : i).reduce((a, b) => Math.max(a, b), -1);
+  assert(firstFit === -1 || lastClean === -1 || firstFit > lastClean, "bench-clog adds rank below clean adds in the claim ladder");
   // fairness: a deal where they hand over the far bigger name craters the accept odds; landing the bigger name raises them
   assert(T.acceptOdds(0, 30).p <= 0.1 && T.acceptOdds(0, 15).p < T.acceptOdds(0, 0).p && T.acceptOdds(-4, -20).p > T.acceptOdds(-4, 0).p, "accept odds fall when the deal looks lopsided against them by consensus rank, rise when they land the bigger name");
   const whdr = [...d.querySelectorAll("#tab-waivers .hrow")];

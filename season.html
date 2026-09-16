@@ -470,11 +470,25 @@
   // projection (when both have one). One-week matchups never drive an add/drop — that's what streamers are for.
   // The suggestion box and the per-player "Drop for him" column are the SAME rule: one drop candidate (least
   // rest-of-season value on the bench), one verdict. The box just lists the ADDs (and marginals) from the board.
+  // Roster fit: raw value isn't the whole story. A TE stuck behind a healthy, better TE rarely cracks a
+  // lineup with only 5 bench spots — flag him and rank him below clean adds in the claim ladder.
+  function fitNote(fa, me){
+    if (fa.pos!=="TE") return null;
+    const best = me.filter(p=>p.pos==="TE" && !undraftable(p)).sort((a,b)=>(a.ros||ROS_MAX)-(b.ros||ROS_MAX))[0];
+    if (best && (best.ros||ROS_MAX) < (fa.ros||ROS_MAX)) return "backup TE behind "+best.name+" — with 5 bench spots he'd rarely play; trade bait or injury insurance only";
+    return null;
+  }
+  // The drop ladder: bench skill players, least season-long value first. Claim 1 costs #1; land a second
+  // add and it costs #2, and so on. K/DST/QB never appear — they only ever swap for their own position.
+  function dropOrder(me, bench){
+    return bench.filter(p=>!["K","DST"].includes(p.pos)).slice().sort((a,b)=>(b.ros||ROS_MAX)-(a.ros||ROS_MAX));
+  }
   function waiverSuggestions(me, bench, fa){
     const board = waiverBoard(me, bench, fa.filter(f=>f.ros!=null && !["K","DST"].includes(f.pos)));
-    const toItem = b => ({ drop:b.drop, add:b.fa, gain:b.verdict.rosDelta, agree: b.verdict.seasonDelta!=null, seasonDelta: b.verdict.seasonDelta });
-    const sugg = board.filter(b=>b.verdict.key==="add").map(toItem).sort((a,b)=>b.gain-a.gain);
-    const marginal = board.filter(b=>b.verdict.key==="marginal").map(toItem).sort((a,b)=>b.gain-a.gain);
+    const toItem = b => ({ drop:b.drop, add:b.fa, gain:b.verdict.rosDelta, agree: b.verdict.seasonDelta!=null, seasonDelta: b.verdict.seasonDelta, fit: fitNote(b.fa, me) });
+    const byFitThenGain = (a,b)=> ((a.fit?1:0)-(b.fit?1:0)) || (b.gain-a.gain);
+    const sugg = board.filter(b=>b.verdict.key==="add").map(toItem).sort(byFitThenGain);
+    const marginal = board.filter(b=>b.verdict.key==="marginal").map(toItem).sort(byFitThenGain);
     return { sugg, marginal };
   }
   // Who would you drop to add this free agent, and is it worth it? Roster spots are fixed, so every add is a drop.
@@ -533,8 +547,14 @@
     let h = "<div class='panel'><h2>Waiver moves that beat your bench — season-long only</h2><div class='muted' style='margin-bottom:6px'>An add/drop is suggested only when the free agent is better for the <b>rest of the season</b>, judged two ways at once: FantasyPros rest-of-season rank (refreshed Tuesdays) must be at least "+ROS_MARGIN+" spots better, and ESPN's live full-season projection must agree. This week's matchup is never a reason to drop a player. Smaller edges are listed as marginal so you don't churn.</div>";
     const { sugg, marginal } = waiverSuggestions(me, bench, fa);
     if (!sugg.length) h += "<div class='muted'>Nothing on the wire is a clear season-long upgrade over your bench. Good sign.</div>";
-    sugg.slice(0,6).forEach(s=>{ h += "<div class='suggest'>➕ <b class='hl'>Add "+esc(s.add.name)+"</b> ("+s.add.pos+", ROS #"+s.add.ros+(s.add.seasonProj!=null?", ESPN season "+s.add.seasonProj.toFixed(0)+" pts":"")+(s.add.inj?" — "+esc(s.add.inj.code):"")+") &nbsp;➖ drop "+esc(s.drop.name)+" (ROS "+(s.drop.ros!=null?"#"+s.drop.ros:"unranked")+(s.drop.seasonProj!=null?", "+s.drop.seasonProj.toFixed(0)+" pts":"")+(s.drop.inj?", "+esc(s.drop.inj.code):"")+")<br><span class='muted'>+"+s.gain+" rest-of-season spots"+(s.seasonDelta!=null?" · "+(s.seasonDelta>=0?"+":"")+s.seasonDelta+" projected season points":" · ESPN season projection missing for one of them")+" — "+(s.agree?"both sources agree":"rank only")+"</span></div>"; });
-    marginal.slice(0,4).forEach(s=>{ h += "<div class='suggest'>⚖️ <b class='hl'>Marginal: "+esc(s.add.name)+"</b> ("+s.add.pos+", ROS #"+s.add.ros+(s.add.seasonProj!=null?", ESPN season "+s.add.seasonProj.toFixed(0)+" pts":"")+") over "+esc(s.drop.name)+" (ROS #"+s.drop.ros+(s.drop.seasonProj!=null?", "+s.drop.seasonProj.toFixed(0)+" pts":"")+")<br><span class='muted'>+"+s.gain+" rest-of-season spots"+(s.seasonDelta!=null?" · "+(s.seasonDelta>=0?"+":"")+s.seasonDelta+" projected season points":"")+" — under the "+ROS_MARGIN+"-spot bar, so not worth the churn unless you want that position's depth</span></div>"; });
+    if (sugg.length) h += "<div class='muted' style='margin-bottom:6px'><b>Claim ladder — ranked alternatives, not a to-do list.</b> Stack these as ranked waiver claims in ESPN, best first. Each claim stands alone (that's why several can name the same drop); whichever lands, the claims below it simply fail — no harm done. Ordered by season-long gain, then roster fit.</div>";
+    sugg.slice(0,6).forEach((s,i)=>{ h += "<div class='suggest'>➕ <b class='hl'>Claim "+(i+1)+": Add "+esc(s.add.name)+"</b> ("+s.add.pos+", ROS #"+s.add.ros+(s.add.seasonProj!=null?", ESPN season "+s.add.seasonProj.toFixed(0)+" pts":"")+(s.add.inj?" — "+esc(s.add.inj.code):"")+") &nbsp;➖ drop "+esc(s.drop.name)+" (ROS "+(s.drop.ros!=null?"#"+s.drop.ros:"unranked")+(s.drop.seasonProj!=null?", "+s.drop.seasonProj.toFixed(0)+" pts":"")+(s.drop.inj?", "+esc(s.drop.inj.code):"")+")<br><span class='muted'>+"+s.gain+" rest-of-season spots"+(s.seasonDelta!=null?" · "+(s.seasonDelta>=0?"+":"")+s.seasonDelta+" projected season points":" · ESPN season projection missing for one of them")+" — "+(s.agree?"both sources agree":"rank only")+"</span>"+(s.fit?"<br><span class='tag warn'>"+esc(s.fit)+"</span>":"")+"</div>"; });
+    marginal.slice(0,4).forEach(s=>{ h += "<div class='suggest'>⚖️ <b class='hl'>Marginal: "+esc(s.add.name)+"</b> ("+s.add.pos+", ROS #"+s.add.ros+(s.add.seasonProj!=null?", ESPN season "+s.add.seasonProj.toFixed(0)+" pts":"")+") over "+esc(s.drop.name)+" (ROS #"+s.drop.ros+(s.drop.seasonProj!=null?", "+s.drop.seasonProj.toFixed(0)+" pts":"")+")<br><span class='muted'>+"+s.gain+" rest-of-season spots"+(s.seasonDelta!=null?" · "+(s.seasonDelta>=0?"+":"")+s.seasonDelta+" projected season points":"")+" — under the "+ROS_MARGIN+"-spot bar, so not worth the churn unless you want that position's depth</span>"+(s.fit?"<br><span class='tag warn'>"+esc(s.fit)+"</span>":"")+"</div>"; });
+    const dorder = dropOrder(me, bench);
+    if (dorder.length){
+      h += "<h3>Your drop order</h3><div class='muted' style='margin-bottom:6px'>Least season-long value first — when a claim needs a roster spot, this is the sequence. Claim 1 costs #1; land a second add and it costs #2, and so on. Your kicker and defense only ever swap for another K/DST, your QB for a QB, and starters are never drop candidates.</div>";
+      dorder.forEach((p,i)=>{ h += "<div class='suggest'>➖ <b>#"+(i+1)+" "+esc(p.name)+"</b> <span class='muted'>"+p.pos+" · ROS "+(p.ros!=null?"#"+p.ros:"unranked")+(p.seasonProj!=null?" · "+p.seasonProj.toFixed(0)+" season pts":"")+(p.inj?" · "+esc(p.inj.code):"")+(p.bye!=null?" · bye "+p.bye:"")+"</span></div>"; });
+    }
     h += "<h3>One-week streamers (Week "+S.week+", by "+(P?"predicted points":"rank")+")</h3><div class='muted' style='margin-bottom:6px'>Kickers and defenses are meant to be streamed. A quarterback listed here is a one-week rental only — worth it when your QB is on bye or out, never as a reason to drop him.</div>";
     ["QB","DST","K"].forEach(pos=>{
       const mineList = me.filter(p=>p.pos===pos && !p.onBye && !undraftable(p) && p[wkey]!=null);
@@ -761,6 +781,7 @@
     rostersFromLeague, setRosters:(r)=>{ R = JSON.parse(JSON.stringify(r)); buildIndex(); renderAll(); },
     logTrade, teamFloor, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, strength, findTrades, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M,
     waiverSuggestions:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,
+    dropOrder:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return dropOrder(me, bench); }, fitNote,
     waiverBoard:(list)=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverBoard(me, bench, list || freeAgents().filter(p=>!undraftable(p))); } };
   if (!window.__seasonNoAutoLoad) load();
 })();

@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-09-15",
- "source": "ESPN league 882823976 sync 2026-09-15 02:15 CDT",
+ "updated": "2026-09-16",
+ "source": "ESPN league 882823976 sync 2026-09-16 13:05 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -109,11 +109,6 @@
     "team": "LAR"
    },
    {
-    "name": "Jaylen Waddle",
-    "pos": "WR",
-    "team": "DEN"
-   },
-   {
     "name": "Baker Mayfield",
     "pos": "QB",
     "team": "TB"
@@ -134,11 +129,6 @@
     "team": "MIN"
    },
    {
-    "name": "Jacksonville Jaguars",
-    "pos": "DST",
-    "team": "JAX"
-   },
-   {
     "name": "Jake Bates",
     "pos": "K",
     "team": "DET"
@@ -152,6 +142,16 @@
     "name": "Juwan Johnson",
     "pos": "TE",
     "team": "NO"
+   },
+   {
+    "name": "Devaughn Vele",
+    "pos": "WR",
+    "team": "NO"
+   },
+   {
+    "name": "San Francisco 49ers",
+    "pos": "DST",
+    "team": "SF"
    }
   ],
   "Resting Blitz Face": [
@@ -163,7 +163,8 @@
    {
     "name": "A.J. Brown",
     "pos": "WR",
-    "team": "NE"
+    "team": "NE",
+    "ir": true
    },
    {
     "name": "Omarion Hampton",
@@ -224,6 +225,11 @@
     "name": "Chase McLaughlin",
     "pos": "K",
     "team": "TB"
+   },
+   {
+    "name": "Jalen Coker",
+    "pos": "WR",
+    "team": "CAR"
    }
   ],
   "Unnecessary Sanctions": [
@@ -283,11 +289,6 @@
     "team": "CLE"
    },
    {
-    "name": "Cam Little",
-    "pos": "K",
-    "team": "JAX"
-   },
-   {
     "name": "Deebo Samuel Sr.",
     "pos": "WR",
     "team": "SF"
@@ -296,6 +297,11 @@
     "name": "MarShawn Lloyd",
     "pos": "RB",
     "team": "GB"
+   },
+   {
+    "name": "Chuba Hubbard",
+    "pos": "RB",
+    "team": "CAR"
    }
   ],
   "The Brady Bunch": [
@@ -330,19 +336,9 @@
     "team": "WAS"
    },
    {
-    "name": "Bhayshul Tuten",
-    "pos": "RB",
-    "team": "JAX"
-   },
-   {
     "name": "Caleb Williams",
     "pos": "QB",
     "team": "CHI"
-   },
-   {
-    "name": "Kyle Pitts Sr.",
-    "pos": "TE",
-    "team": "ATL"
    },
    {
     "name": "Pittsburgh Steelers",
@@ -350,24 +346,34 @@
     "team": "PIT"
    },
    {
-    "name": "Cameron Dicker",
-    "pos": "K",
-    "team": "LAC"
-   },
-   {
-    "name": "Hunter Henry",
-    "pos": "TE",
-    "team": "NE"
-   },
-   {
-    "name": "Brian Thomas Jr.",
-    "pos": "WR",
-    "team": "JAX"
-   },
-   {
     "name": "Isaiah Likely",
     "pos": "TE",
     "team": "NYG"
+   },
+   {
+    "name": "Chris Boswell",
+    "pos": "K",
+    "team": "PIT"
+   },
+   {
+    "name": "Kyle Monangai",
+    "pos": "RB",
+    "team": "CHI"
+   },
+   {
+    "name": "Pat Freiermuth",
+    "pos": "TE",
+    "team": "PIT"
+   },
+   {
+    "name": "Kalif Raymond",
+    "pos": "WR",
+    "team": "CHI"
+   },
+   {
+    "name": "Kaelon Black",
+    "pos": "RB",
+    "team": "SF"
    }
   ],
   "BlitzAndGiggles": [
@@ -407,29 +413,14 @@
     "team": "GB"
    },
    {
-    "name": "Rachaad White",
-    "pos": "RB",
-    "team": "WAS"
-   },
-   {
     "name": "Rhamondre Stevenson",
     "pos": "RB",
     "team": "NE"
    },
    {
-    "name": "Denver Broncos",
-    "pos": "DST",
-    "team": "DEN"
-   },
-   {
     "name": "Khalil Shakir",
     "pos": "WR",
     "team": "BUF"
-   },
-   {
-    "name": "Wan'Dale Robinson",
-    "pos": "WR",
-    "team": "TEN"
    },
    {
     "name": "Eddy Pineiro",
@@ -440,6 +431,21 @@
     "name": "Aaron Jones Sr.",
     "pos": "RB",
     "team": "MIN"
+   },
+   {
+    "name": "Bryce Young",
+    "pos": "QB",
+    "team": "CAR"
+   },
+   {
+    "name": "George Kittle",
+    "pos": "TE",
+    "team": "SF"
+   },
+   {
+    "name": "Kansas City Chiefs",
+    "pos": "DST",
+    "team": "KC"
    }
   ],
   "Knight Moves Ore Else": [
@@ -499,11 +505,6 @@
     "team": "DAL"
    },
    {
-    "name": "Michael Pittman Jr.",
-    "pos": "WR",
-    "team": "PIT"
-   },
-   {
     "name": "Dallas Goedert",
     "pos": "TE",
     "team": "PHI"
@@ -512,6 +513,11 @@
     "name": "Mark Andrews",
     "pos": "TE",
     "team": "BAL"
+   },
+   {
+    "name": "Tampa Bay Buccaneers",
+    "pos": "DST",
+    "team": "TB"
    }
   ],
   "ur done": [
@@ -571,11 +577,6 @@
     "team": "CHI"
    },
    {
-    "name": "Tony Pollard",
-    "pos": "RB",
-    "team": "TEN"
-   },
-   {
     "name": "Tennessee Titans",
     "pos": "DST",
     "team": "TEN"
@@ -584,6 +585,11 @@
     "name": "Evan McPherson",
     "pos": "K",
     "team": "CIN"
+   },
+   {
+    "name": "Matthew Golden",
+    "pos": "WR",
+    "team": "GB"
    }
   ],
   "PapasCabezas": [
@@ -611,11 +617,6 @@
     "name": "Lamar Jackson",
     "pos": "QB",
     "team": "BAL"
-   },
-   {
-    "name": "Colston Loveland",
-    "pos": "TE",
-    "team": "CHI"
    },
    {
     "name": "Cam Skattebo",
@@ -648,14 +649,19 @@
     "team": "CAR"
    },
    {
-    "name": "Los Angeles Chargers",
-    "pos": "DST",
-    "team": "LAC"
+    "name": "Dalton Kincaid",
+    "pos": "TE",
+    "team": "BUF"
    },
    {
-    "name": "Harrison Mevis",
+    "name": "Las Vegas Raiders",
+    "pos": "DST",
+    "team": "LV"
+   },
+   {
+    "name": "Chad Ryland",
     "pos": "K",
-    "team": "LAR"
+    "team": "ARI"
    }
   ]
  }
