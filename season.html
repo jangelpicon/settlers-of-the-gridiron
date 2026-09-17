@@ -783,7 +783,7 @@
   }
 
   function renderAll(){
-    document.getElementById("teamTitle").textContent = R.me;
+    document.getElementById("teamTitle").textContent = R.me + (TEAMERR ? " ⚠️ " + TEAMERR : "");
     document.getElementById("wk").textContent = S.week!=null ? S.week : "–";
     document.getElementById("stamp").textContent = S.generated;
     const rs = document.getElementById("rosterStamp"); rs.textContent = RSTAMP.text; rs.className = RSTAMP.cls;
@@ -807,11 +807,26 @@
       } catch(e2){ P = null; PSTAMP = { text: "unavailable ("+e.message+") — using consensus ranks", cls:"stale" }; }
     }
   }
+  // Plug-and-play: ?team=<name> points the whole page — lineup, waivers, trades, power rank — at any
+  // team in the league. Share season.html?team=sack+of+wheat and that owner gets their own view, zero
+  // setup: rosters read live from ESPN, projections fetch client-side, ROS ranks ride the weekly refresh.
+  // Matching ignores case and punctuation. The trade log stays in each viewer's own browser.
+  let TEAMERR = null;
+  function applyTeamParam(qs){
+    TEAMERR = null;
+    const want = new URLSearchParams(qs!=null ? qs : location.search).get("team");
+    if (!want) return;
+    const key = s => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const hit = Object.keys(R.teams).find(t => key(t) === key(want));
+    if (hit) R.me = hit;
+    else TEAMERR = "team '"+want+"' not found — teams: "+Object.keys(R.teams).join(" · ");
+  }
   async function load(){
     try {
       const [s, r, x, tl, lg, pool] = await Promise.all([fetch("data/season.json?v="+Date.now()).then(x=>x.json()), fetch("data/rosters.json?v="+Date.now()).then(x=>x.json()), fetch("data/exclusions.json?v="+Date.now()).then(x=>x.json()).catch(()=>({players:[]})), fetch("data/trades.json?v="+Date.now()).then(x=>x.json()).catch(()=>({entries:[]})),
         fetch("data/league.json?v="+Date.now()).then(x=>x.json()).catch(()=>null), fetch("data/espn_pool.json?v="+Date.now()).then(x=>x.json()).catch(()=>null)]);
       S = s; R = r; X = x || {players:[]}; LG = lg; POOL = pool; mergeLog((tl||{}).entries);
+      applyTeamParam();
       PSTAMP = { text:"fetching live…", cls:"" }; RSTAMP = { text:(R.updated||"–")+" (checking ESPN…)", cls:"" };
       buildIndex(); renderAll();
       await Promise.all([loadProjections(), loadLiveRosters()]);
@@ -827,6 +842,7 @@
     logTrade, teamFloor, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, strength, findTrades, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M,
     waiverSuggestions:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,
     dropOrder:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return dropOrder(me, bench); }, fitNote, scarcityPool,
+    setTeamParam:(qs)=>{ applyTeamParam(qs); buildIndex(); renderAll(); },
     benchSkill:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return bench.filter(p=>!["K","DST"].includes(p.pos)); },
     waiverBoard:(list)=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverBoard(me, bench, list || freeAgents().filter(p=>!undraftable(p))); } };
   if (!window.__seasonNoAutoLoad) load();

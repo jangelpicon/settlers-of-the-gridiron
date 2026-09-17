@@ -282,6 +282,23 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     T.inject(season, rosters, exclusions, tradeLog, projections);
   }
 
+  console.log("== Plug-and-play ?team= link ==");
+  {
+    T.inject(season, rosters, exclusions, tradeLog, projections);
+    T.setTeamParam("?team=sack+of+wheat");
+    assert(d.getElementById("teamTitle").textContent === "SACK OF WHEAT", "?team=sack+of+wheat repoints the whole page (case/punctuation-insensitive match)");
+    const sackNames = new Set(rosters.teams["SACK OF WHEAT"].map(p => T.norm(p.name)));
+    const lu = [...d.querySelectorAll("#tab-lineup .row.start")];
+    assert(lu.length === 9 && T.getRosters().me === "SACK OF WHEAT", "their view renders a full 9-slot lineup as 'me'");
+    assert(T.benchSkill().every(p => sackNames.has(p.n)), "waiver drop candidates come from THEIR bench, not Jose's");
+    T.inject(season, rosters, exclusions, tradeLog, projections);
+    T.setTeamParam("?team=nobody+real");
+    assert(T.getRosters().me === rosters.me && /not found/.test(d.getElementById("teamTitle").textContent) && /SACK OF WHEAT/.test(d.getElementById("teamTitle").textContent), "unknown team name: keeps the default view and lists the league's team names");
+    T.inject(season, rosters, exclusions, tradeLog, projections);
+    T.setTeamParam("?nothing=here");
+    assert(T.getRosters().me === rosters.me, "no ?team= param: Jose's view, unchanged");
+  }
+
   console.log("\n--- START/SIT CALLS (chance bench player outscores the starter he'd replace) ---");
   [...d.querySelectorAll("#tab-lineup .row")].filter(r => /%/.test(r.textContent) && /over/.test(r.textContent)).forEach(r => console.log("  " + r.textContent.replace(/\s+/g, " ").trim()));
   const iw = [...d.querySelectorAll("#tab-lineup .suggest")].map(x => x.textContent.replace(/\s+/g, " ").trim()).filter(x => /Injury watch/.test(x));
