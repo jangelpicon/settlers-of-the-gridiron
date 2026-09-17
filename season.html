@@ -484,6 +484,15 @@
   function dropOrder(me, bench){
     return bench.filter(p=>!["K","DST"].includes(p.pos)).slice().sort((a,b)=>(b.ros||ROS_MAX)-(a.ros||ROS_MAX));
   }
+  // Positional scarcity guard: your ONLY bench player at a position never drops for a different position —
+  // an 8th WR who never cracks the lineup is worth less than your only RB insurance. Same-position swaps
+  // are always allowed. If every bench player is someone's last depth piece, fall back to raw value.
+  function scarcityPool(bench, faPos){
+    const pool = bench.filter(p=>!["K","DST"].includes(p.pos));
+    const counts = {}; pool.forEach(p=>{ counts[p.pos]=(counts[p.pos]||0)+1; });
+    const open = pool.filter(p=>p.pos===faPos || counts[p.pos]>1);
+    return open.length ? open : pool;
+  }
   function waiverSuggestions(me, bench, fa){
     const board = waiverBoard(me, bench, fa.filter(f=>f.ros!=null && !["K","DST"].includes(f.pos)));
     const toItem = b => ({ drop:b.drop, add:b.fa, gain:b.verdict.rosDelta, agree: b.verdict.seasonDelta!=null, seasonDelta: b.verdict.seasonDelta, fit: fitNote(b.fa, me) });
@@ -502,7 +511,7 @@
     sugg.forEach((s,i)=>{
       s.chain = null;
       if (s.add.pos==="QB") return;                                  // QB swaps never touch the bench
-      const d = sim.slice().sort((a,b)=>(b.ros||ROS_MAX)-(a.ros||ROS_MAX))[0];
+      const d = scarcityPool(sim, s.add.pos).sort((a,b)=>(b.ros||ROS_MAX)-(a.ros||ROS_MAX))[0];
       if (!d) return;
       if (i>0 && s.drop && d.n!==s.drop.n){
         const v = dropVerdict(s.add, d);
@@ -519,9 +528,9 @@
   function dropCandidate(bench, me, fa){
     if (["K","DST"].includes(fa.pos)) return me.filter(p=>p.pos===fa.pos)[0] || null;      // K/DST: straight swap for yours
     if (fa.pos==="QB"){ const qbs = me.filter(p=>p.pos==="QB"); return qbs.length ? qbs.slice().sort((a,b)=>(b.ros||ROS_MAX)-(a.ros||ROS_MAX))[0] : null; } // QB: straight swap for your worst QB
-    const pool = bench.filter(p=>!["K","DST"].includes(p.pos));
+    const pool = scarcityPool(bench, fa.pos);
     if (!pool.length) return null;
-    return pool.slice().sort((a,b)=>(b.ros||ROS_MAX)-(a.ros||ROS_MAX))[0];
+    return pool.sort((a,b)=>(b.ros||ROS_MAX)-(a.ros||ROS_MAX))[0];
   }
   function dropVerdict(fa, drop){
     if (!drop) return { key:"none", text:"no one to drop" };
@@ -547,7 +556,7 @@
   function waiverBoard(me, bench, fa){
     return fa.map(f=>{ const drop = dropCandidate(bench, me, f); return { fa:f, drop, verdict: dropVerdict(f, drop) }; });
   }
-  const WCOLS = [["Drop for him","The bench player you'd drop to add him (least rest-of-season value on your bench; K/DST = straight swap)"],["Verdict","Is the swap worth it under the season-long rule?"]];
+  const WCOLS = [["Drop for him","The bench player you'd drop to add him (least rest-of-season value at a position you can spare — your only backup at a position never drops for a different position; K/DST = straight swap)"],["Verdict","Is the swap worth it under the season-long rule?"]];
   function waiverHeader(){ return playerHeader(); } // drop + verdict sit on a full-width line under each player so nothing is cut off
   function waiverRow(b, tag){
     const v = b.verdict; const cls = v.key==="add"?"good":v.key==="marginal"||v.key==="rental"?"warn":"";
@@ -587,8 +596,9 @@
     marginal.slice(0,4).forEach(s=>{ h += "<div class='suggest'>⚖️ <b class='hl'>Marginal: "+esc(s.add.name)+"</b> ("+s.add.pos+", ROS #"+s.add.ros+(s.add.seasonProj!=null?", ESPN season "+s.add.seasonProj.toFixed(0)+" pts":"")+") over "+esc(s.drop.name)+" (ROS #"+s.drop.ros+(s.drop.seasonProj!=null?", "+s.drop.seasonProj.toFixed(0)+" pts":"")+")<br><span class='muted'>+"+s.gain+" rest-of-season spots"+(s.seasonDelta!=null?" · "+(s.seasonDelta>=0?"+":"")+s.seasonDelta+" projected season points":"")+" — under the "+ROS_MARGIN+"-spot bar, so not worth the churn unless you want that position's depth</span>"+(s.fit?"<br><span class='tag warn'>"+esc(s.fit)+"</span>":"")+"</div>"; });
     const dorder = dropOrder(me, bench);
     if (dorder.length){
-      h += "<h3>Your drop order</h3><div class='muted' style='margin-bottom:6px'>Least season-long value first — when a claim needs a roster spot, this is the sequence. Claim 1 costs #1; land a second add and it costs #2, and so on. Your kicker and defense only ever swap for another K/DST, your QB for a QB, and starters are never drop candidates.</div>";
-      dorder.forEach((p,i)=>{ h += "<div class='suggest'>➖ <b>#"+(i+1)+" "+esc(p.name)+"</b> <span class='muted'>"+p.pos+" · ROS "+(p.ros!=null?"#"+p.ros:"unranked")+(p.seasonProj!=null?" · "+p.seasonProj.toFixed(0)+" season pts":"")+(p.inj?" · "+esc(p.inj.code):"")+(p.bye!=null?" · bye "+p.bye:"")+"</span></div>"; });
+      h += "<h3>Your drop order</h3><div class='muted' style='margin-bottom:6px'>Least season-long value first — when a claim needs a roster spot, this is the sequence. Claim 1 costs #1; land a second add and it costs #2, and so on. Your kicker and defense only ever swap for another K/DST, your QB for a QB, and starters are never drop candidates. <b>Scarcity guard:</b> your only bench player at a position never drops for a different position — depth you can't replace beats a player who'd never crack your lineup.</div>";
+      const dcounts = {}; dorder.forEach(p=>{ dcounts[p.pos]=(dcounts[p.pos]||0)+1; });
+      dorder.forEach((p,i)=>{ h += "<div class='suggest'>➖ <b>#"+(i+1)+" "+esc(p.name)+"</b> <span class='muted'>"+p.pos+" · ROS "+(p.ros!=null?"#"+p.ros:"unranked")+(p.seasonProj!=null?" · "+p.seasonProj.toFixed(0)+" season pts":"")+(p.inj?" · "+esc(p.inj.code):"")+(p.bye!=null?" · bye "+p.bye:"")+"</span>"+(dcounts[p.pos]===1?" <span class='tag warn'>only "+p.pos+" on your bench — drops only for another "+p.pos+"</span>":"")+"</div>"; });
     }
     h += "<h3>One-week streamers (Week "+S.week+", by "+(P?"predicted points":"rank")+")</h3><div class='muted' style='margin-bottom:6px'>Kickers and defenses are meant to be streamed. A quarterback listed here is a one-week rental only — worth it when your QB is on bye or out, never as a reason to drop him.</div>";
     ["QB","DST","K"].forEach(pos=>{
@@ -603,7 +613,7 @@
       });
       h += "</div></div>";
     });
-    h += "<h3>Top free agents (rest of season) — and who you'd drop</h3><div class='muted' style='margin-bottom:6px'>Every add is a drop. \"Drop for him\" is the bench player with the least rest-of-season value; the verdict applies the season-long rule (+"+ROS_MARGIN+" ROS spots and ESPN's season projection not lower).</div><div class='tbl'><div class='gw'>"+waiverHeader();
+    h += "<h3>Top free agents (rest of season) — and who you'd drop</h3><div class='muted' style='margin-bottom:6px'>Every add is a drop. \"Drop for him\" is the bench player with the least rest-of-season value <b>at a position you can spare</b> — your only backup at a position never drops for a different position. The verdict applies the season-long rule (+"+ROS_MARGIN+" ROS spots and ESPN's season projection not lower).</div><div class='tbl'><div class='gw'>"+waiverHeader();
     // ADDs and marginals always make the table (even if outside the top 15 by rank), and sort to the top.
     const order = { add:0, marginal:1, rental:2, pass:3, none:4 };
     const boardAll = waiverBoard(me, bench, fa.filter(p=>!["K","DST"].includes(p.pos) && p.ros!=null));
@@ -816,7 +826,8 @@
     rostersFromLeague, setRosters:(r)=>{ R = JSON.parse(JSON.stringify(r)); buildIndex(); renderAll(); },
     logTrade, teamFloor, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, strength, findTrades, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M,
     waiverSuggestions:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,
-    dropOrder:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return dropOrder(me, bench); }, fitNote,
+    dropOrder:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return dropOrder(me, bench); }, fitNote, scarcityPool,
+    benchSkill:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return bench.filter(p=>!["K","DST"].includes(p.pos)); },
     waiverBoard:(list)=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverBoard(me, bench, list || freeAgents().filter(p=>!undraftable(p))); } };
   if (!window.__seasonNoAutoLoad) load();
 })();

@@ -82,8 +82,9 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const WS = T.waiverSuggestions();
   assert(WS.sugg.every(s => s.gain >= T.ROS_MARGIN), "every add/drop suggestion is at least " + T.ROS_MARGIN + " rest-of-season rank spots better (" + WS.sugg.length + " suggestions)");
   assert(WS.sugg.concat(WS.marginal).every(s => s.add.seasonProj == null || s.drop.seasonProj == null || s.add.seasonProj >= s.drop.seasonProj), "no suggestion drops a player with a higher ESPN full-season projection than the add");
-  const benchSkill = T.optimalLineup(me, "ros").bench.filter(p => !["K","DST"].includes(p.pos)).sort((a, b) => (b.ros || 420) - (a.ros || 420));
-  assert(WS.sugg.concat(WS.marginal).every(s => !["K","DST"].includes(s.add.pos) && (s.add.pos === "QB" ? s.drop.pos === "QB" : s.drop.n === benchSkill[0].n)), "suggestions drop your least-valuable bench player (" + benchSkill[0].name + "); a QB suggestion is a straight QB swap; K/DST never suggested");
+  const benchSkill = T.benchSkill().slice().sort((a, b) => (b.ros || 420) - (a.ros || 420));
+  const scarceDrop = pos => T.scarcityPool(T.benchSkill(), pos).sort((a, b) => (b.ros || 420) - (a.ros || 420))[0];
+  assert(WS.sugg.concat(WS.marginal).every(s => !["K","DST"].includes(s.add.pos) && (s.add.pos === "QB" ? s.drop.pos === "QB" : s.drop.n === scarceDrop(s.add.pos).n)), "suggestions drop your least-valuable spareable bench player (scarcity-aware); a QB suggestion is a straight QB swap; K/DST never suggested");
   assert(WS.sugg.every(s => T.waiverBoard([s.add])[0].verdict.key === "add") && WS.marginal.every(s => T.waiverBoard([s.add])[0].verdict.key === "marginal"), "suggestion box and per-player verdict column agree (one rule)");
   assert(me.every(p => typeof p.seasonProj === "number"), "every rostered player has a live ESPN full-season projection");
   const wtxt = d.getElementById("tab-waivers").textContent;
@@ -92,9 +93,13 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(qbBlock.length > 0 && !/better than yours this week/.test(qbBlock), "a QB streamer is a rental or a season swap — never a one-week 'better than yours'");
   console.log("== Waivers: who to drop ==");
   const WB = T.waiverBoard();
-  const benchRos = T.optimalLineup(me, "ros").bench.filter(p => !["K","DST"].includes(p.pos));
-  const worstBench = benchRos.slice().sort((a, b) => (b.ros || 420) - (a.ros || 420))[0];
-  assert(WB.length > 0 && WB.filter(b => !["K","DST","QB"].includes(b.fa.pos)).every(b => b.drop && b.drop.n === worstBench.n), "every skill free agent names the same drop candidate: the bench player with the least rest-of-season value (" + worstBench.name + ")");
+  const benchRos = T.benchSkill();
+  assert(WB.length > 0 && WB.filter(b => !["K","DST","QB"].includes(b.fa.pos)).every(b => b.drop && b.drop.n === scarceDrop(b.fa.pos).n), "every skill free agent names the scarcity-aware drop candidate: least rest-of-season value at a position you can spare");
+  const benchCounts = {}; benchRos.forEach(p => benchCounts[p.pos] = (benchCounts[p.pos] || 0) + 1);
+  const allSole = benchRos.every(p => benchCounts[p.pos] === 1);
+  assert(WB.filter(b => ["RB","WR","TE"].includes(b.fa.pos) && b.drop && b.drop.pos !== b.fa.pos).every(b => benchCounts[b.drop.pos] > 1 || allSole), "a cross-position add never drops your only bench player at a position (scarcity guard)");
+  const soleRB = benchRos.filter(p => p.pos === "RB").length === 1 ? benchRos.find(p => p.pos === "RB") : null;
+  if (soleRB) assert(WB.filter(b => ["WR","TE"].includes(b.fa.pos)).every(b => !b.drop || b.drop.n !== soleRB.n), "your only bench RB (" + soleRB.name + ") is never the drop for a WR/TE add — but a better RB can still replace him");
   assert(WB.filter(b => b.fa.pos === "QB").every(b => b.drop && b.drop.pos === "QB"), "QB free agents are a straight swap for your QB, never a bench drop");
   assert(WB.filter(b => b.fa.pos === "DST").every(b => b.drop && b.drop.pos === "DST") && WB.filter(b => b.fa.pos === "K").every(b => b.drop && b.drop.pos === "K"), "K/DST free agents are a straight swap for your K/DST");
   assert(WB.every(b => ["add","marginal","pass","rental","none"].includes(b.verdict.key) && b.verdict.text.length > 3), "every free agent has a verdict (add / marginal / pass / rental)");
@@ -114,7 +119,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const DO = T.dropOrder();
   assert(DO.length > 0 && DO.every(p => !["K","DST"].includes(p.pos)), "drop order lists bench skill players only (K/DST swap for their own slot, never drop)");
   assert(DO.every((p, i) => i === 0 || (DO[i-1].ros || 420) >= (p.ros || 420)), "drop order runs least season-long value first");
-  assert(WS.sugg.concat(WS.marginal).filter(s => s.add.pos !== "QB").every(s => s.drop.n === DO[0].n), "every claim names #1 in the drop order (" + DO[0].name + ") — the ladder explains multi-add drops");
+  assert(WS.sugg.concat(WS.marginal).filter(s => s.add.pos !== "QB").every(s => s.drop.n === scarceDrop(s.add.pos).n), "every claim names the scarcity-aware top of the drop order — the ladder explains multi-add drops");
   const wtxt2 = d.getElementById("tab-waivers").textContent;
   assert(/Your drop order/.test(wtxt2) && /Your claim sheet — enter exactly this in ESPN/.test(wtxt2), "waiver tab shows the drop order and the ESPN-style claim sheet");
   {
@@ -132,8 +137,10 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(!WS.sugg.length || WS.sugg[0].chain == null, "claim 1 never carries a chained drop — nothing above it can land");
   assert(WS.sugg.every(s => !s.chain || s.chain.drop.n !== s.drop.n), "a chained drop is only shown when it differs from the claim's own drop");
   assert(WS.sugg.every(s => !s.chain || (s.chain.worth === (s.chain.verdict.key === "add"))), "the deeper drop gets its own season-long verdict — worth it only on a real ADD");
-  if (WS.sugg.length >= 2 && WS.sugg[0].drop && WS.sugg[0].drop.n === DO[0].n && WS.sugg[1].chain){
-    assert(WS.sugg[1].chain.drop.n === DO[1].n, "when claim 1 consumes drop #1, claim 2's chained drop is #2 in the drop order (" + DO[1].name + ")");
+  if (WS.sugg.length >= 2 && WS.sugg[0].drop && WS.sugg[0].add.pos !== "QB" && WS.sugg[1].chain){
+    const sim = benchRos.filter(p => p.n !== WS.sugg[0].drop.n).concat([WS.sugg[0].add]);
+    const expect = T.scarcityPool(sim, WS.sugg[1].add.pos).sort((a, b) => (b.ros || 420) - (a.ros || 420))[0];
+    assert(WS.sugg[1].chain.drop.n === expect.n, "when claim 1 lands, claim 2's chained drop is the scarcity-aware next man up (" + expect.name + ")");
   }
   {
     const usedDrops = WS.sugg.map(s => s.chain ? (s.chain.worth ? s.chain.drop.n : null) : (s.drop && s.drop.n)).filter(Boolean);
@@ -150,7 +157,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(flagged.every(n => wrows.some(r => rx(n).test(r.textContent))), "every ADD/marginal player is in the free-agent table (" + (flagged.join(", ") || "none this week") + ")");
   const cards = [...d.querySelectorAll("#tab-waivers .suggest")].map(x => x.textContent);
   assert(WS.marginal.every(s => cards.some(c => /Marginal/.test(c) && rx(s.add.name).test(c))), "marginal players get their own card, not a footnote");
-  assert(new RegExp(worstBench.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(d.getElementById("tab-waivers").textContent), "the drop candidate's name appears on the waiver tab");
+  assert(new RegExp(benchSkill[0].name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(d.getElementById("tab-waivers").textContent), "the drop candidate's name appears on the waiver tab");
   const faRows = [...d.querySelectorAll("#tab-waivers .row.grid")];
   assert(faRows.length > 0 && faRows.some(r => /^\d+$/.test(r.children[10].textContent.trim())), "free agents show their live season projection in the Season pts column");
 
