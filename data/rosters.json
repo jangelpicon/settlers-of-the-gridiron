@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-09-16",
- "source": "ESPN league 882823976 sync 2026-09-16 13:05 CDT",
+ "updated": "2026-09-17",
+ "source": "ESPN league 882823976 sync 2026-09-17 09:27 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -47,11 +47,6 @@
     "team": "DET"
    },
    {
-    "name": "Carnell Tate",
-    "pos": "WR",
-    "team": "TEN"
-   },
-   {
     "name": "Justin Herbert",
     "pos": "QB",
     "team": "LAC"
@@ -80,6 +75,11 @@
     "name": "Travis Kelce",
     "pos": "TE",
     "team": "KC"
+   },
+   {
+    "name": "Colston Loveland",
+    "pos": "TE",
+    "team": "CHI"
    }
   ],
   "SACK OF WHEAT": [
@@ -371,9 +371,9 @@
     "team": "CHI"
    },
    {
-    "name": "Kaelon Black",
-    "pos": "RB",
-    "team": "SF"
+    "name": "Caleb Douglas",
+    "pos": "WR",
+    "team": "MIA"
    }
   ],
   "BlitzAndGiggles": [
@@ -577,19 +577,19 @@
     "team": "CHI"
    },
    {
-    "name": "Tennessee Titans",
-    "pos": "DST",
-    "team": "TEN"
-   },
-   {
     "name": "Evan McPherson",
     "pos": "K",
     "team": "CIN"
    },
    {
-    "name": "Matthew Golden",
+    "name": "Baltimore Ravens",
+    "pos": "DST",
+    "team": "BAL"
+   },
+   {
+    "name": "Jaylen Waddle",
     "pos": "WR",
-    "team": "GB"
+    "team": "DEN"
    }
   ],
   "PapasCabezas": [

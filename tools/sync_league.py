@@ -51,18 +51,41 @@ def player_row(pp):
     name = TEAM_NAME.get(tm, p.get("fullName")) if pos == "DST" else p.get("fullName")
     return {"name": name, "pos": pos, "team": tm}
 
+def team_name_of(t):
+    return (t.get("name") or ((t.get("location") or "") + " " + (t.get("nickname") or ""))).strip()
+
 def parse_league(d):
     """-> {team display name: [players]} plus meta. Works with both team name shapes ESPN has used."""
     out = {}
     for t in d.get("teams", []):
-        name = (t.get("name") or ((t.get("location") or "") + " " + (t.get("nickname") or ""))).strip()
         rows = []
         for e in (t.get("roster") or {}).get("entries", []):
             r = player_row(e)
             if r:
                 if e.get("lineupSlotId") == IR_SLOT: r["ir"] = True
                 rows.append(r)
-        out[name] = rows
+        out[team_name_of(t)] = rows
+    return out
+
+def parse_schedule(d):
+    """mMatchup -> {week: [[home, away-or-None], ...]} by team display name. away None = that team sits (bye)."""
+    names = {t["id"]: team_name_of(t) for t in d.get("teams", []) if "id" in t}
+    sched = {}
+    for m in d.get("schedule", []):
+        wk = m.get("matchupPeriodId")
+        h = (m.get("home") or {}).get("teamId"); a = (m.get("away") or {}).get("teamId")
+        if wk is None or (h is None and a is None): continue
+        pair = [names.get(h), names.get(a)]
+        if pair[0] is None and pair[1] is not None: pair = [pair[1], None]  # normalise: the team that plays goes first
+        sched.setdefault(str(wk), []).append(pair)
+    return sched
+
+def parse_standings(d):
+    """mTeam -> {team display name: {wins, losses, waiverRank}} (all fields optional in ESPN's payload)."""
+    out = {}
+    for t in d.get("teams", []):
+        rec = ((t.get("record") or {}).get("overall") or {})
+        out[team_name_of(t)] = {"wins": rec.get("wins"), "losses": rec.get("losses"), "waiverRank": t.get("waiverRank")}
     return out
 
 def main():
