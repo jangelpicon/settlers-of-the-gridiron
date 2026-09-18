@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-09-17",
- "source": "ESPN league 882823976 sync 2026-09-17 09:27 CDT",
+ "updated": "2026-09-18",
+ "source": "ESPN league 882823976 sync 2026-09-18 12:56 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -144,14 +144,14 @@
     "team": "NO"
    },
    {
-    "name": "Devaughn Vele",
-    "pos": "WR",
-    "team": "NO"
-   },
-   {
     "name": "San Francisco 49ers",
     "pos": "DST",
     "team": "SF"
+   },
+   {
+    "name": "Carnell Tate",
+    "pos": "WR",
+    "team": "TEN"
    }
   ],
   "Resting Blitz Face": [
@@ -495,11 +495,6 @@
     "team": "CLE"
    },
    {
-    "name": "Los Angeles Rams",
-    "pos": "DST",
-    "team": "LAR"
-   },
-   {
     "name": "Brandon Aubrey",
     "pos": "K",
     "team": "DAL"
@@ -518,6 +513,11 @@
     "name": "Tampa Bay Buccaneers",
     "pos": "DST",
     "team": "TB"
+   },
+   {
+    "name": "Denver Broncos",
+    "pos": "DST",
+    "team": "DEN"
    }
   ],
   "ur done": [
@@ -567,11 +567,6 @@
     "team": "JAX"
    },
    {
-    "name": "Jaylen Warren",
-    "pos": "RB",
-    "team": "PIT"
-   },
-   {
     "name": "Rome Odunze",
     "pos": "WR",
     "team": "CHI"
@@ -590,6 +585,11 @@
     "name": "Jaylen Waddle",
     "pos": "WR",
     "team": "DEN"
+   },
+   {
+    "name": "Bhayshul Tuten",
+    "pos": "RB",
+    "team": "JAX"
    }
   ],
   "PapasCabezas": [
@@ -639,11 +639,6 @@
     "team": "JAX"
    },
    {
-    "name": "KC Concepcion",
-    "pos": "WR",
-    "team": "CLE"
-   },
-   {
     "name": "Jonathon Brooks",
     "pos": "RB",
     "team": "CAR"
@@ -659,9 +654,14 @@
     "team": "LV"
    },
    {
-    "name": "Chad Ryland",
+    "name": "Matthew Golden",
+    "pos": "WR",
+    "team": "GB"
+   },
+   {
+    "name": "Harrison Butker",
     "pos": "K",
-    "team": "ARI"
+    "team": "KC"
    }
   ]
  }

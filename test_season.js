@@ -121,7 +121,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(DO.every((p, i) => i === 0 || (DO[i-1].ros || 420) >= (p.ros || 420)), "drop order runs least season-long value first");
   assert(WS.sugg.concat(WS.marginal).filter(s => s.add.pos !== "QB").every(s => s.drop.n === scarceDrop(s.add.pos).n), "every claim names the scarcity-aware top of the drop order — the ladder explains multi-add drops");
   const wtxt2 = d.getElementById("tab-waivers").textContent;
-  assert(/Your drop order/.test(wtxt2) && /Your claim sheet — enter exactly this in ESPN/.test(wtxt2), "waiver tab shows the drop order and the ESPN-style claim sheet");
+  assert(/Your drop order/.test(wtxt2) && (WS.sugg.length ? /Your claim sheet — enter exactly this in ESPN/.test(wtxt2) : /Nothing on the wire is a clear season-long upgrade/.test(wtxt2)), "waiver tab shows the drop order plus the claim sheet (or the empty-wire note when there are no suggestions)");
   {
     let pri = 0;
     const rows = [];
