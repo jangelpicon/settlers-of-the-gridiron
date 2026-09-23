@@ -170,7 +170,8 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(trades.every(t => Math.abs(t.ev - Math.round(t.myGain * t.odds.p * 10) / 10) < 1e-9), "expected value = my gain × odds");
   assert(!d.getElementById("tradeSort"), "no sort selector — one list only");
   const oddsTags = [...d.querySelectorAll("#tab-trades .suggest .tag")].map(x => x.textContent);
-  assert(oddsTags.length > 0 && oddsTags.every(x => ["easy yes","likely","coin flip","long shot"].includes(x)), "every trade card carries an acceptance-odds label");
+  const oddsLabelRx = /^(looks insulting — they give up the far bigger name|(easy yes|likely|coin flip|long shot)(, but they give the bigger name| — they land the bigger name)?)$/;
+  assert(oddsTags.length > 0 && oddsTags.every(x => oddsLabelRx.test(x)), "every trade card carries an acceptance-odds label (incl. fairness variants)");
   assert(trades.slice(0, 8).some(t => t.get.pos === "RB"), "top suggestions include getting a running back");
   const top = trades[0];
   const st = T.tradeStats(top.team, top.give.name, top.get.name);
@@ -199,7 +200,8 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   // All declined
   d.getElementById("declineAll").click();
   assert(!/Open proposals/.test(openTxt()) && T.getLog().filter(e => e.status === "proposed").length === 0 && T.getLog().filter(e => e.status === "declined").length === 2, "'All declined' marks every open proposal declined");
-  assert(T.teamFloor(top.team) === top.theirGain + 3, "all-declined raises the floor for the team that said no");
+  const declinedToTop = T.getLog().filter(e => e.status === "declined" && e.team === top.team && typeof e.theirGain === "number");
+  assert(T.teamFloor(top.team) === Math.max(...declinedToTop.map(e => e.theirGain)) + 3, "all-declined raises the floor for the team that said no (max across its declined offers)");
   assert(!T.findTrades().some(x => x.team === top.team && x.get.n === top.get.n && x.give.n === top.give.n), "declined-by-button offers are gone from the suggestions");
   // reset local log
   while (d.querySelector("#tab-trades .tb-undo")) d.querySelector("#tab-trades .tb-undo").click();

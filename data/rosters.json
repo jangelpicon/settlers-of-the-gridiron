@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-09-18",
- "source": "ESPN league 882823976 sync 2026-09-18 12:56 CDT",
+ "updated": "2026-09-22",
+ "source": "ESPN league 882823976 sync 2026-09-22 21:29 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -134,11 +134,6 @@
     "team": "DET"
    },
    {
-    "name": "Kenny Gainwell",
-    "pos": "RB",
-    "team": "TB"
-   },
-   {
     "name": "Juwan Johnson",
     "pos": "TE",
     "team": "NO"
@@ -152,6 +147,11 @@
     "name": "Carnell Tate",
     "pos": "WR",
     "team": "TEN"
+   },
+   {
+    "name": "Jaylen Warren",
+    "pos": "RB",
+    "team": "PIT"
    }
   ],
   "Resting Blitz Face": [
@@ -371,9 +371,9 @@
     "team": "CHI"
    },
    {
-    "name": "Caleb Douglas",
+    "name": "Devaughn Vele",
     "pos": "WR",
-    "team": "MIA"
+    "team": "NO"
    }
   ],
   "BlitzAndGiggles": [
