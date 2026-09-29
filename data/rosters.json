@@ -1,7 +1,7 @@
 {
  "me": "ur done",
  "updated": "2026-09-29",
- "source": "ESPN league 882823976 sync 2026-09-29 07:49 CDT",
+ "source": "ESPN league 882823976 sync 2026-09-29 08:29 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -471,7 +471,8 @@
    {
     "name": "Travis Etienne Jr.",
     "pos": "RB",
-    "team": "NO"
+    "team": "NO",
+    "ir": true
    },
    {
     "name": "Jalen Hurts",
@@ -507,11 +508,6 @@
     "name": "Jared Goff",
     "pos": "QB",
     "team": "DET"
-   },
-   {
-    "name": "Cincinnati Bengals",
-    "pos": "DST",
-    "team": "CIN"
    }
   ],
   "ur done": [
