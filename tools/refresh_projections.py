@@ -98,6 +98,11 @@ def main():
     if week is None:
         sb0 = get("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard", UA)
         week = (sb0.get("week") or {}).get("number") or 1
+        # ESPN keeps reporting the finished week until its Wednesday rollover;
+        # once every game in that week is final, the fantasy week has advanced.
+        evs = sb0.get("events") or []
+        if evs and all(((ev.get("status") or {}).get("type") or {}).get("completed") for ev in evs):
+            week += 1
     games, _ = scoreboard(week)
     e = espn(week); s = sleeper(week)
     if len(e) < 200 or len(s) < 200 or len(games) < 20:

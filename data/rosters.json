@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-09-27",
- "source": "ESPN league 882823976 sync 2026-09-27 08:00 CDT",
+ "updated": "2026-09-29",
+ "source": "ESPN league 882823976 sync 2026-09-29 07:49 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -18,8 +18,7 @@
    {
     "name": "Brock Bowers",
     "pos": "TE",
-    "team": "LV",
-    "ir": true
+    "team": "LV"
    },
    {
     "name": "DeVonta Smith",
@@ -75,11 +74,6 @@
     "name": "Travis Kelce",
     "pos": "TE",
     "team": "KC"
-   },
-   {
-    "name": "Colston Loveland",
-    "pos": "TE",
-    "team": "CHI"
    }
   ],
   "SACK OF WHEAT": [

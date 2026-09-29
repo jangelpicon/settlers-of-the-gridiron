@@ -149,7 +149,9 @@
   }
   async function fetchLive(week){
     const sb0 = await fetchJson("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard");
-    const wk = week || ((sb0.week||{}).number) || 1;
+    let wk = week || ((sb0.week||{}).number) || 1;
+    // ESPN reports the finished week until its Wednesday rollover; if every game is final, advance.
+    if (!week && (sb0.events||[]).length && sb0.events.every(e=>(((e.status||{}).type)||{}).completed)) wk += 1;
     const flt = JSON.stringify({players:{filterSlotIds:{value:[0,2,4,6,17,16]},limit:900,sortPercOwned:{sortPriority:1,sortAsc:false},filterStatsForTopScoringPeriodIds:{value:2,additionalValue:["00"+SEASON,"10"+SEASON,"11"+SEASON+wk,"02"+SEASON]}}});
     const [sb, es, sl] = await Promise.all([
       (sb0.week && sb0.week.number===wk) ? sb0 : fetchJson("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?seasontype=2&week="+wk),
