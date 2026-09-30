@@ -8,11 +8,12 @@ const html = fs.readFileSync(path.join(dir, "season.html"), "utf8");
 const J = f => JSON.parse(fs.readFileSync(path.join(dir, "data", f), "utf8"));
 const season = J("season.json"), rosters = J("rosters.json"), exclusions = J("exclusions.json"),
   trades = J("trades.json"), proj = J("projections.json");
+let matchups = null; try { matchups = J("matchups.json"); } catch (e) {} // optional — page degrades to consensus-only
 (async () => {
   const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://localhost/", beforeParse(w) { w.__seasonNoAutoLoad = true; } });
   await new Promise(r => setTimeout(r, 50));
   const w = dom.window, d = w.document, T = w.__seasonTest;
-  T.inject(season, rosters, exclusions, trades, proj);
+  T.inject(season, rosters, exclusions, trades, proj, null, matchups);
   const me = rosters.teams[rosters.me].map(T.info);
   const L = T.optimalLineup(me, "mu");
   const out = {

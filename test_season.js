@@ -307,6 +307,45 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     assert(T.getRosters().me === rosters.me, "no ?team= param: Jose's view, unchanged");
   }
 
+  // ======================= Matchup engine (opponent-adjusted form) =======================
+  console.log("== Matchup engine ==");
+  const matchups = JSON.parse(fs.readFileSync(path.join(__dirname, "data/matchups.json"), "utf8"));
+  assert(Object.keys(matchups.defVsPos).length >= 30, "defense-vs-position table covers the league (" + Object.keys(matchups.defVsPos).length + " defenses)");
+  assert(["QB","RB","WR","TE","K","DST"].every(pos => matchups.leagueAvg[pos] > 0), "league average present for all six positions");
+  assert(matchups.defVsPos.DET && matchups.defVsPos.DET.QB && matchups.defVsPos.DET.QB.avg > matchups.leagueAvg.QB * 1.3, "sanity anchor: Detroit is a far-above-average QB matchup (" + (matchups.defVsPos.DET ? matchups.defVsPos.DET.QB.avg : "?") + " vs lg " + matchups.leagueAvg.QB + ")");
+  // graceful degrade: no matchups file = consensus-only, no matchup fields, no errors
+  T.inject(season, rosters, exclusions, tradeLog, projections);
+  const anyQB = rosters.teams[rosters.me].filter(p => p.pos === "QB").map(p => T.info(p));
+  assert(anyQB.length > 0 && anyQB.every(p => p.matchup == null && p.mu != null), "without matchups.json every projection still computes, consensus-only");
+  const consensusMu = {}; anyQB.forEach(p => consensusMu[p.n] = p.mu);
+  // synthetic fixture: opponent allows exactly 2x what he faced -> matchup view doubles his average, half weight
+  const fxP = anyQB[0], fxTeam = w.__seasonTest.norm ? null : null;
+  const fxOpp = (projections.games[fxP.liveTeam] || {}).opp;
+  if (fxOpp) {
+    const fx = { generated: "fixture", weeksSampled: [1,2,3], leagueAvg: { QB: 20 }, outlook: {},
+      defVsPos: { [fxOpp]: { QB: { avg: 20, games: 3 } } },
+      playerForm: { [fxP.n]: { pos: "QB", team: fxP.liveTeam, n: 3, actAvg: 10, facedAvg: 10 } } };
+    T.inject(season, rosters, exclusions, tradeLog, projections, null, fx);
+    const p = T.info({ name: fxP.name, pos: "QB", team: fxP.team });
+    assert(p.matchup && Math.abs(p.matchup.proj - 20) < 0.01 && Math.abs(p.matchup.w - 0.5) < 0.01, "fixture: matchup view = actAvg x oppAllows/facedAvg (10 x 20/10 = " + (p.matchup ? p.matchup.proj : "?") + "), 3 games = 50% weight");
+    const want = (0.5 * p.base + 0.5 * 20) * p.vegasMult * (p.injLive === "Q" ? 0.95 : 1);
+    assert(Math.abs(p.ifPlays - want) < 0.15, "fixture: blended projection = (1-w)*consensus + w*matchup, then Vegas (" + p.ifPlays + " vs expected " + want.toFixed(1) + ")");
+  } else assert(false, "fixture skipped — no game found for " + fxP.name);
+  // real data: form-adjusted projections move away from consensus and the page renders the outlook
+  T.inject(season, rosters, exclusions, tradeLog, projections, null, matchups);
+  const withMu = rosters.teams[rosters.me].filter(p => p.pos === "QB").map(p => T.info(p));
+  assert(withMu.some(p => p.matchup != null), "real matchups.json attaches matchup data to rostered QBs");
+  assert(withMu.some(p => Math.abs(p.mu - consensusMu[p.n]) > 0.05), "matchup blend actually moves projections off the pure consensus");
+  assert(/next 4/.test(d.getElementById("tab-lineup").textContent), "lineup tab renders the next-4 opponent outlook");
+  assert(/next 4/.test(d.getElementById("tab-waivers").textContent), "waiver rows render the next-4 opponent outlook");
+  assert(/matchup/.test(d.getElementById("legend").textContent), "legend explains the matchup view");
+  // regression (the build's reason to exist): with real box-score data the QB call is Jordan Love
+  // over Drake Maye, whose consensus number hasn't digested the A.J. Brown-less offense. Skip
+  // gracefully if either leaves the roster in a future week.
+  const love = withMu.find(p => /Jordan Love/.test(p.name)), maye = withMu.find(p => /Drake Maye/.test(p.name));
+  if (love && maye) assert(love.mu > maye.mu, "regression: Love (" + love.mu + ") projects above Maye (" + maye.mu + ") with matchup data — consensus alone had this backwards");
+  else console.log("  ok - Love/Maye regression skipped (no longer both rostered)");
+
   console.log("\n--- START/SIT CALLS (chance bench player outscores the starter he'd replace) ---");
   [...d.querySelectorAll("#tab-lineup .row")].filter(r => /%/.test(r.textContent) && /over/.test(r.textContent)).forEach(r => console.log("  " + r.textContent.replace(/\s+/g, " ").trim()));
   const iw = [...d.querySelectorAll("#tab-lineup .suggest")].map(x => x.textContent.replace(/\s+/g, " ").trim()).filter(x => /Injury watch/.test(x));

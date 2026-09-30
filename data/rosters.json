@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-09-29",
- "source": "ESPN league 882823976 sync 2026-09-29 08:29 CDT",
+ "updated": "2026-09-30",
+ "source": "ESPN league 882823976 sync 2026-09-30 08:40 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -51,16 +51,6 @@
     "team": "LAC"
    },
    {
-    "name": "Philadelphia Eagles",
-    "pos": "DST",
-    "team": "PHI"
-   },
-   {
-    "name": "Jason Myers",
-    "pos": "K",
-    "team": "SEA"
-   },
-   {
     "name": "Matthew Stafford",
     "pos": "QB",
     "team": "LAR"
@@ -74,6 +64,16 @@
     "name": "Travis Kelce",
     "pos": "TE",
     "team": "KC"
+   },
+   {
+    "name": "Chicago Bears",
+    "pos": "DST",
+    "team": "CHI"
+   },
+   {
+    "name": "Spencer Shrader",
+    "pos": "K",
+    "team": "IND"
    }
   ],
   "SACK OF WHEAT": [
@@ -85,7 +85,8 @@
    {
     "name": "De'Von Achane",
     "pos": "RB",
-    "team": "MIA"
+    "team": "MIA",
+    "ir": true
    },
    {
     "name": "Rashee Rice",
@@ -196,16 +197,6 @@
     "team": "PIT"
    },
    {
-    "name": "Rico Dowdle",
-    "pos": "RB",
-    "team": "PIT"
-   },
-   {
-    "name": "Courtland Sutton",
-    "pos": "WR",
-    "team": "DEN"
-   },
-   {
     "name": "New England Patriots",
     "pos": "DST",
     "team": "NE"
@@ -224,6 +215,16 @@
     "name": "Brock Purdy",
     "pos": "QB",
     "team": "SF"
+   },
+   {
+    "name": "Kenyon Sadiq",
+    "pos": "TE",
+    "team": "NYJ"
+   },
+   {
+    "name": "Buffalo Bills",
+    "pos": "DST",
+    "team": "BUF"
    }
   ],
   "Unnecessary Sanctions": [
@@ -355,19 +356,19 @@
     "team": "BUF"
    },
    {
-    "name": "Tre Tucker",
+    "name": "Kalif Raymond",
     "pos": "WR",
-    "team": "LV"
+    "team": "CHI"
    },
    {
-    "name": "Dalton Schultz",
+    "name": "Jake Ferguson",
     "pos": "TE",
-    "team": "HOU"
+    "team": "DAL"
    },
    {
-    "name": "Jacory Croskey-Merritt",
+    "name": "Braelon Allen",
     "pos": "RB",
-    "team": "WAS"
+    "team": "NYJ"
    }
   ],
   "BlitzAndGiggles": [
@@ -480,11 +481,6 @@
     "team": "PHI"
    },
    {
-    "name": "Jadarian Price",
-    "pos": "RB",
-    "team": "SEA"
-   },
-   {
     "name": "Quinshon Judkins",
     "pos": "RB",
     "team": "CLE"
@@ -505,9 +501,24 @@
     "team": "DEN"
    },
    {
-    "name": "Jared Goff",
+    "name": "Ollie Gordon II",
+    "pos": "RB",
+    "team": "MIA"
+   },
+   {
+    "name": "Sam Darnold",
     "pos": "QB",
-    "team": "DET"
+    "team": "SEA"
+   },
+   {
+    "name": "Michael Wilson",
+    "pos": "WR",
+    "team": "ARI"
+   },
+   {
+    "name": "Cleveland Browns",
+    "pos": "DST",
+    "team": "CLE"
    }
   ],
   "ur done": [
@@ -557,11 +568,6 @@
     "team": "JAX"
    },
    {
-    "name": "Rome Odunze",
-    "pos": "WR",
-    "team": "CHI"
-   },
-   {
     "name": "Jaylen Waddle",
     "pos": "WR",
     "team": "DEN"
@@ -572,13 +578,18 @@
     "team": "JAX"
    },
    {
-    "name": "Carolina Panthers",
-    "pos": "DST",
-    "team": "CAR"
-   },
-   {
     "name": "Tyler Loop",
     "pos": "K",
+    "team": "BAL"
+   },
+   {
+    "name": "Jordan Love",
+    "pos": "QB",
+    "team": "GB"
+   },
+   {
+    "name": "Baltimore Ravens",
+    "pos": "DST",
     "team": "BAL"
    }
   ],

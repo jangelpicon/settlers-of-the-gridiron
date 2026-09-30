@@ -119,6 +119,12 @@ def main():
            "sources": {"espn": len(e), "sleeper": len(s), "games": len(games)}, "games": games, "players": players}
     (HERE / "data" / "projections.json").write_text(json.dumps(out, separators=(",", ":")))
     print(f"week {week}: espn {len(e)}, sleeper {len(s)}, games {len(games)}, merged {len(players)} -> data/projections.json ({out['generated']})")
+    # opponent-adjusted matchup data rides every projections refresh (Tue + Sun crons); non-fatal —
+    # season.html degrades to consensus-only when data/matchups.json is stale or missing
+    import subprocess
+    r = subprocess.run([sys.executable, str(HERE / "tools" / "refresh_matchups.py")], timeout=600)
+    if r.returncode != 0:
+        print("WARN: refresh_matchups failed — dashboard will run consensus-only on stale matchup data")
 
 if __name__ == "__main__":
     main()

@@ -68,7 +68,8 @@
 <main>
   <details class="panel legend" id="legend"><summary>What the columns mean (tap to open)</summary>
     <dl>
-      <dt>Proj</dt><dd>Predicted fantasy points <b>this week</b>: the average of ESPN's projection, Sleeper's projection and what a player at his expert-consensus rank usually scores, nudged by the Vegas line and by his chance of playing.</dd>
+      <dt>Proj</dt><dd>Predicted fantasy points <b>this week</b>: the average of ESPN's projection, Sleeper's projection and what a player at his expert-consensus rank usually scores, blended (up to half weight) with the <b>matchup view</b> — his own per-game production scaled by how generous this week's defense really is to his position, from actual box scores — then nudged by the Vegas line and his chance of playing. The consensus is slow to reprice a broken or surging situation; the matchup view catches it.</dd>
+      <dt>Next 4</dt><dd>His team's next four opponents, each with the fantasy points that defense actually gives up per game to his position. <span class="good">Green</span> = soft matchup coming, <span class="bad">red</span> = stingy. Early season this runs on few games, so treat middling numbers as noise.</dd>
       <dt>Floor–Ceil</dt><dd>A bad week and a good week for him (20th and 80th percentile). Wide range = boom-or-bust.</dd>
       <dt>Wk rank</dt><dd>FantasyPros expert consensus rank for this week. QB, K and DST are ranked within their position; RB/WR/TE are ranked together (that's the flex pool). Lower is better.</dd>
       <dt>Opp</dt><dd>This week's opponent. "vs." = home, "at" = away.</dd>
@@ -96,6 +97,7 @@
   const FLEX = ["RB","WR","TE"];
   const ROS_MAX = 420; // value = ROS_MAX - rank
   let S = null, R = null, X = { players: [] }, P = null; // season data, rosters, exclusions, projections
+  let MU = null; // data/matchups.json — defense-vs-position + player form + next-4 outlook (weekly refresh); null = consensus-only
   let LG = null, POOL = null; // data/league.json (ESPN league link), data/espn_pool.json (this league's ESPN player universe)
   let PSTAMP = { text:"–", cls:"" }, RSTAMP = { text:"–", cls:"" };
 
@@ -250,6 +252,23 @@
     p.srcs = srcs;
     if (!srcs.length){ return p; }
     const base = srcs.reduce((a,s)=>a+s.v,0)/srcs.length;
+    // Opponent-adjusted form (data/matchups.json): the player's own per-game production scaled by how
+    // much softer/stingier this week's defense is than the ones he already faced. Blended with the
+    // consensus at up to half weight — trust grows with games played (n/(n+3), so 3 games = 50%).
+    // Missing file or unlisted player = consensus only, exactly the old behavior.
+    p.matchup = null;
+    let blended = base;
+    if (MU && MU.defVsPos && MU.leagueAvg && MU.playerForm){
+      const f = MU.playerForm[p.n];
+      const dv = g ? (MU.defVsPos[g.opp]||{})[p.pos] : null;
+      if (f && f.n>0 && f.facedAvg>0 && dv && dv.avg!=null){
+        const mproj = f.actAvg * (dv.avg / f.facedAvg);
+        const w = Math.min(0.5, f.n/(f.n+3));
+        blended = (1-w)*base + w*mproj;
+        p.matchup = { proj: Math.round(mproj*10)/10, w: Math.round(w*100)/100, n: f.n,
+          actAvg: f.actAvg, facedAvg: f.facedAvg, oppAllows: dv.avg, lgAvg: MU.leagueAvg[p.pos]||null };
+      }
+    }
     // Vegas: implied team total vs league average (opponent's total for a defense), half weight, capped ±15%
     let mult = 1, implied = null;
     if (g && M.avgImplied){
@@ -259,7 +278,7 @@
     }
     p.implied = implied; p.vegasMult = Math.round(mult*1000)/1000;
     const eff = p.injLive==="Q" ? 0.95 : 1;
-    const m = base*mult*eff;                 // expected points IF he plays
+    const m = blended*mult*eff;              // expected points IF he plays
     const sc = (CV[p.pos]||.5)*m;            // spread if he plays
     p.base = Math.round(base*100)/100; p.ifPlays = Math.round(m*10)/10;
     p.mu = Math.round(p.pPlay*m*10)/10;
@@ -399,10 +418,30 @@
     const g = p.game;
     const parts = p.srcs.map(s=>esc(s.k)+" "+s.v.toFixed(1));
     let h = "<span class='detail'>"+parts.join(" · ")+" → avg "+p.base.toFixed(1);
+    if (p.matchup){
+      const m = p.matchup;
+      h += " · <b title='his own "+m.n+"-game average ("+m.actAvg.toFixed(1)+"), scaled by this opponent allowing "+m.oppAllows.toFixed(1)+" to "+p.pos+"s vs the "+m.facedAvg.toFixed(1)+" his past opponents allowed"+(m.lgAvg!=null?" (league avg "+m.lgAvg.toFixed(1)+")":"")+"'>matchup view "+m.proj.toFixed(1)+"</b> ("+Math.round(m.w*100)+"% wt)";
+    }
     if (p.implied!=null) h += " · Vegas "+(p.pos==="DST"?"opp":"team")+" total "+p.implied.toFixed(1)+" (×"+p.vegasMult.toFixed(2)+")";
     if (p.pPlay<1 && p.pPlay>0) h += " · "+Math.round(p.pPlay*100)+"% to play";
     if (g) h += " · "+(g.home?"vs":"at")+" "+esc(g.opp)+" "+esc(kickText(g))+(g.weather?" · "+esc(g.weather):"");
-    return h+"</span>";
+    h += "</span>";
+    return h + next4Detail(p);
+  }
+  // "Next 4" strip: upcoming opponents colored by how generous each defense is to this position
+  // (from real box scores in data/matchups.json). Soft = green (good matchup), stingy = red.
+  function next4Detail(p){
+    if (!MU || !MU.outlook || !MU.defVsPos || !MU.leagueAvg) return "";
+    const tm = teamCode(p.liveTeam||p.team); const ol = MU.outlook[tm]; const lg = MU.leagueAvg[p.pos];
+    if (!ol || !ol.length || !lg) return "";
+    const chips = ol.map(o=>{
+      if (o.bye) return "<span class='muted'>W"+o.w+" bye</span>";
+      const dv = (MU.defVsPos[o.opp]||{})[p.pos]; const a = dv ? dv.avg : null;
+      const cls = a==null ? "" : a >= lg*1.15 ? "good" : a <= lg*0.85 ? "bad" : "";
+      const t = a==null ? "no sample yet" : esc(o.opp)+" allows "+a.toFixed(1)+"/gm to "+p.pos+"s (league avg "+lg.toFixed(1)+")";
+      return "<span class='"+cls+"' title='"+t+"'>W"+o.w+" "+(o.home?"":"@")+esc(o.opp)+(a!=null?" "+a.toFixed(0):"")+"</span>";
+    });
+    return "<span class='detail'>next 4 ("+esc(p.pos)+" pts a defense gives up; <span class='good'>green = soft</span>, <span class='bad'>red = stingy</span>): "+chips.join(" · ")+"</span>";
   }
 
   // ---------- Lineup tab ----------
@@ -463,7 +502,7 @@
       }
     }
     h += "</div>";
-    if (P) h += "<div class='panel'><h2>How the prediction works</h2><div class='muted'>1) Average three independent views of the week: ESPN's projection, Sleeper's projection, and the points a player at his FantasyPros consensus rank usually projects for. 2) Nudge by the betting market: teams expected to score more than the league average get up to +15%, less gets down to −15% (defenses use the opponent's total, inverted). 3) Multiply by the chance he plays from the live injury designation (Questionable 75%, Doubtful 25%, Out 0%). The floor–ceiling is the typical 20th–80th percentile week for his position. Data: <b>"+esc(P.generated)+"</b> · ESPN "+P.sources.espn+" players · Sleeper "+P.sources.sleeper+" · "+P.sources.games+" teams with lines.</div></div>";
+    if (P) h += "<div class='panel'><h2>How the prediction works</h2><div class='muted'>1) Average three independent views of the week: ESPN's projection, Sleeper's projection, and the points a player at his FantasyPros consensus rank usually projects for. 2) Blend in the <b>matchup view</b>"+(MU?"":" <span class='bad'>(unavailable — data/matchups.json missing, running consensus-only)</span>")+": from real box scores, how many points each defense actually gives up to each position; a player's own production is scaled by this week's opponent vs the defenses he already faced. It gets up to half the say — more games played, more trust — so it catches what the consensus is slow to reprice (a broken offense, a surging one). 3) Nudge by the betting market: teams expected to score more than the league average get up to +15%, less gets down to −15% (defenses use the opponent's total, inverted). 4) Multiply by the chance he plays from the live injury designation (Questionable 75%, Doubtful 25%, Out 0%). The floor–ceiling is the typical 20th–80th percentile week for his position. Data: <b>"+esc(P.generated)+"</b> · ESPN "+P.sources.espn+" players · Sleeper "+P.sources.sleeper+" · "+P.sources.games+" teams with lines"+(MU?" · matchups <b>"+esc(MU.generated)+"</b> (weeks "+MU.weeksSampled.join(", ")+")":"")+".</div></div>";
     document.getElementById("tab-lineup").innerHTML = h;
   }
 
@@ -564,7 +603,7 @@
     const v = b.verdict; const cls = v.key==="add"?"good":v.key==="marginal"||v.key==="rental"?"warn":"";
     const wkly = ["K","DST"].includes(b.fa.pos);
     const drop = b.drop ? "<b>"+esc(b.drop.name)+"</b> <span class='muted'>"+b.drop.pos+" · ROS #"+(b.drop.ros!=null?b.drop.ros:"–")+(b.drop.seasonProj!=null?" · "+b.drop.seasonProj.toFixed(0)+" season pts":"")+(wkly && b.drop.mu!=null?" · "+b.drop.mu.toFixed(1)+" proj this week":"")+"</span>" : "<span class='muted'>nobody</span>";
-    return "<div class='row grid'>"+playerLine(b.fa, tag||"", "FA")+"<span class='sub'><span><span class='lbl' title='"+esc(WCOLS[0][1])+"'>"+WCOLS[0][0]+":</span> "+drop+"</span><span><span class='lbl' title='"+esc(WCOLS[1][1])+"'>"+WCOLS[1][0]+":</span> <span class='tag "+cls+"'>"+esc(v.text)+"</span></span></span></div>";
+    return "<div class='row grid'>"+playerLine(b.fa, tag||"", "FA")+next4Detail(b.fa)+"<span class='sub'><span><span class='lbl' title='"+esc(WCOLS[0][1])+"'>"+WCOLS[0][0]+":</span> "+drop+"</span><span><span class='lbl' title='"+esc(WCOLS[1][1])+"'>"+WCOLS[1][0]+":</span> <span class='tag "+cls+"'>"+esc(v.text)+"</span></span></span></div>";
   }
   function excluded(){ const s = new Set(); (X.players||[]).forEach(p=>s.add(norm(p.name))); return s; }
   function freeAgents(){
@@ -825,9 +864,10 @@
   }
   async function load(){
     try {
-      const [s, r, x, tl, lg, pool] = await Promise.all([fetch("data/season.json?v="+Date.now()).then(x=>x.json()), fetch("data/rosters.json?v="+Date.now()).then(x=>x.json()), fetch("data/exclusions.json?v="+Date.now()).then(x=>x.json()).catch(()=>({players:[]})), fetch("data/trades.json?v="+Date.now()).then(x=>x.json()).catch(()=>({entries:[]})),
-        fetch("data/league.json?v="+Date.now()).then(x=>x.json()).catch(()=>null), fetch("data/espn_pool.json?v="+Date.now()).then(x=>x.json()).catch(()=>null)]);
-      S = s; R = r; X = x || {players:[]}; LG = lg; POOL = pool; mergeLog((tl||{}).entries);
+      const [s, r, x, tl, lg, pool, mu] = await Promise.all([fetch("data/season.json?v="+Date.now()).then(x=>x.json()), fetch("data/rosters.json?v="+Date.now()).then(x=>x.json()), fetch("data/exclusions.json?v="+Date.now()).then(x=>x.json()).catch(()=>({players:[]})), fetch("data/trades.json?v="+Date.now()).then(x=>x.json()).catch(()=>({entries:[]})),
+        fetch("data/league.json?v="+Date.now()).then(x=>x.json()).catch(()=>null), fetch("data/espn_pool.json?v="+Date.now()).then(x=>x.json()).catch(()=>null),
+        fetch("data/matchups.json?v="+Date.now()).then(x=>x.json()).catch(()=>null)]);
+      S = s; R = r; X = x || {players:[]}; LG = lg; POOL = pool; MU = mu; mergeLog((tl||{}).entries);
       applyTeamParam();
       PSTAMP = { text:"fetching live…", cls:"" }; RSTAMP = { text:(R.updated||"–")+" (checking ESPN…)", cls:"" };
       buildIndex(); renderAll();
@@ -839,7 +879,7 @@
     }
   }
   document.getElementById("refreshLive").addEventListener("click", async ()=>{ if (!S) return; PSTAMP = { text:"fetching live…", cls:"" }; renderAll(); await loadProjections(); buildIndex(); renderAll(); });
-  window.__seasonTest = { inject:(s,r,x,tl,pj,pool)=>{ S=s; R=JSON.parse(JSON.stringify(r)); X=x||{players:[]}; P=pj||null; POOL=pool||null; LG=null; PSTAMP = pj ? {text:"snapshot "+pj.generated, cls:"stale"} : {text:"none", cls:""}; RSTAMP = {text:R.updated||"–", cls:""}; mergeLog((tl||{}).entries); applyAcceptedTrades(); buildIndex(); renderAll(); },
+  window.__seasonTest = { inject:(s,r,x,tl,pj,pool,mu)=>{ S=s; R=JSON.parse(JSON.stringify(r)); X=x||{players:[]}; P=pj||null; POOL=pool||null; MU=mu||null; LG=null; PSTAMP = pj ? {text:"snapshot "+pj.generated, cls:"stale"} : {text:"none", cls:""}; RSTAMP = {text:R.updated||"–", cls:""}; mergeLog((tl||{}).entries); applyAcceptedTrades(); buildIndex(); renderAll(); },
     rostersFromLeague, setRosters:(r)=>{ R = JSON.parse(JSON.stringify(r)); buildIndex(); renderAll(); },
     logTrade, teamFloor, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, strength, findTrades, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M,
     waiverSuggestions:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,
