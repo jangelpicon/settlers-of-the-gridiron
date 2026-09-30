@@ -269,9 +269,14 @@
         const facedAdj = f.facedAdj!=null && f.facedAdj>0 ? f.facedAdj : f.facedAvg;
         const ratio = Math.min(1.6, Math.max(0.5, oppAdj / facedAdj));
         const mproj = f.actAvg * ratio;
-        const w = Math.min(0.5, f.n/(f.n+3));
+        // the matchup view's vote is MEASURED, not hand-picked: refresh_matchups.py backtests both
+        // views walk-forward against every completed week and fits the weight per position (fittedW).
+        // A player still can't exceed his evidence: w is floored by games/(games+3). Falls back to
+        // the 0.5 default only when no fit is available.
+        const fw = MU.fittedW && MU.fittedW[p.pos] ? MU.fittedW[p.pos].use : null;
+        const w = Math.min(fw!=null ? fw : 0.5, f.n/(f.n+3));
         blended = (1-w)*base + w*mproj;
-        p.matchup = { proj: Math.round(mproj*10)/10, w: Math.round(w*100)/100, n: f.n, ratio: Math.round(ratio*100)/100,
+        p.matchup = { proj: Math.round(mproj*10)/10, w: Math.round(w*100)/100, n: f.n, ratio: Math.round(ratio*100)/100, fitted: fw!=null,
           actAvg: f.actAvg, facedAvg: f.facedAvg, oppAllows: dv.avg, lgAvg: MU.leagueAvg[p.pos]||null };
       }
     }
@@ -426,7 +431,7 @@
     let h = "<span class='detail'>"+parts.join(" · ")+" → avg "+p.base.toFixed(1);
     if (p.matchup){
       const m = p.matchup;
-      h += " · <b title='his own "+m.n+"-game average ("+m.actAvg.toFixed(1)+"), scaled by this opponent allowing "+m.oppAllows.toFixed(1)+" to "+p.pos+"s vs the "+m.facedAvg.toFixed(1)+" his past opponents allowed"+(m.lgAvg!=null?" (league avg "+m.lgAvg.toFixed(1)+")":"")+"'>matchup view "+m.proj.toFixed(1)+"</b> ("+Math.round(m.w*100)+"% wt)";
+      h += " · <b title='his own "+m.n+"-game average ("+m.actAvg.toFixed(1)+"), scaled by this opponent allowing "+m.oppAllows.toFixed(1)+" to "+p.pos+"s vs the "+m.facedAvg.toFixed(1)+" his past opponents allowed"+(m.lgAvg!=null?" (league avg "+m.lgAvg.toFixed(1)+")":"")+"'>matchup view "+m.proj.toFixed(1)+"</b> ("+Math.round(m.w*100)+"% wt, "+(m.fitted?"fitted":"default")+")";
     }
     if (p.implied!=null) h += " · Vegas "+(p.pos==="DST"?"opp":"team")+" total "+p.implied.toFixed(1)+" (×"+p.vegasMult.toFixed(2)+")";
     if (p.pPlay<1 && p.pPlay>0) h += " · "+Math.round(p.pPlay*100)+"% to play";
@@ -508,7 +513,7 @@
       }
     }
     h += "</div>";
-    if (P) h += "<div class='panel'><h2>How the prediction works</h2><div class='muted'>1) Average three independent views of the week: ESPN's projection, Sleeper's projection, and the points a player at his FantasyPros consensus rank usually projects for. 2) Blend in the <b>matchup view</b>"+(MU?"":" <span class='bad'>(unavailable — data/matchups.json missing, running consensus-only)</span>")+": from real box scores, how many points each defense actually gives up to each position; a player's own production is scaled by this week's opponent vs the defenses he already faced. It gets up to half the say — more games played, more trust — so it catches what the consensus is slow to reprice (a broken offense, a surging one). Guardrails: small-sample defense numbers are regressed toward the league average, and the scaling is hard-capped between 0.5× and 1.6× so a fluky three-game stat can't run a projection away from reality. 3) Nudge by the betting market: teams expected to score more than the league average get up to +15%, less gets down to −15% (defenses use the opponent's total, inverted). 4) Multiply by the chance he plays from the live injury designation (Questionable 75%, Doubtful 25%, Out 0%). The floor–ceiling is the typical 20th–80th percentile week for his position. Data: <b>"+esc(P.generated)+"</b> · ESPN "+P.sources.espn+" players · Sleeper "+P.sources.sleeper+" · "+P.sources.games+" teams with lines"+(MU?" · matchups <b>"+esc(MU.generated)+"</b> (weeks "+MU.weeksSampled.join(", ")+")":"")+".</div></div>";
+    if (P) h += "<div class='panel'><h2>How the prediction works</h2><div class='muted'>1) Average three independent views of the week: ESPN's projection, Sleeper's projection, and the points a player at his FantasyPros consensus rank usually projects for. 2) Blend in the <b>matchup view</b>"+(MU?"":" <span class='bad'>(unavailable — data/matchups.json missing, running consensus-only)</span>")+": from real box scores, how many points each defense actually gives up to each position; a player's own production is scaled by this week's opponent vs the defenses he already faced. How much say it gets is <b>measured, not guessed</b>: every refresh replays the season week by week — what would each view have predicted knowing only the prior weeks? — scores both against what actually happened, and fits the blend weight per position (shown in the data line below; so far the box-score view has earned a small vote, and it grows or shrinks automatically as the season accumulates evidence). A player also can't exceed his own evidence: fewer games played, smaller vote. Guardrails: small-sample defense numbers are regressed toward the league average, and the scaling is hard-capped between 0.5× and 1.6× so a fluky three-game stat can't run a projection away from reality. 3) Nudge by the betting market: teams expected to score more than the league average get up to +15%, less gets down to −15% (defenses use the opponent's total, inverted). 4) Multiply by the chance he plays from the live injury designation (Questionable 75%, Doubtful 25%, Out 0%). The floor–ceiling is the typical 20th–80th percentile week for his position. Data: <b>"+esc(P.generated)+"</b> · ESPN "+P.sources.espn+" players · Sleeper "+P.sources.sleeper+" · "+P.sources.games+" teams with lines"+(MU?" · matchups <b>"+esc(MU.generated)+"</b> (weeks "+MU.weeksSampled.join(", ")+")"+(MU.fittedW?" · fitted weights: "+Object.keys(MU.fittedW).map(k=>k+" "+Math.round(MU.fittedW[k].use*100)+"%").join(", ")+" (from "+Object.values(MU.fittedW).reduce((s,v)=>s+v.nRows,0)+" scored predictions)":""):"")+".</div></div>";
     document.getElementById("tab-lineup").innerHTML = h;
   }
 

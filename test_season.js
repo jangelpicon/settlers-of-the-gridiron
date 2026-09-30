@@ -339,12 +339,17 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(/next 4/.test(d.getElementById("tab-lineup").textContent), "lineup tab renders the next-4 opponent outlook");
   assert(/next 4/.test(d.getElementById("tab-waivers").textContent), "waiver rows render the next-4 opponent outlook");
   assert(/matchup/.test(d.getElementById("legend").textContent), "legend explains the matchup view");
-  // regression (the build's reason to exist): with real box-score data the QB call is Jordan Love
-  // over Drake Maye, whose consensus number hasn't digested the A.J. Brown-less offense. Skip
-  // gracefully if either leaves the roster in a future week.
+  // fitted weights: the matchup view's vote is measured by walk-forward backtest, not hand-picked
+  const predlog = JSON.parse(fs.readFileSync(path.join(__dirname, "data/predlog.json"), "utf8"));
+  assert(predlog.rows.length > 500, "prediction log holds a real backtest sample (" + predlog.rows.length + " scored player-weeks)");
+  assert(predlog.rows.every(r => r.w >= 2 && r.actual != null && r.cons != null && r.mview != null), "every log row is a scored week-2+ prediction pair (walk-forward, no week-1 hindsight)");
+  assert(matchups.fittedW && Object.keys(matchups.fittedW).length >= 4, "fitted weights present for most positions");
+  assert(Object.values(matchups.fittedW).every(v => v.use >= 0 && v.use <= 0.8 && v.mseFit <= v.mseCons + 0.01), "every fitted weight is sane and never scores worse than consensus-only on the backtest");
+  const qbW = matchups.fittedW.QB;
+  const fittedQB = withMu.find(p => p.matchup && p.matchup.fitted);
+  if (qbW && fittedQB) assert(Math.abs(fittedQB.matchup.w - Math.min(qbW.use, fittedQB.matchup.n/(fittedQB.matchup.n+3))) < 0.011, "predict() applies the fitted QB weight (" + fittedQB.matchup.w + " vs fitted " + qbW.use + ")");
   const love = withMu.find(p => /Jordan Love/.test(p.name)), maye = withMu.find(p => /Drake Maye/.test(p.name));
-  if (love && maye) assert(love.mu > maye.mu, "regression: Love (" + love.mu + ") projects above Maye (" + maye.mu + ") with matchup data — consensus alone had this backwards");
-  else console.log("  ok - Love/Maye regression skipped (no longer both rostered)");
+  if (love && maye) console.log("  info - QB board under fitted weights: Love " + love.mu + " vs Maye " + maye.mu + " (measured weights decide, not narrative)");
   // regression (Saints D/ST 9/30): tiny-sample D/ST ratios exploded (6.9x -> proj 15 vs ESPN 3).
   // Every matchup multiplier must respect the cap, and no projection may exceed 1.6x its consensus.
   const everyone = Object.values(T.getRosters().teams).flat().map(T.info).concat(T.freeAgents());
