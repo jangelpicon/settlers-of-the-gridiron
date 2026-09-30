@@ -100,6 +100,15 @@ def main():
         vals = [by[pos]["avg"] for by in def_vs_pos.values() if pos in by]
         if vals:
             league_avg[pos] = round(sum(vals) / len(vals), 2)
+    # small-sample shrinkage: with 2-3 games a defense's raw average is mostly noise (a D/ST tier
+    # especially — one 3-turnover game doubles it). "adj" regresses each value toward the league
+    # average by games/(games+3); the blend in season.html uses adj, the raw avg stays for display.
+    for by in def_vs_pos.values():
+        for pos, e in by.items():
+            lg = league_avg.get(pos)
+            if lg:
+                s = e["games"] / (e["games"] + 3)
+                e["adj"] = round(lg + (e["avg"] - lg) * s, 2)
 
     # player form: his production + the (unscaled) difficulty of the defenses he faced
     logs = {}      # norm -> {pos, team, games: [(week, opp, pts)]}
@@ -117,8 +126,9 @@ def main():
         ng = len(e["games"])
         act = sum(p for _, _, p in e["games"]) / ng
         faced = sum((def_vs_pos.get(opp, {}).get(e["pos"], {}).get("avg") or lg) for _, opp, _ in e["games"]) / ng
+        faced_adj = sum((def_vs_pos.get(opp, {}).get(e["pos"], {}).get("adj") or lg) for _, opp, _ in e["games"]) / ng
         player_form[n] = {"pos": e["pos"], "team": e["team"], "n": ng,
-                          "actAvg": round(act, 2), "facedAvg": round(faced, 2)}
+                          "actAvg": round(act, 2), "facedAvg": round(faced, 2), "facedAdj": round(faced_adj, 2)}
 
     outlook = {}
     for tm in TEAM_NAME:

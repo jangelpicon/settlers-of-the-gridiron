@@ -262,10 +262,16 @@
       const f = MU.playerForm[p.n];
       const dv = g ? (MU.defVsPos[g.opp]||{})[p.pos] : null;
       if (f && f.n>0 && f.facedAvg>0 && dv && dv.avg!=null){
-        const mproj = f.actAvg * (dv.avg / f.facedAvg);
+        // use the shrunk ("adj") defense numbers when present — raw 3-game samples are noise,
+        // especially for D/ST and K — and hard-cap the multiplier at 0.5x–1.6x so no matchup,
+        // however juicy the small sample looks, can more than swing a projection by that much
+        const oppAdj = dv.adj!=null ? dv.adj : dv.avg;
+        const facedAdj = f.facedAdj!=null && f.facedAdj>0 ? f.facedAdj : f.facedAvg;
+        const ratio = Math.min(1.6, Math.max(0.5, oppAdj / facedAdj));
+        const mproj = f.actAvg * ratio;
         const w = Math.min(0.5, f.n/(f.n+3));
         blended = (1-w)*base + w*mproj;
-        p.matchup = { proj: Math.round(mproj*10)/10, w: Math.round(w*100)/100, n: f.n,
+        p.matchup = { proj: Math.round(mproj*10)/10, w: Math.round(w*100)/100, n: f.n, ratio: Math.round(ratio*100)/100,
           actAvg: f.actAvg, facedAvg: f.facedAvg, oppAllows: dv.avg, lgAvg: MU.leagueAvg[p.pos]||null };
       }
     }
@@ -502,7 +508,7 @@
       }
     }
     h += "</div>";
-    if (P) h += "<div class='panel'><h2>How the prediction works</h2><div class='muted'>1) Average three independent views of the week: ESPN's projection, Sleeper's projection, and the points a player at his FantasyPros consensus rank usually projects for. 2) Blend in the <b>matchup view</b>"+(MU?"":" <span class='bad'>(unavailable — data/matchups.json missing, running consensus-only)</span>")+": from real box scores, how many points each defense actually gives up to each position; a player's own production is scaled by this week's opponent vs the defenses he already faced. It gets up to half the say — more games played, more trust — so it catches what the consensus is slow to reprice (a broken offense, a surging one). 3) Nudge by the betting market: teams expected to score more than the league average get up to +15%, less gets down to −15% (defenses use the opponent's total, inverted). 4) Multiply by the chance he plays from the live injury designation (Questionable 75%, Doubtful 25%, Out 0%). The floor–ceiling is the typical 20th–80th percentile week for his position. Data: <b>"+esc(P.generated)+"</b> · ESPN "+P.sources.espn+" players · Sleeper "+P.sources.sleeper+" · "+P.sources.games+" teams with lines"+(MU?" · matchups <b>"+esc(MU.generated)+"</b> (weeks "+MU.weeksSampled.join(", ")+")":"")+".</div></div>";
+    if (P) h += "<div class='panel'><h2>How the prediction works</h2><div class='muted'>1) Average three independent views of the week: ESPN's projection, Sleeper's projection, and the points a player at his FantasyPros consensus rank usually projects for. 2) Blend in the <b>matchup view</b>"+(MU?"":" <span class='bad'>(unavailable — data/matchups.json missing, running consensus-only)</span>")+": from real box scores, how many points each defense actually gives up to each position; a player's own production is scaled by this week's opponent vs the defenses he already faced. It gets up to half the say — more games played, more trust — so it catches what the consensus is slow to reprice (a broken offense, a surging one). Guardrails: small-sample defense numbers are regressed toward the league average, and the scaling is hard-capped between 0.5× and 1.6× so a fluky three-game stat can't run a projection away from reality. 3) Nudge by the betting market: teams expected to score more than the league average get up to +15%, less gets down to −15% (defenses use the opponent's total, inverted). 4) Multiply by the chance he plays from the live injury designation (Questionable 75%, Doubtful 25%, Out 0%). The floor–ceiling is the typical 20th–80th percentile week for his position. Data: <b>"+esc(P.generated)+"</b> · ESPN "+P.sources.espn+" players · Sleeper "+P.sources.sleeper+" · "+P.sources.games+" teams with lines"+(MU?" · matchups <b>"+esc(MU.generated)+"</b> (weeks "+MU.weeksSampled.join(", ")+")":"")+".</div></div>";
     document.getElementById("tab-lineup").innerHTML = h;
   }
 

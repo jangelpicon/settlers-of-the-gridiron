@@ -327,9 +327,9 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
       playerForm: { [fxP.n]: { pos: "QB", team: fxP.liveTeam, n: 3, actAvg: 10, facedAvg: 10 } } };
     T.inject(season, rosters, exclusions, tradeLog, projections, null, fx);
     const p = T.info({ name: fxP.name, pos: "QB", team: fxP.team });
-    assert(p.matchup && Math.abs(p.matchup.proj - 20) < 0.01 && Math.abs(p.matchup.w - 0.5) < 0.01, "fixture: matchup view = actAvg x oppAllows/facedAvg (10 x 20/10 = " + (p.matchup ? p.matchup.proj : "?") + "), 3 games = 50% weight");
-    const want = (0.5 * p.base + 0.5 * 20) * p.vegasMult * (p.injLive === "Q" ? 0.95 : 1);
-    assert(Math.abs(p.ifPlays - want) < 0.15, "fixture: blended projection = (1-w)*consensus + w*matchup, then Vegas (" + p.ifPlays + " vs expected " + want.toFixed(1) + ")");
+    assert(p.matchup && Math.abs(p.matchup.proj - 16) < 0.01 && Math.abs(p.matchup.w - 0.5) < 0.01, "fixture: raw 2x ratio hard-caps at 1.6x -> matchup view 10 x 1.6 = " + (p.matchup ? p.matchup.proj : "?") + ", 3 games = 50% weight");
+    const want = (0.5 * p.base + 0.5 * 16) * p.vegasMult * (p.injLive === "Q" ? 0.95 : 1);
+    assert(Math.abs(p.ifPlays - want) < 0.15, "fixture: blended projection = (1-w)*consensus + w*capped matchup, then Vegas (" + p.ifPlays + " vs expected " + want.toFixed(1) + ")");
   } else assert(false, "fixture skipped — no game found for " + fxP.name);
   // real data: form-adjusted projections move away from consensus and the page renders the outlook
   T.inject(season, rosters, exclusions, tradeLog, projections, null, matchups);
@@ -345,6 +345,16 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const love = withMu.find(p => /Jordan Love/.test(p.name)), maye = withMu.find(p => /Drake Maye/.test(p.name));
   if (love && maye) assert(love.mu > maye.mu, "regression: Love (" + love.mu + ") projects above Maye (" + maye.mu + ") with matchup data — consensus alone had this backwards");
   else console.log("  ok - Love/Maye regression skipped (no longer both rostered)");
+  // regression (Saints D/ST 9/30): tiny-sample D/ST ratios exploded (6.9x -> proj 15 vs ESPN 3).
+  // Every matchup multiplier must respect the cap, and no projection may exceed 1.6x its consensus.
+  const everyone = Object.values(T.getRosters().teams).flat().map(T.info).concat(T.freeAgents());
+  const withRatio = everyone.filter(p => p.matchup && p.matchup.ratio != null);
+  assert(withRatio.length > 50, "matchup ratios computed across the league (" + withRatio.length + " players)");
+  assert(withRatio.every(p => p.matchup.ratio >= 0.5 && p.matchup.ratio <= 1.6), "every matchup multiplier within the 0.5x-1.6x cap");
+  assert(withRatio.every(p => { const a = p.matchup.actAvg * 0.5, b = p.matchup.actAvg * 1.6; return p.matchup.proj >= Math.min(a,b) - 0.06 && p.matchup.proj <= Math.max(a,b) + 0.06; }), "matchup view stays within 0.5x-1.6x of the player's own production (negative producers included)");
+  const saints = T.info({ name: "New Orleans Saints", pos: "DST", team: "NO" });
+  if (saints.matchup) assert(saints.mu < 9, "Saints D/ST regression: capped blend stays sane (" + saints.mu + ", was 15.2 uncapped vs ESPN 3.3)");
+  else console.log("  ok - Saints D/ST regression skipped (no matchup row this week)");
 
   console.log("\n--- START/SIT CALLS (chance bench player outscores the starter he'd replace) ---");
   [...d.querySelectorAll("#tab-lineup .row")].filter(r => /%/.test(r.textContent) && /over/.test(r.textContent)).forEach(r => console.log("  " + r.textContent.replace(/\s+/g, " ").trim()));
