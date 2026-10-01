@@ -38,6 +38,7 @@
   .live{color:var(--sheep);} .stale{color:#ffd977;}
   /* column grids: every player list shares one column layout so the header row lines up */
   .tbl{overflow-x:auto;} .tbl .row.grid,.tbl .hrow{display:grid;grid-template-columns:40px 38px minmax(130px,1.3fr) 40px 56px 72px 60px 64px 44px 62px 70px 36px minmax(140px,1fr);gap:6px;align-items:center;min-width:930px;}
+  .tbl .gs .row.grid,.tbl .gs .hrow{grid-template-columns:40px 38px minmax(130px,1.3fr) 40px 56px 72px 64px minmax(140px,1fr);min-width:560px;}
   .hrow{padding:4px 8px;font-size:.64rem;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;border-bottom:1px solid #38424d;font-weight:700;white-space:nowrap;} .hrow .num{text-align:right;} .hrow .ctr{text-align:center;}
   .hrow span[title],.legend dt{cursor:help;text-decoration:underline dotted #4a5561;text-underline-offset:3px;}
   .row.grid b{min-width:0;} .row.grid .c{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;} .row.grid .num{text-align:right;font-variant-numeric:tabular-nums;}
@@ -412,32 +413,59 @@
   }
   // One player = one grid row. Column order must match playerHeader().
   const PCOLS = [["Slot","Lineup slot (BN = bench, FA = free agent)"],["Pos","Position"],["Player",""],["NFL","His NFL team"],["Proj","Predicted fantasy points this week","num"],["Floor–Ceil","Bad week – good week (20th–80th percentile)","num"],["Wk rank","FantasyPros consensus rank this week (RB/WR/TE ranked together)","num"],["Opp","Opponent this week"],["Grade","FantasyPros start/sit grade","ctr"],["ROS rank","Rest-of-season rank, all positions, lower = better","num"],["Season pts","ESPN projected points for the full season","num"],["Bye","Bye week","num"],["Status","Injury / locked / bye"]];
-  function playerHeader(){ return "<div class='hrow'>"+PCOLS.map(c=>"<span"+(c[2]?" class='"+c[2]+"'":"")+(c[1]?" title='"+esc(c[1])+"'":"")+">"+esc(c[0])+"</span>").join("")+"</div>"; }
-  function playerLine(p, extra, slot){
+  // Lineup tab shows only the decision columns (slim); the "why" line under each player carries the
+  // inputs (wk rank etc.). Waivers keeps the full board — ROS rank + season pts drive the add/drop rule.
+  const SLIMCOLS = ["Slot","Pos","Player","NFL","Proj","Floor–Ceil","Opp","Status"];
+  function pcols(slim){ return slim ? PCOLS.filter(c=>SLIMCOLS.includes(c[0])) : PCOLS; }
+  function playerHeader(slim){ return "<div class='hrow'>"+pcols(slim).map(c=>"<span"+(c[2]?" class='"+c[2]+"'":"")+(c[1]?" title='"+esc(c[1])+"'":"")+">"+esc(c[0])+"</span>").join("")+"</div>"; }
+  function playerLine(p, extra, slot, slim){
     const num = v => "<span class='c num'>"+v+"</span>";
     const proj = (!P || p.mu==null) ? num(P ? "<span class='bad'>–</span>" : "")
       : (p.actual!=null && p.gameState && p.gameState!=="pre") ? num("<span class='proj'>"+p.actual.toFixed(1)+"</span> <small class='muted'>"+(p.gameState==="post"?"final":"live")+"</small>")
       : num("<span class='proj'>"+p.mu.toFixed(1)+"</span>");
     const range = (!P || p.mu==null || (p.actual!=null && p.gameState && p.gameState!=="pre")) ? num("") : num(p.floor.toFixed(0)+"–"+p.ceil.toFixed(0));
     const status = (p.onBye ? "<span class='tag bad'>BYE</span>" : "")+(P && p.locked ? "<span class='tag warn'>locked</span>" : "")+injBadge(p)+(extra||"");
-    return "<span class='slot'>"+esc(slot||"")+"</span>"+posTag(p.pos)+"<b class='c'>"+esc(p.name)+"</b><span class='c muted'>"+esc(p.liveTeam||p.team||"")+"</span>"+proj+range+
-      num(p.wkRank!=null ? "#"+p.wkRank : "<span class='bad' title='no weekly rank'>–</span>")+"<span class='c'>"+esc(p.opp||"")+"</span>"+"<span class='c grade'>"+(p.grade?gradeTag(p.grade):"")+"</span>"+
-      num(p.ros!=null ? "#"+p.ros : "–")+num(P && p.seasonProj!=null ? p.seasonProj.toFixed(0) : "")+num(p.bye!=null ? p.bye : "")+"<span class='c' style='white-space:normal'>"+status+"</span>";
+    const cells = {
+      "Slot": "<span class='slot'>"+esc(slot||"")+"</span>",
+      "Pos": posTag(p.pos),
+      "Player": "<b class='c'>"+esc(p.name)+"</b>",
+      "NFL": "<span class='c muted'>"+esc(p.liveTeam||p.team||"")+"</span>",
+      "Proj": proj,
+      "Floor–Ceil": range,
+      "Wk rank": num(p.wkRank!=null ? "#"+p.wkRank : "<span class='bad' title='no weekly rank'>–</span>"),
+      "Opp": "<span class='c'>"+esc(p.opp||"")+"</span>",
+      "Grade": "<span class='c grade'>"+(p.grade?gradeTag(p.grade):"")+"</span>",
+      "ROS rank": num(p.ros!=null ? "#"+p.ros : "–"),
+      "Season pts": num(P && p.seasonProj!=null ? p.seasonProj.toFixed(0) : ""),
+      "Bye": num(p.bye!=null ? p.bye : ""),
+      "Status": "<span class='c' style='white-space:normal'>"+status+"</span>"
+    };
+    return pcols(slim).map(c=>cells[c[0]]).join("");
   }
+  // The receipt under each player: the model's own numbers replayed left to right, so the line ends on
+  // the exact Proj number. Display only — predict() owns the formula. Details live in the tooltips.
   function projDetail(p){
     if (!P || p.mu==null) return "";
     const g = p.game;
-    const parts = p.srcs.map(s=>esc(s.k)+" "+s.v.toFixed(1));
-    let h = "<span class='detail'>"+parts.join(" · ")+" → avg "+p.base.toFixed(1);
+    const f1 = v => (Math.round(v*10)/10).toFixed(1);
+    let run = p.srcs.reduce((a,s)=>a+s.v,0)/p.srcs.length;
+    let h = "<span class='detail'>"+p.srcs.map(s=>esc(s.k)+" "+s.v.toFixed(1)).join(" · ")+" → avg <b>"+f1(run)+"</b>";
     if (p.matchup){
       const m = p.matchup;
-      h += " · <b title='his own "+m.n+"-game average ("+m.actAvg.toFixed(1)+"), scaled by this opponent allowing "+m.oppAllows.toFixed(1)+" to "+p.pos+"s vs the "+m.facedAvg.toFixed(1)+" his past opponents allowed"+(m.lgAvg!=null?" (league avg "+m.lgAvg.toFixed(1)+")":"")+"'>matchup view "+m.proj.toFixed(1)+"</b> ("+Math.round(m.w*100)+"% wt, "+(m.fitted?"fitted":"default")+")";
+      run = (1-m.w)*run + m.w*m.proj;
+      h += " → <span title='his own "+m.n+"-game average ("+m.actAvg.toFixed(1)+"), scaled by this opponent allowing "+m.oppAllows.toFixed(1)+" to "+p.pos+"s vs the "+m.facedAvg.toFixed(1)+" his past opponents allowed"+(m.lgAvg!=null?" (league avg "+m.lgAvg.toFixed(1)+")":"")+" — weight "+(m.fitted?"fitted from backtest":"default")+"'>matchup "+m.proj.toFixed(1)+" gets a "+Math.round(m.w*100)+"% say</span> → <b>"+f1(run)+"</b>";
     }
-    if (p.implied!=null) h += " · Vegas "+(p.pos==="DST"?"opp":"team")+" total "+p.implied.toFixed(1)+" (×"+p.vegasMult.toFixed(2)+")";
-    if (p.pPlay<1 && p.pPlay>0) h += " · "+Math.round(p.pPlay*100)+"% to play";
+    if (p.implied!=null && p.vegasMult!==1){
+      run *= p.vegasMult;
+      h += " → <span title='"+(p.pos==="DST"?"their opponent":"his team")+" expected to score "+p.implied.toFixed(1)+(M.avgImplied?" vs league average "+M.avgImplied.toFixed(1):"")+" — capped at ±15%'>Vegas ×"+p.vegasMult.toFixed(2)+"</span> → <b>"+f1(run)+"</b>";
+    }
+    let tail = false; // steps after the last shown running number
+    if (p.injLive==="Q"){ tail = true; h += " → <span title='questionable tags cost a sliver even when he suits up'>Q ×0.95</span>"; }
+    if (p.pPlay<1 && p.pPlay>0){ tail = true; h += " → <span title='chance he plays, from the live injury designation'>×"+Math.round(p.pPlay*100)+"% to play</span>"; }
+    if (tail || f1(run)!==p.mu.toFixed(1)) h += " = <b>"+p.mu.toFixed(1)+"</b>";
     if (g) h += " · "+(g.home?"vs":"at")+" "+esc(g.opp)+" "+esc(kickText(g))+(g.weather?" · "+esc(g.weather):"");
     h += "</span>";
-    return h + next4Detail(p);
+    return h;
   }
   // "Next 4" strip: upcoming opponents colored by how generous each defense is to this position
   // (from real box scores in data/matchups.json). Soft = green (good matchup), stingy = red.
@@ -473,13 +501,13 @@
     const key = lineupKey();
     const { slots, bench } = optimalLineup(me, key);
     let h = "<div class='panel'><h2>Week "+S.week+" — start these</h2><div class='muted' style='margin-bottom:6px'>"+
-      (P ? "Best lineup by <b>predicted points</b> (ESPN + Sleeper projections + FantasyPros consensus rank, adjusted for Vegas totals and injury status). Number = expected points; small numbers = typical floor–ceiling."
+      (P ? "Best lineup by <b>predicted points</b>. The gray line under each player is the receipt: every step from the raw projections to his number."
          : "Best lineup by this week's consensus ranks (live projections unavailable).")+" Bye-week and OUT/IR players are automatically benched.</div>";
-    h += "<div class='tbl'>"+playerHeader();
-    slots.forEach(s=>{ h += "<div class='row grid start'>"+(s.p ? playerLine(s.p, "", s.slot)+projDetail(s.p) : "<span class='slot'>"+s.slot+"</span><span class='bad' style='grid-column:2 / -1'>— nobody available — grab a streamer on the Waivers tab</span>")+"</div>"; });
-    h += "</div><h3>Bench</h3><div class='tbl'>"+playerHeader();
-    bench.forEach(p=>{ h += "<div class='row grid sit'>"+playerLine(p, "", "BN")+projDetail(p)+"</div>"; });
-    h += "</div>";
+    h += "<div class='tbl'><div class='gs'>"+playerHeader(true);
+    slots.forEach(s=>{ h += "<div class='row grid start'>"+(s.p ? playerLine(s.p, "", s.slot, true)+projDetail(s.p) : "<span class='slot'>"+s.slot+"</span><span class='bad' style='grid-column:2 / -1'>— nobody available — grab a streamer on the Waivers tab</span>")+"</div>"; });
+    h += "</div></div><h3>Bench</h3><div class='tbl'><div class='gs'>"+playerHeader(true);
+    bench.forEach(p=>{ h += "<div class='row grid sit'>"+playerLine(p, "", "BN", true)+projDetail(p)+"</div>"; });
+    h += "</div></div>";
     if (P){
       const total = slots.reduce((s,x)=>s+(x.p&&x.p.mu!=null?x.p.mu:0),0);
       h += "<div class='muted' style='margin-top:8px'>Projected total for this lineup: <b>"+total.toFixed(1)+"</b> points.</div>";
@@ -513,7 +541,7 @@
       }
     }
     h += "</div>";
-    if (P) h += "<div class='panel'><h2>How the prediction works</h2><div class='muted'>1) Average three independent views of the week: ESPN's projection, Sleeper's projection, and the points a player at his FantasyPros consensus rank usually projects for. 2) Blend in the <b>matchup view</b>"+(MU?"":" <span class='bad'>(unavailable — data/matchups.json missing, running consensus-only)</span>")+": from real box scores, how many points each defense actually gives up to each position; a player's own production is scaled by this week's opponent vs the defenses he already faced. How much say it gets is <b>measured, not guessed</b>: every refresh replays the season week by week — what would each view have predicted knowing only the prior weeks? — scores both against what actually happened, and fits the blend weight per position (shown in the data line below; so far the box-score view has earned a small vote, and it grows or shrinks automatically as the season accumulates evidence). A player also can't exceed his own evidence: fewer games played, smaller vote. Guardrails: small-sample defense numbers are regressed toward the league average, and the scaling is hard-capped between 0.5× and 1.6× so a fluky three-game stat can't run a projection away from reality. 3) Nudge by the betting market: teams expected to score more than the league average get up to +15%, less gets down to −15% (defenses use the opponent's total, inverted). 4) Multiply by the chance he plays from the live injury designation (Questionable 75%, Doubtful 25%, Out 0%). The floor–ceiling is the typical 20th–80th percentile week for his position. Data: <b>"+esc(P.generated)+"</b> · ESPN "+P.sources.espn+" players · Sleeper "+P.sources.sleeper+" · "+P.sources.games+" teams with lines"+(MU?" · matchups <b>"+esc(MU.generated)+"</b> (weeks "+MU.weeksSampled.join(", ")+")"+(MU.fittedW?" · fitted weights: "+Object.keys(MU.fittedW).map(k=>k+" "+Math.round(MU.fittedW[k].use*100)+"%").join(", ")+" (from "+Object.values(MU.fittedW).reduce((s,v)=>s+v.nRows,0)+" scored predictions)":""):"")+".</div></div>";
+    if (P) h += "<details class='panel'><summary>How the prediction works (tap to open)</summary><div class='muted'>1) Average three independent views of the week: ESPN's projection, Sleeper's projection, and the points a player at his FantasyPros consensus rank usually projects for. 2) Blend in the <b>matchup view</b>"+(MU?"":" <span class='bad'>(unavailable — data/matchups.json missing, running consensus-only)</span>")+": from real box scores, how many points each defense actually gives up to each position; a player's own production is scaled by this week's opponent vs the defenses he already faced. How much say it gets is <b>measured, not guessed</b>: every refresh replays the season week by week — what would each view have predicted knowing only the prior weeks? — scores both against what actually happened, and fits the blend weight per position (shown in the data line below; so far the box-score view has earned a small vote, and it grows or shrinks automatically as the season accumulates evidence). A player also can't exceed his own evidence: fewer games played, smaller vote. Guardrails: small-sample defense numbers are regressed toward the league average, and the scaling is hard-capped between 0.5× and 1.6× so a fluky three-game stat can't run a projection away from reality. 3) Nudge by the betting market: teams expected to score more than the league average get up to +15%, less gets down to −15% (defenses use the opponent's total, inverted). 4) Multiply by the chance he plays from the live injury designation (Questionable 75%, Doubtful 25%, Out 0%). The floor–ceiling is the typical 20th–80th percentile week for his position. Data: <b>"+esc(P.generated)+"</b> · ESPN "+P.sources.espn+" players · Sleeper "+P.sources.sleeper+" · "+P.sources.games+" teams with lines"+(MU?" · matchups <b>"+esc(MU.generated)+"</b> (weeks "+MU.weeksSampled.join(", ")+")"+(MU.fittedW?" · fitted weights: "+Object.keys(MU.fittedW).map(k=>k+" "+Math.round(MU.fittedW[k].use*100)+"%").join(", ")+" (from "+Object.values(MU.fittedW).reduce((s,v)=>s+v.nRows,0)+" scored predictions)":""):"")+".</div></details>";
     document.getElementById("tab-lineup").innerHTML = h;
   }
 
