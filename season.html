@@ -49,6 +49,8 @@
   .tbl .gl .row.grid,.tbl .gl .hrow{grid-template-columns:44px minmax(180px,1.5fr) 110px 130px;min-width:480px;}
   .tbl .gt .row.grid,.tbl .gt .hrow{grid-template-columns:80px minmax(220px,1.5fr) 90px minmax(200px,1fr) 60px;min-width:640px;}
   .tbl .gd .row.grid,.tbl .gd .hrow{grid-template-columns:60px minmax(180px,1fr) minmax(180px,1fr) minmax(90px,.6fr) minmax(170px,1fr);min-width:700px;} .gd .row.grid .tag{text-align:center;}
+  .tbl .gm .row.grid,.tbl .gm .hrow{grid-template-columns:44px minmax(140px,1.2fr) 52px minmax(140px,1.2fr) 52px 76px;min-width:560px;}
+  .tbl .gh .row.grid,.tbl .gh .hrow{grid-template-columns:44px 36px 110px minmax(140px,1fr) 64px;min-width:430px;}
   .legend{font-size:.8rem;color:var(--muted);} .legend dl{display:grid;grid-template-columns:max-content 1fr;gap:3px 12px;margin:6px 0 0;} .legend dt{color:var(--text);font-weight:700;} .legend dd{margin:0;}
   details summary{cursor:pointer;color:var(--wheat);font-weight:600;}
   @media (max-width:700px){ .row b{min-width:100px;} .detail{padding-left:0;} .row.grid .detail,.row.grid .sub{padding-left:0;} }
@@ -61,6 +63,7 @@
 </header>
 <nav>
   <button data-tab="lineup" class="active">Lineup</button>
+  <button data-tab="matchup">Matchup</button>
   <button data-tab="waivers">Waivers</button>
   <button data-tab="trades">Trades</button>
   <button data-tab="byes">Byes</button>
@@ -83,9 +86,13 @@
       <dt>Your gain / their side (trades)</dt><dd>Change in rest-of-season lineup strength for each team if the trade happens. Strength = sum over your 9 starters of (420 − ROS rank), so +10 ≈ upgrading one starter by 10 rank spots.</dd>
       <dt>EV (trades)</dt><dd>Your gain × the chance they say yes. The one number to sort trades by.</dd>
       <dt>Strength (league)</dt><dd>Same rest-of-season lineup strength for every team; the power ranking. "This week" = that team's projected points with its best lineup.</dd>
+      <dt>Win odds (matchup)</dt><dd>Chance your best lineup outscores theirs this week, from both teams' predicted totals and the usual week-to-week swing of every player involved.</dd>
+      <dt>All-play (matchup)</dt><dd>What a team's record would be if it played <b>everyone</b> every week. Strips the schedule out: a 1-2 team with a 12-4 all-play has been good and unlucky.</dd>
+      <dt>Luck (matchup)</dt><dd>Actual wins minus the wins the all-play record says the scores deserved. Positive = the schedule has been kind; negative = better than the record shows.</dd>
     </dl>
   </details>
   <div id="tab-lineup"></div>
+  <div id="tab-matchup" class="hidden"></div>
   <div id="tab-waivers" class="hidden"></div>
   <div id="tab-trades" class="hidden"></div>
   <div id="tab-byes" class="hidden"></div>
@@ -99,6 +106,7 @@
   const ROS_MAX = 420; // value = ROS_MAX - rank
   let S = null, R = null, X = { players: [] }, P = null; // season data, rosters, exclusions, projections
   let MU = null; // data/matchups.json — defense-vs-position + player form + next-4 outlook (weekly refresh); null = consensus-only
+  let HIST = null; // league schedule + weekly scores (ESPN mMatchup; live fetch with data/league_history.json as fallback); null = Matchup tab degrades
   let LG = null, POOL = null; // data/league.json (ESPN league link), data/espn_pool.json (this league's ESPN player universe)
   let PSTAMP = { text:"–", cls:"" }, RSTAMP = { text:"–", cls:"" };
 
@@ -197,6 +205,86 @@
       R = { me: R.me, updated: new Date().toISOString().slice(0,10), teams, live:true };
       RSTAMP = { text:"LIVE from ESPN "+new Date().toLocaleString("en-US",{timeZone:"America/Chicago",month:"numeric",day:"numeric",hour:"numeric",minute:"2-digit"})+" CT", cls:"live" };
     } catch(e){ RSTAMP = { text:(R.updated||"–")+" (repo copy — live ESPN read failed: "+e.message+")", cls:"stale" }; }
+  }
+
+  // ================= League schedule + weekly scores (ESPN mMatchup) =================
+  // Same shape tools/sync_league.py writes to data/league_history.json. One team sits each fantasy week
+  // in a 9-team league — ESPN still records its score, so a "bye" row is a score with no opponent.
+  function historyFromLeague(d){
+    const names = {}; (d.teams||[]).forEach(t=>{ if (t.id!=null) names[t.id] = (t.name || ((t.location||"")+" "+(t.nickname||""))).trim(); });
+    const schedule = [];
+    (d.schedule||[]).forEach(m=>{
+      const wk = m.matchupPeriodId; const h = m.home||{}, a = m.away||{};
+      if (wk==null || (h.teamId==null && a.teamId==null)) return;
+      let row = { w: wk, home: names[h.teamId]!=null?names[h.teamId]:null, away: names[a.teamId]!=null?names[a.teamId]:null,
+        hp: h.totalPoints!=null?h.totalPoints:null, ap: a.totalPoints!=null?a.totalPoints:null, winner: m.winner||null };
+      if (row.home==null && row.away!=null){ row = { ...row, home: row.away, away: null, hp: row.ap, ap: null }; }
+      schedule.push(row);
+    });
+    const standings = {};
+    (d.teams||[]).forEach(t=>{ const rec = ((t.record||{}).overall)||{}; standings[(t.name||((t.location||"")+" "+(t.nickname||""))).trim()] = { wins: rec.wins, losses: rec.losses, ties: rec.ties }; });
+    return { currentWeek: ((d.status||{}).currentMatchupPeriod)!=null ? d.status.currentMatchupPeriod : null, standings, schedule };
+  }
+  async function loadHistory(){
+    if (HIST && HIST.live) return;
+    if (LG && LG.leagueId && LG.public){
+      try {
+        const d = await fetchJson("https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/"+(LG.season||SEASON)+"/segments/0/leagues/"+LG.leagueId+"?view=mMatchup&view=mTeam");
+        const h = historyFromLeague(d);
+        if (h.schedule.length >= 2){ HIST = { ...h, live:true, generated:"LIVE" }; return; }
+      } catch(e){ /* fall through to the repo snapshot already loaded (or null) */ }
+    }
+  }
+
+  // Everything the Matchup tab derives from the schedule. Completed = a decided matchup, or any score ESPN
+  // recorded for a week before the current one (covers the sitting team's score in a 9-team league).
+  function weekDone(r){ return r.winner==="HOME" || r.winner==="AWAY" || r.winner==="TIE" || (HIST && HIST.currentWeek!=null && r.w < HIST.currentWeek && r.hp!=null && (r.away==null || r.ap!=null)); }
+  function allScores(){ // {week: {team: pts}} across every completed row, bye scores included
+    const out = {};
+    if (!HIST) return out;
+    HIST.schedule.filter(weekDone).forEach(r=>{
+      const wk = out[r.w] = out[r.w]||{};
+      if (r.home!=null && r.hp!=null) wk[r.home] = r.hp;
+      if (r.away!=null && r.ap!=null) wk[r.away] = r.ap;
+    });
+    return out;
+  }
+  function teamSeason(team){ // week-by-week rows + aggregates for one team
+    if (!HIST) return null;
+    const rows = [];
+    HIST.schedule.filter(r=>weekDone(r) && (r.home===team || r.away===team)).sort((a,b)=>a.w-b.w).forEach(r=>{
+      const home = r.home===team;
+      const pf = home ? r.hp : r.ap, pa = home ? r.ap : r.hp, opp = home ? r.away : r.home;
+      if (pf==null) return;
+      const res = opp==null ? "BYE" : r.winner==="TIE" ? "T" : (r.winner==="HOME")===home ? "W" : "L";
+      rows.push({ w: r.w, opp, pf, pa, res, home });
+    });
+    const games = rows.filter(r=>r.res!=="BYE");
+    const scores = rows.map(r=>r.pf);
+    const sum = a=>a.reduce((s,x)=>s+x,0);
+    const ap = { w:0, l:0 }; const AS = allScores();
+    rows.forEach(r=>{ const wk = AS[r.w]||{}; Object.keys(wk).forEach(t=>{ if (t===team) return; if (r.pf>wk[t]) ap.w++; else if (r.pf<wk[t]) ap.l++; }); });
+    const wins = games.filter(r=>r.res==="W").length, losses = games.filter(r=>r.res==="L").length, ties = games.filter(r=>r.res==="T").length;
+    const last2 = scores.slice(-2);
+    return { team, rows, wins, losses, ties,
+      pf: scores.length?Math.round(sum(scores)*100)/100:0, pa: games.length?Math.round(sum(games.map(r=>r.pa))*100)/100:0,
+      avg: scores.length?Math.round(sum(scores)/scores.length*10)/10:null, high: scores.length?Math.max(...scores):null, low: scores.length?Math.min(...scores):null,
+      allPlay: ap, allPlayPct: (ap.w+ap.l)?ap.w/(ap.w+ap.l):null,
+      expWins: (ap.w+ap.l)&&games.length ? Math.round(ap.w/(ap.w+ap.l)*games.length*10)/10 : null,
+      form: last2.length===2&&scores.length>2 ? Math.round((sum(last2)/2 - sum(scores)/scores.length)*10)/10 : null };
+  }
+  function currentOpponent(){ // this fantasy week's matchup row for my team; null row = no data, null opp = I sit this week
+    if (!HIST || HIST.currentWeek==null) return null;
+    const r = HIST.schedule.find(r=>r.w===HIST.currentWeek && (r.home===R.me || r.away===R.me));
+    if (!r) return null;
+    return { week: r.w, opp: r.home===R.me ? r.away : r.home, home: r.home===R.me };
+  }
+  function scoringRank(team){ // rank by average score among all teams with scores
+    const AS = allScores(); const tot = {}, n = {};
+    Object.values(AS).forEach(wk=>Object.keys(wk).forEach(t=>{ tot[t]=(tot[t]||0)+wk[t]; n[t]=(n[t]||0)+1; }));
+    const avgs = Object.keys(tot).map(t=>({ t, a: tot[t]/n[t] })).sort((a,b)=>b.a-a.a);
+    const i = avgs.findIndex(x=>x.t===team);
+    return i<0 ? null : { rank: i+1, of: avgs.length };
   }
 
   // ================= Prediction model =================
@@ -545,6 +633,94 @@
     document.getElementById("tab-lineup").innerHTML = h;
   }
 
+  // ---------- Matchup tab ----------
+  // This week's head-to-head (slot by slot, win odds) + the season story for both teams: record,
+  // scoring trend, all-play (schedule-stripped record) and luck. All from ESPN's own scores.
+  function f1(v){ return v==null ? "–" : (Math.round(v*10)/10).toFixed(1); }
+  function resTag(res){ return res==="W" ? "<span class='tag good'>W</span>" : res==="L" ? "<span class='tag bad'>L</span>" : res==="T" ? "<span class='tag warn'>T</span>" : "<span class='tag'>sat</span>"; }
+  function teamStory(ts, isMe){
+    if (!ts || !ts.rows.length) return "<div class='muted'>No completed weeks yet.</div>";
+    const sr = scoringRank(ts.team);
+    const luck = ts.expWins!=null ? Math.round((ts.wins - ts.expWins)*10)/10 : null;
+    const luckTxt = luck==null ? "" : luck>=0.5 ? "the schedule has been kind: the scores deserved ~"+ts.expWins+" wins, the record shows "+ts.wins
+      : luck<=-0.5 ? "better than the record: the scores deserved ~"+ts.expWins+" wins, the record only shows "+ts.wins
+      : "record matches the scores (~"+ts.expWins+" deserved wins)";
+    const formTxt = ts.form==null ? "" : ts.form>=5 ? "<span class='good'>trending up (+"+f1(ts.form)+" last 2 weeks vs season average)</span>"
+      : ts.form<=-5 ? "<span class='bad'>trending down ("+f1(ts.form)+" last 2 weeks vs season average)</span>"
+      : "steady ("+(ts.form>=0?"+":"")+f1(ts.form)+" last 2 vs average)";
+    let h = "<h3>"+esc(ts.team)+(isMe?" 🐑":"")+"</h3>";
+    h += "<div class='muted' style='margin-bottom:6px'><b>"+ts.wins+"–"+ts.losses+(ts.ties?"–"+ts.ties:"")+"</b>"
+      + (sr ? " · scores "+sr.rank+(sr.rank===1?"st":sr.rank===2?"nd":sr.rank===3?"rd":"th")+" of "+sr.of : "")
+      + " · avg <b>"+f1(ts.avg)+"</b> (best "+f1(ts.high)+", worst "+f1(ts.low)+")"
+      + " · all-play <b>"+ts.allPlay.w+"–"+ts.allPlay.l+"</b>"
+      + (luckTxt ? "<br>"+luckTxt : "") + (formTxt ? " · "+formTxt : "") + "</div>";
+    h += "<div class='tbl'><div class='gh'><div class='hrow'><span>Week</span><span class='ctr'>W/L</span><span class='num'>Score</span><span>Opponent</span><span class='num'>Margin</span></div>";
+    ts.rows.forEach(r=>{
+      const margin = r.pa==null ? "" : (r.pf-r.pa>=0?"+":"")+f1(r.pf-r.pa);
+      h += "<div class='row grid'><span class='slot'>Wk "+r.w+"</span><span class='c' style='text-align:center'>"+resTag(r.res)+"</span><span class='c num'>"+f1(r.pf)+(r.pa!=null?" – "+f1(r.pa):"")+"</span><b class='c'>"+(r.opp?(r.home?"vs ":"at ")+esc(r.opp):"<span class='muted'>no matchup (odd team out)</span>")+"</b><span class='c num'>"+margin+"</span></div>";
+    });
+    h += "</div></div>";
+    return h;
+  }
+  function renderMatchup(){
+    let h = "";
+    const cur = currentOpponent();
+    if (!HIST){
+      h = "<div class='panel'><h2>Matchup</h2><div class='muted'>No league schedule data yet — it loads live from ESPN when the league is public, or from the weekly sync (data/league_history.json). Check the connection or run tools/sync_league.py.</div></div>";
+      document.getElementById("tab-matchup").innerHTML = h; return;
+    }
+    if (cur && cur.opp && R.teams[cur.opp]){
+      const mine = optimalLineup(myTeam(), lineupKey()), theirs = optimalLineup(teamOf(cur.opp), lineupKey());
+      h += "<div class='panel'><h2>Week "+cur.week+" — "+(cur.home?"":"at ")+esc(cur.opp)+(cur.home?" (they're at you)":"")+"</h2>";
+      if (P){
+        const tot = s=>s.slots.reduce((t,x)=>t+(x.p&&x.p.mu!=null?x.p.mu:0),0);
+        const sd2 = s=>s.slots.reduce((t,x)=>t+(x.p&&x.p.sd!=null?x.p.sd*x.p.sd:0),0);
+        const myTot = tot(mine), opTot = tot(theirs);
+        const s = Math.sqrt(sd2(mine)+sd2(theirs));
+        const pw = s>0 ? phi((myTot-opTot)/s) : (myTot>opTot?1:myTot<opTot?0:.5);
+        const pct = Math.round(pw*100);
+        h += "<div class='suggest'><b class='hl'>"+esc(R.me)+" "+myTot.toFixed(1)+"</b> projected vs <b>"+opTot.toFixed(1)+"</b> "+esc(cur.opp)
+          + " · win odds <b class='"+(pct>=55?"good":pct<=45?"bad":"warn")+"'>"+pct+"%</b>"
+          + "<div class='row' style='border:0;padding:4px 0 0'><span class='bar' style='max-width:260px'><i style='width:"+pct+"%'></i></span></div>"
+          + "<span class='muted'>From both best lineups' predicted totals and every player's usual week-to-week swing. Swing is big in fantasy — "+(pct>=60?"a clear edge, not a lock.":pct<=40?"an uphill week, not a lost one.":"a genuine coin flip.")+"</span></div>";
+        h += "<div class='tbl'><div class='gm'><div class='hrow'><span>Slot</span><span>You</span><span class='num'>Proj</span><span>Them</span><span class='num'>Proj</span><span class='ctr' title='Chance your player outscores theirs at this slot'>Edge</span></div>";
+        mine.slots.forEach((s1,i)=>{
+          const s2 = theirs.slots[i]||{p:null};
+          const pb = s1.p&&s2.p ? pBeats(s1.p,s2.p) : null;
+          const ep = pb==null ? "" : Math.round(pb*100);
+          const cls = pb==null ? "" : pb>=0.55 ? "good" : pb<=0.45 ? "bad" : "warn";
+          h += "<div class='row grid'><span class='slot'>"+esc(s1.slot)+"</span>"
+            + "<b class='c'>"+(s1.p?esc(s1.p.name)+(s1.p.injLive&&s1.p.injLive!=="ACT"?" <span class='bad'>"+esc(s1.p.injLive)+"</span>":""):"<span class='bad'>— empty —</span>")+"</b><span class='c num'>"+(s1.p&&s1.p.mu!=null?s1.p.mu.toFixed(1):"")+"</span>"
+            + "<span class='c'>"+(s2.p?esc(s2.p.name)+(s2.p.injLive&&s2.p.injLive!=="ACT"?" <span class='bad'>"+esc(s2.p.injLive)+"</span>":""):"<span class='muted'>— empty —</span>")+"</span><span class='c num'>"+(s2.p&&s2.p.mu!=null?s2.p.mu.toFixed(1):"")+"</span>"
+            + "<span class='c' style='text-align:center'>"+(ep===""?"":"<span class='tag "+cls+"'>"+ep+"%</span>")+"</span></div>";
+        });
+        h += "</div></div><div class='muted' style='margin-top:6px'>Both sides shown with their <b>best possible</b> lineup — if they start someone worse, your odds only improve. Edge = chance your player outscores theirs at that slot.</div>";
+      } else {
+        h += "<div class='muted'>Live projections unavailable — win odds need them. Rosters below by this week's consensus rank.</div>";
+        h += "<div class='tbl'><div class='gm'><div class='hrow'><span>Slot</span><span>You</span><span class='num'>Wk rank</span><span>Them</span><span class='num'>Wk rank</span><span></span></div>";
+        mine.slots.forEach((s1,i)=>{ const s2 = theirs.slots[i]||{p:null};
+          h += "<div class='row grid'><span class='slot'>"+esc(s1.slot)+"</span><b class='c'>"+(s1.p?esc(s1.p.name):"—")+"</b><span class='c num'>"+(s1.p&&s1.p.wkRank!=null?"#"+s1.p.wkRank:"")+"</span><span class='c'>"+(s2.p?esc(s2.p.name):"—")+"</span><span class='c num'>"+(s2.p&&s2.p.wkRank!=null?"#"+s2.p.wkRank:"")+"</span><span></span></div>"; });
+        h += "</div></div>";
+      }
+      h += "</div>";
+    } else if (cur && !cur.opp){
+      h += "<div class='panel'><h2>Week "+cur.week+"</h2><div class='muted'>You're the odd team out this fantasy week (9 teams, one sits) — no head-to-head. Your score still counts toward season stats.</div></div>";
+    } else {
+      h += "<div class='panel'><h2>Matchup</h2><div class='muted'>No matchup found for week "+(HIST.currentWeek!=null?HIST.currentWeek:"?")+" in the schedule.</div></div>";
+    }
+    // Season story: my team, then this week's opponent, then past meetings
+    const mySt = teamSeason(R.me);
+    h += "<div class='panel'><h2>Season so far</h2>"+teamStory(mySt, true);
+    if (cur && cur.opp){
+      h += teamStory(teamSeason(cur.opp), false);
+      const met = (mySt?mySt.rows:[]).filter(r=>r.opp===cur.opp);
+      if (met.length) h += "<h3>Head-to-head this season</h3>"+met.map(r=>"<div class='suggest'>Week "+r.w+": "+resTag(r.res)+" "+f1(r.pf)+" – "+f1(r.pa)+" "+(r.home?"vs":"at")+" "+esc(cur.opp)+"</div>").join("");
+      else h += "<div class='muted' style='margin-top:8px'>First meeting of the season.</div>";
+    }
+    h += "</div>";
+    document.getElementById("tab-matchup").innerHTML = h;
+  }
+
   // ---------- Waivers tab ----------
   const ROS_MARGIN = 10; // a free agent must be this many rest-of-season rank spots better before we suggest an add/drop
   // Season-long rule: the add must beat the drop on FantasyPros ROS rank by ROS_MARGIN AND on ESPN's live full-season
@@ -868,11 +1044,11 @@
     document.getElementById("stamp").textContent = S.generated;
     const rs = document.getElementById("rosterStamp"); rs.textContent = RSTAMP.text; rs.className = RSTAMP.cls;
     const ps = document.getElementById("pstamp"); ps.textContent = PSTAMP.text; ps.className = PSTAMP.cls;
-    renderLineup(); renderWaivers(); renderTrades(); renderByes(); renderLeague();
+    renderLineup(); renderMatchup(); renderWaivers(); renderTrades(); renderByes(); renderLeague();
   }
   document.querySelectorAll("nav button").forEach(b=>b.addEventListener("click", ()=>{
     document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active")); b.classList.add("active");
-    ["lineup","waivers","trades","byes","league"].forEach(t=>document.getElementById("tab-"+t).classList.toggle("hidden", t!==b.dataset.tab));
+    ["lineup","matchup","waivers","trades","byes","league"].forEach(t=>document.getElementById("tab-"+t).classList.toggle("hidden", t!==b.dataset.tab));
   }));
 
   async function loadProjections(){
@@ -903,14 +1079,14 @@
   }
   async function load(){
     try {
-      const [s, r, x, tl, lg, pool, mu] = await Promise.all([fetch("data/season.json?v="+Date.now()).then(x=>x.json()), fetch("data/rosters.json?v="+Date.now()).then(x=>x.json()), fetch("data/exclusions.json?v="+Date.now()).then(x=>x.json()).catch(()=>({players:[]})), fetch("data/trades.json?v="+Date.now()).then(x=>x.json()).catch(()=>({entries:[]})),
+      const [s, r, x, tl, lg, pool, mu, hist] = await Promise.all([fetch("data/season.json?v="+Date.now()).then(x=>x.json()), fetch("data/rosters.json?v="+Date.now()).then(x=>x.json()), fetch("data/exclusions.json?v="+Date.now()).then(x=>x.json()).catch(()=>({players:[]})), fetch("data/trades.json?v="+Date.now()).then(x=>x.json()).catch(()=>({entries:[]})),
         fetch("data/league.json?v="+Date.now()).then(x=>x.json()).catch(()=>null), fetch("data/espn_pool.json?v="+Date.now()).then(x=>x.json()).catch(()=>null),
-        fetch("data/matchups.json?v="+Date.now()).then(x=>x.json()).catch(()=>null)]);
-      S = s; R = r; X = x || {players:[]}; LG = lg; POOL = pool; MU = mu; mergeLog((tl||{}).entries);
+        fetch("data/matchups.json?v="+Date.now()).then(x=>x.json()).catch(()=>null), fetch("data/league_history.json?v="+Date.now()).then(x=>x.json()).catch(()=>null)]);
+      S = s; R = r; X = x || {players:[]}; LG = lg; POOL = pool; MU = mu; HIST = hist; mergeLog((tl||{}).entries);
       applyTeamParam();
       PSTAMP = { text:"fetching live…", cls:"" }; RSTAMP = { text:(R.updated||"–")+" (checking ESPN…)", cls:"" };
       buildIndex(); renderAll();
-      await Promise.all([loadProjections(), loadLiveRosters()]);
+      await Promise.all([loadProjections(), loadLiveRosters(), loadHistory()]);
       applyAcceptedTrades();
       buildIndex(); renderAll();
     } catch(e){
@@ -918,7 +1094,8 @@
     }
   }
   document.getElementById("refreshLive").addEventListener("click", async ()=>{ if (!S) return; PSTAMP = { text:"fetching live…", cls:"" }; renderAll(); await loadProjections(); buildIndex(); renderAll(); });
-  window.__seasonTest = { inject:(s,r,x,tl,pj,pool,mu)=>{ S=s; R=JSON.parse(JSON.stringify(r)); X=x||{players:[]}; P=pj||null; POOL=pool||null; MU=mu||null; LG=null; PSTAMP = pj ? {text:"snapshot "+pj.generated, cls:"stale"} : {text:"none", cls:""}; RSTAMP = {text:R.updated||"–", cls:""}; mergeLog((tl||{}).entries); applyAcceptedTrades(); buildIndex(); renderAll(); },
+  window.__seasonTest = { inject:(s,r,x,tl,pj,pool,mu,hist)=>{ S=s; R=JSON.parse(JSON.stringify(r)); X=x||{players:[]}; P=pj||null; POOL=pool||null; MU=mu||null; HIST=hist||null; LG=null; PSTAMP = pj ? {text:"snapshot "+pj.generated, cls:"stale"} : {text:"none", cls:""}; RSTAMP = {text:R.updated||"–", cls:""}; mergeLog((tl||{}).entries); applyAcceptedTrades(); buildIndex(); renderAll(); },
+    setHistory:(h)=>{ HIST=h||null; renderMatchup(); }, historyFromLeague, teamSeason, currentOpponent, allScores, scoringRank,
     rostersFromLeague, setRosters:(r)=>{ R = JSON.parse(JSON.stringify(r)); buildIndex(); renderAll(); },
     logTrade, teamFloor, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, strength, findTrades, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M,
     waiverSuggestions:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,

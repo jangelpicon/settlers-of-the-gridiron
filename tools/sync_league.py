@@ -68,17 +68,20 @@ def parse_league(d):
     return out
 
 def parse_schedule(d):
-    """mMatchup -> {week: [[home, away-or-None], ...]} by team display name. away None = that team sits (bye)."""
+    """mMatchup -> [{w, home, away-or-None, hp, ap, winner}] by team display name. away None = that team
+    sits that fantasy week (9-team league: one team has no matchup; ESPN still records its score)."""
     names = {t["id"]: team_name_of(t) for t in d.get("teams", []) if "id" in t}
-    sched = {}
+    rows = []
     for m in d.get("schedule", []):
         wk = m.get("matchupPeriodId")
-        h = (m.get("home") or {}).get("teamId"); a = (m.get("away") or {}).get("teamId")
-        if wk is None or (h is None and a is None): continue
-        pair = [names.get(h), names.get(a)]
-        if pair[0] is None and pair[1] is not None: pair = [pair[1], None]  # normalise: the team that plays goes first
-        sched.setdefault(str(wk), []).append(pair)
-    return sched
+        h = m.get("home") or {}; a = m.get("away") or {}
+        if wk is None or (h.get("teamId") is None and a.get("teamId") is None): continue
+        row = {"w": wk, "home": names.get(h.get("teamId")), "away": names.get(a.get("teamId")),
+               "hp": h.get("totalPoints"), "ap": a.get("totalPoints"), "winner": m.get("winner")}
+        if row["home"] is None and row["away"] is not None:  # normalise: the team that plays goes first
+            row["home"], row["away"], row["hp"], row["ap"] = row["away"], None, row["ap"], row["hp"]
+        rows.append(row)
+    return rows
 
 def parse_standings(d):
     """mTeam -> {team display name: {wins, losses, waiverRank}} (all fields optional in ESPN's payload)."""
@@ -122,11 +125,22 @@ def main():
         if o != n: changes.append(f"{t}: +{[p['name'] for p in rows if norm(p['name']) not in o]} -{sorted(o - n)}")
     print(f"league {league} '{rosters['leagueName']}': {len(teams)} teams, {sum(len(v) for v in teams.values())} rostered, ESPN pool {len(pool)}; me = {me}")
     print("changes vs previous rosters.json:" if changes else "no roster changes vs previous rosters.json"); [print("  " + c) for c in changes]
+    # League schedule + scores (mMatchup) -> data/league_history.json. The Matchup tab reads this as its
+    # repo fallback; the page also fetches it live in the browser when the league is public.
+    md = get(base + "?view=mMatchup", {**h})
+    md["teams"] = d.get("teams", [])  # mMatchup's team objects can be bare; use the full ones for names
+    sched = parse_schedule(md)
+    cur = (md.get("status") or d.get("status") or {}).get("currentMatchupPeriod")
+    hist = {"generated": now.strftime("%Y-%m-%d %I:%M %p %Z"), "generatedMs": int(now.timestamp()*1000),
+            "leagueId": league, "currentWeek": cur, "standings": parse_standings(d), "schedule": sched}
+    played = [r for r in sched if r["winner"] in ("HOME", "AWAY")]
+    print(f"schedule: {len(sched)} matchup rows, {len(played)} decided, current fantasy week {cur}")
     if dry: return
     rp.write_text(json.dumps(rosters, indent=1))
     (HERE / "data" / "espn_pool.json").write_text(json.dumps({"note": "Players in ESPN's pool for this league (rostered, free agent or waivers). The page only treats FantasyPros-ranked players as free agents if they are in here and on no roster.",
         "leagueId": league, "updated": rosters["updated"], "players": sorted(pool)}, separators=(",", ":")))
-    print("wrote data/rosters.json + data/espn_pool.json")
+    (HERE / "data" / "league_history.json").write_text(json.dumps(hist, separators=(",", ":")))
+    print("wrote data/rosters.json + data/espn_pool.json + data/league_history.json")
 
 if __name__ == "__main__":
     main()

@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-09-30",
- "source": "ESPN league 882823976 sync 2026-09-30 08:40 CDT",
+ "updated": "2026-10-02",
+ "source": "ESPN league 882823976 sync 2026-10-02 13:59 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -83,12 +83,6 @@
     "team": "LAR"
    },
    {
-    "name": "De'Von Achane",
-    "pos": "RB",
-    "team": "MIA",
-    "ir": true
-   },
-   {
     "name": "Rashee Rice",
     "pos": "WR",
     "team": "KC"
@@ -102,11 +96,6 @@
     "name": "Kyren Williams",
     "pos": "RB",
     "team": "LAR"
-   },
-   {
-    "name": "Baker Mayfield",
-    "pos": "QB",
-    "team": "TB"
    },
    {
     "name": "Dak Prescott",
@@ -124,19 +113,9 @@
     "team": "MIN"
    },
    {
-    "name": "Jake Bates",
-    "pos": "K",
-    "team": "DET"
-   },
-   {
     "name": "Juwan Johnson",
     "pos": "TE",
     "team": "NO"
-   },
-   {
-    "name": "San Francisco 49ers",
-    "pos": "DST",
-    "team": "SF"
    },
    {
     "name": "Carnell Tate",
@@ -147,6 +126,26 @@
     "name": "Jaylen Warren",
     "pos": "RB",
     "team": "PIT"
+   },
+   {
+    "name": "Los Angeles Rams",
+    "pos": "DST",
+    "team": "LAR"
+   },
+   {
+    "name": "Evan McPherson",
+    "pos": "K",
+    "team": "CIN"
+   },
+   {
+    "name": "Josh Downs",
+    "pos": "WR",
+    "team": "IND"
+   },
+   {
+    "name": "Bo Nix",
+    "pos": "QB",
+    "team": "DEN"
    }
   ],
   "Resting Blitz Face": [
@@ -172,11 +171,6 @@
     "team": "CIN"
    },
    {
-    "name": "Jeremiyah Love",
-    "pos": "RB",
-    "team": "ARI"
-   },
-   {
     "name": "Davante Adams",
     "pos": "WR",
     "team": "LAR"
@@ -190,11 +184,6 @@
     "name": "Tucker Kraft",
     "pos": "TE",
     "team": "GB"
-   },
-   {
-    "name": "DK Metcalf",
-    "pos": "WR",
-    "team": "PIT"
    },
    {
     "name": "New England Patriots",
@@ -225,6 +214,16 @@
     "name": "Buffalo Bills",
     "pos": "DST",
     "team": "BUF"
+   },
+   {
+    "name": "Bhayshul Tuten",
+    "pos": "RB",
+    "team": "JAX"
+   },
+   {
+    "name": "Garrett Wilson",
+    "pos": "WR",
+    "team": "NYJ"
    }
   ],
   "Unnecessary Sanctions": [
@@ -538,11 +537,6 @@
     "team": "ARI"
    },
    {
-    "name": "Garrett Wilson",
-    "pos": "WR",
-    "team": "NYJ"
-   },
-   {
     "name": "Drake Maye",
     "pos": "QB",
     "team": "NE"
@@ -573,24 +567,29 @@
     "team": "DEN"
    },
    {
-    "name": "Bhayshul Tuten",
-    "pos": "RB",
-    "team": "JAX"
-   },
-   {
     "name": "Tyler Loop",
     "pos": "K",
     "team": "BAL"
    },
    {
-    "name": "Jordan Love",
-    "pos": "QB",
-    "team": "GB"
-   },
-   {
     "name": "Baltimore Ravens",
     "pos": "DST",
     "team": "BAL"
+   },
+   {
+    "name": "Jared Goff",
+    "pos": "QB",
+    "team": "DET"
+   },
+   {
+    "name": "Jeremiyah Love",
+    "pos": "RB",
+    "team": "ARI"
+   },
+   {
+    "name": "Rome Odunze",
+    "pos": "WR",
+    "team": "CHI"
    }
   ],
   "PapasCabezas": [

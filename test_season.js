@@ -23,7 +23,8 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   let starters = [...d.querySelectorAll("#tab-lineup .row.start")];
   assert(starters.length === 9, "9 starting slots rendered (QB,RB1,RB2,WR1,WR2,TE,DST,K,FLEX)");
   assert(starters.some(s => /WR1|WR2/.test(txt(s)) && /Ja'Marr Chase/.test(txt(s))), "Chase starts at WR");
-  assert(starters.some(s => /^\s*QB/.test(txt(s)) && /Drake Maye/.test(txt(s))), "Maye starts at QB");
+  const myQBs = rosters.teams[rosters.me].filter(p => p.pos === "QB").map(p => p.name);
+  assert(starters.some(s => slotOf(s) === "QB" && myQBs.some(n => rx(n).test(txt(s)))), "QB slot filled from roster (" + myQBs.join("/") + ")");
   const myDst = rosters.teams[rosters.me].filter(p => p.pos === "DST").map(p => p.name), myK = rosters.teams[rosters.me].filter(p => p.pos === "K").map(p => p.name);
   assert(starters.some(s => slotOf(s) === "DST" && myDst.some(n => rx(n).test(txt(s)))) && starters.some(s => slotOf(s) === "K" && myK.some(n => rx(n).test(txt(s)))), "DST and K slots filled from roster (" + myDst.join("/") + ", " + myK.join("/") + ")");
   assert(starters.every(s => !/BYE/.test(txt(s))), "no bye-week player in the starting lineup");
@@ -367,6 +368,62 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   [...d.querySelectorAll("#tab-lineup .row")].filter(r => /%/.test(r.textContent) && /over/.test(r.textContent)).forEach(r => console.log("  " + r.textContent.replace(/\s+/g, " ").trim()));
   const iw = [...d.querySelectorAll("#tab-lineup .suggest")].map(x => x.textContent.replace(/\s+/g, " ").trim()).filter(x => /Injury watch/.test(x));
   if (iw.length) console.log("  " + iw.join("\n  "));
+  // ======================= Matchup tab (head-to-head + season trends) =======================
+  console.log("== Matchup tab ==");
+  // graceful degrade: no history file -> tab explains itself, nothing crashes
+  T.inject(season, rosters, exclusions, tradeLog, projections, null, null, null);
+  assert(/No league schedule data yet/.test(d.getElementById("tab-matchup").textContent), "without schedule data the Matchup tab says so instead of crashing");
+  // ESPN payload parsing: normalises names, scores, and flips a bye row so the team that plays goes first
+  const histFix = T.historyFromLeague({ status: { currentMatchupPeriod: 2 },
+    teams: [ { id: 1, name: "Alpha" }, { id: 2, location: "Beta", nickname: "Boys" } ],
+    schedule: [ { matchupPeriodId: 1, home: { teamId: 1, totalPoints: 101.5 }, away: { teamId: 2, totalPoints: 99 }, winner: "HOME" },
+                { matchupPeriodId: 2, home: {}, away: { teamId: 2, totalPoints: 50 }, winner: "UNDECIDED" } ] });
+  assert(histFix.currentWeek === 2 && histFix.schedule.length === 2 && histFix.schedule[0].home === "Alpha" && histFix.schedule[0].away === "Beta Boys" && histFix.schedule[0].hp === 101.5, "historyFromLeague parses both ESPN team-name shapes with scores");
+  assert(histFix.schedule[1].home === "Beta Boys" && histFix.schedule[1].away === null && histFix.schedule[1].hp === 50, "a row where only the away team plays is flipped so the playing team comes first (9-team bye shape)");
+  // synthetic fixture with hand-checkable numbers (real team names so lineups resolve)
+  const ME = rosters.me, OPP = "Unnecessary Sanctions", T2 = "SACK OF WHEAT", T3 = "PapasCabezas";
+  const hx = { currentWeek: 3, standings: {}, schedule: [
+    { w: 1, home: ME, away: OPP, hp: 130, ap: 90, winner: "HOME" },
+    { w: 1, home: T2, away: T3, hp: 80, ap: 70, winner: "HOME" },
+    { w: 2, home: ME, away: null, hp: 110, ap: null, winner: "UNDECIDED" },
+    { w: 2, home: OPP, away: T2, hp: 120, ap: 60, winner: "HOME" },
+    { w: 3, home: OPP, away: ME, hp: 0, ap: 0, winner: "UNDECIDED" } ] };
+  T.inject(season, rosters, exclusions, tradeLog, projections, null, null, hx);
+  const ts = T.teamSeason(ME);
+  assert(ts.wins === 1 && ts.losses === 0 && ts.rows.length === 2 && ts.rows[1].res === "BYE", "fixture: 1-0 record with the no-matchup week counted as 'sat', not a loss");
+  assert(ts.avg === 120 && ts.high === 130 && ts.low === 110 && ts.pf === 240 && ts.pa === 90, "fixture: avg/high/low/PF/PA computed from both scored weeks (bye score included, PA only from real games)");
+  assert(ts.allPlay.w === 4 && ts.allPlay.l === 1, "fixture: all-play 4-1 (wk1 beat all three scores, wk2 beat one of two)");
+  assert(ts.expWins === 0.8, "fixture: all-play says the scores deserved 0.8 wins over 1 game");
+  const co = T.currentOpponent();
+  assert(co && co.week === 3 && co.opp === OPP && co.home === false, "fixture: current opponent detected (week 3, at " + OPP + ")");
+  assert(T.scoringRank(ME).rank === 1, "fixture: top average score ranks 1st");
+  let mtxt = d.getElementById("tab-matchup").textContent;
+  assert(new RegExp("Week 3 — at " + OPP.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(mtxt), "matchup header names the week and opponent (away game)");
+  assert(/win odds/.test(mtxt) && /%/.test(mtxt), "win odds rendered from both projected totals");
+  const mrows = [...d.querySelectorAll("#tab-matchup .gm .row.grid")];
+  assert(mrows.length === 9, "head-to-head compares all 9 slots");
+  const edges = mrows.map(r => r.querySelector(".tag")).filter(Boolean).map(x => parseInt(x.textContent));
+  assert(edges.length >= 7 && edges.every(v => v >= 0 && v <= 100), "per-slot edge percentages are probabilities (" + edges.length + " slots with both players)");
+  assert(/Season so far/.test(mtxt) && /all-play/.test(mtxt) && /1–0/.test(mtxt), "season story shows the record and all-play line");
+  assert(/Head-to-head this season/.test(mtxt) && /Week 1/.test(mtxt), "past meeting with this opponent listed");
+  assert(/sat/.test(mtxt) && /odd team out/.test(mtxt), "the no-matchup week renders as 'sat' with a plain-language note");
+  // my-bye current week: no opponent -> explains the 9-team odd-team-out, no head-to-head
+  const hxBye = { currentWeek: 3, standings: {}, schedule: hx.schedule.slice(0, 4).concat([{ w: 3, home: ME, away: null, hp: 0, ap: null, winner: "UNDECIDED" }]) };
+  T.setHistory(hxBye);
+  assert(/odd team out this fantasy week|the odd team out/.test(d.getElementById("tab-matchup").textContent), "when I sit this week the tab says so instead of showing a ghost opponent");
+  // real file: records derived from the schedule must match ESPN's own standings for every team
+  const histReal = JSON.parse(fs.readFileSync(path.join(__dirname, "data/league_history.json"), "utf8"));
+  T.inject(season, rosters, exclusions, tradeLog, projections, null, matchups, histReal);
+  const standTeams = Object.keys(histReal.standings);
+  assert(standTeams.length === 9 && standTeams.every(t => { const s = T.teamSeason(t); return s.wins === histReal.standings[t].wins && s.losses === histReal.standings[t].losses; }), "real data: schedule-derived W-L matches ESPN's standings for all 9 teams");
+  const coReal = T.currentOpponent();
+  assert(coReal && (coReal.opp == null || rosters.teams[coReal.opp]), "real data: current opponent is a known roster (or a bye)");
+  assert([...d.querySelectorAll("#tab-matchup .gh .row.grid")].length >= 4, "real data: week-by-week history rows render for both teams");
+  assert(/Win odds \(matchup\)/.test(d.getElementById("legend").textContent) && /All-play/.test(d.getElementById("legend").textContent), "legend explains win odds, all-play and luck");
+  console.log("\n--- MATCHUP (week " + (histReal.currentWeek || "?") + ") ---");
+  console.log(d.getElementById("tab-matchup").textContent.replace(/\s+/g, " ").slice(0, 700));
+  T.inject(season, rosters, exclusions, tradeLog, projections, null, matchups, histReal);
+
   console.log("\n--- POWER ---");
   [...d.querySelectorAll("#tab-league .row")].forEach(r => console.log(" ", r.textContent.replace(/\s+/g, " ").trim()));
   console.log(failures ? failures + " FAILED" : "ALL SEASON TESTS PASSED"); process.exit(failures ? 1 : 0);
