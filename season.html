@@ -456,7 +456,10 @@
       wkRank: wk?wk.rank:null, opp: wk?wk.opp:null, grade: wk?wk.grade:null, inj });
   }
   function rosVal(p){ return p.ros!=null ? ROS_MAX - p.ros : 0; }
-  function undraftable(p){ return (p.inj && ["IR","O","SUSP"].includes(p.inj.code)) || (P && p.pPlay===0 && !p.onBye); }
+  // Startability follows the LIVE designation (injLive = worst of ESPN/Sleeper feeds, which already
+  // falls back to the weekly injury file only when he's in neither) — not the weekly file directly,
+  // which goes stale mid-week (e.g. OUT on Monday, upgraded to Questionable by Saturday).
+  function undraftable(p){ const code = (P && p.injLive) ? p.injLive : (p.inj ? p.inj.code : null); return ["IR","O","SUSP"].includes(code) || (P && p.pPlay===0 && !p.onBye); }
 
   // Optimal lineup by a scoring fn: "mu" (predicted points, higher is better), "wkRank"/"ros" (ranks, lower is better).
   function optimalLineup(players, key){
