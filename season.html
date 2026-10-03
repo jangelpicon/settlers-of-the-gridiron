@@ -757,14 +757,48 @@
     const open = pool.filter(p=>p.pos===faPos || counts[p.pos]>1);
     return open.length ? open : pool;
   }
+  // ---------- Needs ----------
+  // What does MY roster actually need, league-relative? For every starting slot, compare my
+  // starter's ROS rank to the median starter the other teams run in that same slot (starter
+  // gaps), and flag positions with no usable bench cover (depth holes). Drives the needs
+  // banner, waiver ordering and the need tags on both tabs.
+  function teamNeeds(){
+    const L = optimalLineup(myTeam(), "ros");
+    const others = Object.keys(R.teams).filter(t=>t!==R.me).map(t=>optimalLineup(teamOf(t), "ros").slots);
+    const med = a => { const s=a.filter(v=>v!=null).sort((x,y)=>x-y); return s.length ? s[Math.floor(s.length/2)] : null; };
+    const needs = [];
+    L.slots.forEach((s,i)=>{
+      if (!s.p || ["K","DST"].includes(s.p.pos)) return; // K/DST are streamed, never a "need"
+      const lg = med(others.map(o=>o[i] && o[i].p ? o[i].p.ros : null));
+      if (lg==null || s.p.ros==null) return;
+      const gap = s.p.ros - lg; // + = my starter ranks worse than the league median at this slot
+      if (gap > 0) needs.push({ slot:s.slot, pos:s.p.pos, mine:s.p, lgMedian:lg, gap });
+    });
+    needs.sort((a,b)=>b.gap-a.gap);
+    const depth = [];
+    ["QB","RB","WR","TE"].forEach(pos=>{
+      if (!L.bench.some(p=>p.pos===pos && !undraftable(p))) depth.push(pos);
+    });
+    const needPos = new Set(needs.map(n=>n.pos)); depth.forEach(p=>needPos.add(p));
+    return { needs, depth, needPos };
+  }
+  function needsStrip(N){
+    if (!N.needs.length && !N.depth.length) return "<div class='suggest'>✅ <b class='hl'>Your needs:</b> every starting slot is at or above the league median and every position has bench cover. Trade and claim for value, not need.</div>";
+    let h = "<div class='suggest'>🎯 <b class='hl'>Your needs, biggest first:</b> ";
+    h += N.needs.slice(0,3).map(n=>"<b>"+n.slot+"</b> — "+esc(n.mine.name)+" ROS #"+n.mine.ros+" vs league median #"+n.lgMedian).join(" · ");
+    if (N.depth.length) h += (N.needs.length?" · ":"")+N.depth.map(p=>"<b>"+p+" depth</b> — no bench "+p).join(" · ");
+    return h + "<br><span class='muted'>Starter gaps: how far your starter ranks below what the median opponent runs in the same slot. Everything below is ordered and tagged against this list.</span></div>";
+  }
   function waiverSuggestions(me, bench, fa){
     const board = waiverBoard(me, bench, fa.filter(f=>f.ros!=null && !["K","DST"].includes(f.pos)));
-    const toItem = b => ({ drop:b.drop, add:b.fa, gain:b.verdict.rosDelta, agree: b.verdict.seasonDelta!=null, seasonDelta: b.verdict.seasonDelta, fit: fitNote(b.fa, me) });
-    const byFitThenGain = (a,b)=> ((a.fit?1:0)-(b.fit?1:0)) || (b.gain-a.gain);
+    const N = teamNeeds();
+    const toItem = b => ({ drop:b.drop, add:b.fa, gain:b.verdict.rosDelta, agree: b.verdict.seasonDelta!=null, seasonDelta: b.verdict.seasonDelta, fit: fitNote(b.fa, me), need: N.needPos.has(b.fa.pos) });
+    // Clean fits first, then adds at a position of need, then raw season-long gain.
+    const byFitThenGain = (a,b)=> ((a.fit?1:0)-(b.fit?1:0)) || ((b.need?1:0)-(a.need?1:0)) || (b.gain-a.gain);
     const sugg = board.filter(b=>b.verdict.key==="add").map(toItem).sort(byFitThenGain);
     const marginal = board.filter(b=>b.verdict.key==="marginal").map(toItem).sort(byFitThenGain);
     chainClaims(sugg, me, bench);
-    return { sugg, marginal };
+    return { sugg, marginal, needs: N };
   }
   // Chained claims: walk the ladder assuming every claim above LANDED, so each later claim knows who's
   // actually next on the chopping block (the standalone drop may already be gone). The deeper drop gets its
@@ -840,7 +874,8 @@
     const fa = freeAgents().filter(p=>!undraftable(p));
     const wkey = lineupKey(), better = (a,b)=> wkey==="mu" ? a.mu > b.mu : a.wkRank < b.wkRank;
     let h = "<div class='panel'><h2>Waiver moves that beat your bench — season-long only</h2><div class='muted' style='margin-bottom:6px'>An add/drop is suggested only when the free agent is better for the <b>rest of the season</b>, judged two ways at once: FantasyPros rest-of-season rank (refreshed Tuesdays) must be at least "+ROS_MARGIN+" spots better, and ESPN's live full-season projection must agree. This week's matchup is never a reason to drop a player. Smaller edges are listed as marginal so you don't churn.</div>";
-    const { sugg, marginal } = waiverSuggestions(me, bench, fa);
+    const { sugg, marginal, needs: N } = waiverSuggestions(me, bench, fa);
+    h += needsStrip(N);
     if (!sugg.length) h += "<div class='muted'>Nothing on the wire is a clear season-long upgrade over your bench. Good sign.</div>";
     if (sugg.length){
       h += "<div class='muted' style='margin-bottom:6px'><b>Your claim sheet — enter exactly this in ESPN, top to bottom.</b> Same shape as ESPN's Pending Waiver Claims: one row per claim, priority order, add + drop. A <b>backup</b> row re-tries the same add with the next drop, for when the first drop is already gone; a row without a backup simply fails if its drop is taken — that's fine and by design. Ordered by season-long gain, then roster fit.</div>";
@@ -850,7 +885,7 @@
         pri++;
         let note = "+"+s.gain+" rest-of-season spots"+(s.seasonDelta!=null?" · "+(s.seasonDelta>=0?"+":"")+s.seasonDelta+" projected season points":" · ESPN season projection missing for one of them")+" — "+(s.agree?"both sources agree":"rank only");
         if (s.chain && !s.chain.worth) note += " · no backup row: if "+esc(s.drop.name)+" is already gone, the next man up ("+esc(s.chain.drop.name)+" #"+s.chain.drop.ros+") isn't worth dropping for him, so this claim just fails";
-        h += "<div class='suggest'><b>Priority "+pri+"</b> · ➕ Add "+player(s.add)+" &nbsp;➖ Drop "+player(s.drop,true)+"<br><span class='muted'>"+note+"</span>"+(s.fit?"<br><span class='tag warn'>"+esc(s.fit)+"</span>":"")+"</div>";
+        h += "<div class='suggest'><b>Priority "+pri+"</b> · ➕ Add "+player(s.add)+" &nbsp;➖ Drop "+player(s.drop,true)+(s.need?" <span class='tag good'>fills a need: "+s.add.pos+"</span>":"")+"<br><span class='muted'>"+note+"</span>"+(s.fit?"<br><span class='tag warn'>"+esc(s.fit)+"</span>":"")+"</div>";
         if (s.chain && s.chain.worth){
           pri++;
           h += "<div class='suggest'><b>Priority "+pri+"</b> · ➕ Add "+player(s.add)+" &nbsp;➖ Drop "+player(s.chain.drop,true)+"<br><span class='tag good'>backup for Priority "+(pri-1)+" — fires when "+esc(s.drop.name)+" is already gone; still +"+s.chain.verdict.rosDelta+" ROS spots"+(s.chain.samePos?" · straight "+s.chain.drop.pos+"-for-"+s.chain.drop.pos+" swap":"")+"</span></div>";
@@ -991,7 +1026,18 @@
     }
     h += "<div class='panel'><h2>Optimal trades — by team</h2>"+
       "<div class='muted' style='margin-bottom:6px'>Every 1-for-1 swap and 2-for-2 package, grouped by opponent (teams ordered by their best deal, top 3 deals each), ranked by <b>expected value</b> = what your starting lineup gains (rest-of-season rank) × how likely they accept — from what it does to <i>their</i> lineup <b>and</b> how lopsided the deal looks by consensus rank (people judge a package by its biggest name, and turn down insulting-looking offers even when the math helps them). Big upside with a real chance of a yes floats to the top; long shots only appear when the upside is huge.</div>";
+    const N = teamNeeds();
+    h += needsStrip(N);
     if (!trades.length) h += "<div class='muted'>No trade that helps you found right now.</div>";
+    const me2 = myTeam(), preSlots = optimalLineup(me2, "ros").slots;
+    // Which of my starting slots does this deal actually upgrade (rest-of-season lineup diff)?
+    const dealFills = t => {
+      const gN = new Set(t.gives.map(p=>p.n));
+      const post = optimalLineup(me2.filter(p=>!gN.has(p.n)).concat(t.gets), "ros").slots;
+      const out = [];
+      preSlots.forEach((s,i)=>{ const a=s.p, b=post[i]&&post[i].p; if (a&&b&&a.n!==b.n) out.push({slot:s.slot, up: (b.ros!=null?b.ros:ROS_MAX) < (a.ros!=null?a.ros:ROS_MAX), txt:s.slot+" "+a.name+" #"+a.ros+" → "+b.name+" #"+b.ros}); });
+      return out;
+    };
     const dealSide = ps => ps.map(p=>"<b>"+esc(p.name)+"</b> ("+p.pos+" ROS #"+p.ros+(p.injLive&&p.injLive!=="ACT"?", "+esc(p.injLive):"")+")").join(" + ");
     // One card per core deal: keyed by each side's biggest name, so ten variants of
     // "star + a different throw-in" collapse to the best one instead of filling the list.
@@ -1007,8 +1053,10 @@
       h += "<h3>"+esc(team)+"</h3>"+(floor>-12?"<div class='muted'>this team has declined before — only deals at "+(floor>=0?"+":"")+floor+" or better for them are shown</div>":"");
       byTeam[team].slice(0,3).forEach((t,i)=>{
         const oddsCls = t.odds.p>=0.7?"good":t.odds.p>=0.45?"warn":"bad";
-        h += "<div class='suggest'>"+(i+1)+". give "+dealSide(t.gives)+" for "+dealSide(t.gets)+" <span class='tag "+oddsCls+"'>"+t.odds.label+"</span>"+
-          "<br><span class='muted'>your gain +"+t.myGain+" · their side "+(t.theirGain>=0?"+":"")+t.theirGain+" · expected value "+t.ev+"</span><br>"+
+        const fills = dealFills(t);
+        const topNeed = N.needs.length && fills.some(f=>f.up && f.slot===N.needs[0].slot);
+        h += "<div class='suggest'>"+(i+1)+". give "+dealSide(t.gives)+" for "+dealSide(t.gets)+" <span class='tag "+oddsCls+"'>"+t.odds.label+"</span>"+(topNeed?" <span class='tag good'>🎯 fills your biggest need</span>":"")+
+          "<br><span class='muted'>your gain +"+t.myGain+" · their side "+(t.theirGain>=0?"+":"")+t.theirGain+" · expected value "+t.ev+(fills.length?" · lineup: "+esc(fills.map(f=>(f.up?"↑ ":"↓ ")+f.txt).join(" · ")):"")+"</span><br>"+
           tradeButtons(t, ["proposed","declined","accepted"])+"</div>";
       });
     });
@@ -1128,7 +1176,7 @@
   window.__seasonTest = { inject:(s,r,x,tl,pj,pool,mu,hist)=>{ S=s; R=JSON.parse(JSON.stringify(r)); X=x||{players:[]}; P=pj||null; POOL=pool||null; MU=mu||null; HIST=hist||null; LG=null; PSTAMP = pj ? {text:"snapshot "+pj.generated, cls:"stale"} : {text:"none", cls:""}; RSTAMP = {text:R.updated||"–", cls:""}; mergeLog((tl||{}).entries); applyAcceptedTrades(); buildIndex(); renderAll(); },
     setHistory:(h)=>{ HIST=h||null; renderMatchup(); }, historyFromLeague, teamSeason, currentOpponent, allScores, scoringRank,
     rostersFromLeague, setRosters:(r)=>{ R = JSON.parse(JSON.stringify(r)); buildIndex(); renderAll(); },
-    logTrade, teamFloor, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, strength, findTrades, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M,
+    logTrade, teamFloor, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, strength, findTrades, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M, teamNeeds,
     waiverSuggestions:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,
     dropOrder:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return dropOrder(me, bench); }, fitNote, scarcityPool,
     setTeamParam:(qs)=>{ applyTeamParam(qs); buildIndex(); renderAll(); },
