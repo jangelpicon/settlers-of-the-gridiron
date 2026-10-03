@@ -989,20 +989,28 @@
       h += "<div class='muted' style='margin-top:6px'>If everything landed: +"+sumMy+" lineup strength · expected acceptances "+expAcc.toFixed(1)+" of "+open.length+"</div>";
       h += "<button class='tb tb-declined' id='declineAll'>All declined</button> <span class='muted'>marks every open proposal declined (each team's floor goes up accordingly)</span></div>";
     }
-    h += "<div class='panel'><h2>Optimal trades</h2>"+
-      "<div class='muted' style='margin-bottom:6px'>Every 1-for-1 swap and 2-for-2 package, one list ranked by <b>expected value</b> = what your starting lineup gains (rest-of-season rank) × how likely they accept — from what it does to <i>their</i> lineup <b>and</b> how lopsided the deal looks by consensus rank (people judge a package by its biggest name, and turn down insulting-looking offers even when the math helps them). Big upside with a real chance of a yes floats to the top; long shots only appear when the upside is huge.</div>";
+    h += "<div class='panel'><h2>Optimal trades — by team</h2>"+
+      "<div class='muted' style='margin-bottom:6px'>Every 1-for-1 swap and 2-for-2 package, grouped by opponent (teams ordered by their best deal, top 3 deals each), ranked by <b>expected value</b> = what your starting lineup gains (rest-of-season rank) × how likely they accept — from what it does to <i>their</i> lineup <b>and</b> how lopsided the deal looks by consensus rank (people judge a package by its biggest name, and turn down insulting-looking offers even when the math helps them). Big upside with a real chance of a yes floats to the top; long shots only appear when the upside is huge.</div>";
     if (!trades.length) h += "<div class='muted'>No trade that helps you found right now.</div>";
     const dealSide = ps => ps.map(p=>"<b>"+esc(p.name)+"</b> ("+p.pos+" ROS #"+p.ros+(p.injLive&&p.injLive!=="ACT"?", "+esc(p.injLive):"")+")").join(" + ");
     // One card per core deal: keyed by each side's biggest name, so ten variants of
     // "star + a different throw-in" collapse to the best one instead of filling the list.
     const bestN = ps => ps.slice().sort((a,b)=>(a.ros!=null?a.ros:ROS_MAX)-(b.ros!=null?b.ros:ROS_MAX))[0].n;
     const seen = new Set();
-    trades.filter(t=>{ const k=t.team+"|"+bestN(t.gets)+"|"+bestN(t.gives); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0,10).forEach((t,i)=>{
-      const oddsCls = t.odds.p>=0.7?"good":t.odds.p>=0.45?"warn":"bad";
-      const floor = teamFloor(t.team);
-      h += "<div class='suggest'>"+(i+1)+". <b class='hl'>"+esc(t.team)+":</b> give "+dealSide(t.gives)+" for "+dealSide(t.gets)+" <span class='tag "+oddsCls+"'>"+t.odds.label+"</span>"+
-        "<br><span class='muted'>your gain +"+t.myGain+" · their side "+(t.theirGain>=0?"+":"")+t.theirGain+" · expected value "+t.ev+(floor>-12?" · <i>this team has declined before — only deals at "+(floor>=0?"+":"")+floor+" or better for them are shown</i>":"")+"</span><br>"+
-        tradeButtons(t, ["proposed","declined","accepted"])+"</div>";
+    const deduped = trades.filter(t=>{ const k=t.team+"|"+bestN(t.gets)+"|"+bestN(t.gives); if (seen.has(k)) return false; seen.add(k); return true; });
+    // Grouped by team: each opponent gets its own section with its best deals, teams
+    // ordered by their best deal's EV. A team with no win-win deal doesn't appear.
+    const byTeam = {};
+    deduped.forEach(t=>{ (byTeam[t.team] = byTeam[t.team]||[]).push(t); });
+    Object.keys(byTeam).sort((a,b)=> byTeam[b][0].ev - byTeam[a][0].ev).forEach(team=>{
+      const floor = teamFloor(team);
+      h += "<h3>"+esc(team)+"</h3>"+(floor>-12?"<div class='muted'>this team has declined before — only deals at "+(floor>=0?"+":"")+floor+" or better for them are shown</div>":"");
+      byTeam[team].slice(0,3).forEach((t,i)=>{
+        const oddsCls = t.odds.p>=0.7?"good":t.odds.p>=0.45?"warn":"bad";
+        h += "<div class='suggest'>"+(i+1)+". give "+dealSide(t.gives)+" for "+dealSide(t.gets)+" <span class='tag "+oddsCls+"'>"+t.odds.label+"</span>"+
+          "<br><span class='muted'>your gain +"+t.myGain+" · their side "+(t.theirGain>=0?"+":"")+t.theirGain+" · expected value "+t.ev+"</span><br>"+
+          tradeButtons(t, ["proposed","declined","accepted"])+"</div>";
+      });
     });
     h += "</div>";
     // Log
