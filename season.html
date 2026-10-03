@@ -957,7 +957,6 @@
     Object.keys(R.teams).filter(t=>t!==R.me).forEach(t=>{
       const them = teamOf(t);
       const theirBase = strength(them);
-      const floor = teamFloor(t);
       const tradeable = p=>!undraftable(p) && !["K","DST"].includes(p.pos) && p.ros!=null;
       const myC = me.filter(tradeable), thC = them.filter(tradeable);
       const consider = (gives, gets)=>{
@@ -966,7 +965,6 @@
         if (myGain <= 0) return; // cheap half first: most combos don't help me
         const st = dealStats(me, them, gives, gets, myBase, theirBase);
         if (st.theirGain < -12) return; // no realistic pitch
-        if (st.theirGain < floor) return; // they already said no to a better deal than this
         const prior = logEntry(t, st.giveName, st.getName);
         if (prior && prior.status!=="withdrawn") return; // already proposed / declined / accepted — shown in the log, not here
         out.push({ team:t, ...st });
@@ -1050,7 +1048,7 @@
     deduped.forEach(t=>{ (byTeam[t.team] = byTeam[t.team]||[]).push(t); });
     Object.keys(byTeam).sort((a,b)=> byTeam[b][0].ev - byTeam[a][0].ev).forEach(team=>{
       const floor = teamFloor(team);
-      h += "<h3>"+esc(team)+"</h3>"+(floor>-12?"<div class='muted'>this team has declined before — only deals at "+(floor>=0?"+":"")+floor+" or better for them are shown</div>":"");
+      h += "<h3>"+esc(team)+"</h3>"+(floor>-12?"<div class='muted'>heads-up: this team has already turned down a deal worth "+(floor-3>=0?"+":"")+(floor-3)+" to them — anything at or below that is probably a no, but everything is shown</div>":"");
       byTeam[team].slice(0,3).forEach((t,i)=>{
         const oddsCls = t.odds.p>=0.7?"good":t.odds.p>=0.45?"warn":"bad";
         const fills = dealFills(t);

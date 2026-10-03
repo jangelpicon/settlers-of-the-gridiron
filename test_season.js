@@ -193,7 +193,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   let after = T.findTrades();
   assert(!after.some(x => x.team === top.team && x.getName === top.getName && x.giveName === top.giveName), "a declined offer disappears from the list");
   assert(T.teamFloor(top.team) === top.theirGain + 3, "declining teaches the model: that team's floor rises to (declined their-side + 3)");
-  assert(after.filter(x => x.team === top.team).every(x => x.theirGain >= top.theirGain + 3), "remaining offers to that team are all sweeter for them than the declined one");
+  assert(after.filter(x => x.team === top.team).length === trades.filter(x => x.team === top.team).length - 1, "a decline hides only that exact deal — the floor no longer filters out other offers to the team");
   assert(/declined/.test(d.getElementById("tab-trades").textContent) && /Trade log/.test(d.getElementById("tab-trades").textContent), "decline shows up in the trade log");
   assert(new RegExp("\\+" + top.myGain + " / [+-]?" + Math.abs(top.theirGain) + " \\(" + top.odds.label + "\\)").test(d.getElementById("tab-trades").textContent), "trade log row shows the deal's numbers (your gain / their side (odds))");
   d.querySelector("#tab-trades .tb-undo").click();                                 // undo it
