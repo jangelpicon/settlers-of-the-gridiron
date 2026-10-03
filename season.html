@@ -400,6 +400,8 @@
   // ---------- Trade log (repo copy + this browser's local copy; local wins) ----------
   const TL_KEY = "sotg_trades_v1";
   let TL = []; // [{key, team, give, get, status, date, theirGain?}]
+  // Either side of a deal can be one name or an "A + B" package; stored as one string, split here.
+  function parseDeal(names){ return String(names).split(" + ").map(s=>s.trim()).filter(Boolean); }
   function tradeKey(team, give, get){ return team+"|"+norm(give)+"|"+norm(get); }
   function loadLocalLog(){ try { return JSON.parse(localStorage.getItem(TL_KEY)||"[]"); } catch(e){ return []; } }
   function saveLocalLog(){ try { localStorage.setItem(TL_KEY, JSON.stringify(TL.filter(e=>e.local))); } catch(e){} }
@@ -423,9 +425,12 @@
   function applyAcceptedTrades(){
     TL.filter(e=>e.status==="accepted" && (!R.updated || e.date >= R.updated)).forEach(e=>{
       const mine = R.teams[R.me], theirs = R.teams[e.team]; if (!theirs) return;
-      const gi = mine.findIndex(p=>norm(p.name)===norm(e.give)), ti = theirs.findIndex(p=>norm(p.name)===norm(e.get));
-      if (gi<0 || ti<0) return; // already applied in the repo file
-      const g = mine.splice(gi,1)[0], t = theirs.splice(ti,1)[0]; mine.push(t); theirs.push(g);
+      const gi = parseDeal(e.give).map(x=>mine.findIndex(p=>norm(p.name)===norm(x)));
+      const ti = parseDeal(e.get).map(x=>theirs.findIndex(p=>norm(p.name)===norm(x)));
+      if (gi.some(i=>i<0) || ti.some(i=>i<0)) return; // already applied in the repo file
+      const g = gi.sort((a,b)=>b-a).map(i=>mine.splice(i,1)[0]);
+      const t = ti.sort((a,b)=>b-a).map(i=>theirs.splice(i,1)[0]);
+      t.forEach(p=>mine.push(p)); g.forEach(p=>theirs.push(p));
     });
   }
   // What a decline teaches us: that team needs a sweeter deal than the one they turned down.
@@ -886,20 +891,29 @@
   }
 
   // ---------- Trades tab ----------
-  // Numbers for one specific 1-for-1 against the CURRENT rosters (used for open proposals and the log).
+  // Shared math for any deal shape (each side one player or a two-player package), vs CURRENT rosters.
+  function dealStats(me, them, gives, gets, myBase, theirBase){
+    const gN = new Set(gives.map(p=>p.n)), tN = new Set(gets.map(p=>p.n));
+    const myGain = strength(me.filter(p=>!gN.has(p.n)).concat(gets)) - myBase;
+    const theirGain = strength(them.filter(p=>!tN.has(p.n)).concat(gives)) - theirBase;
+    // People judge a package by its biggest name: best consensus rank on each side.
+    const fairness = Math.min(...gives.map(p=>p.ros!=null?p.ros:ROS_MAX)) - Math.min(...gets.map(p=>p.ros!=null?p.ros:ROS_MAX));
+    const odds = acceptOdds(theirGain, fairness);
+    return { gives, gets, give:gives[0], get:gets[0],
+      giveName: gives.map(p=>p.name).join(" + "), getName: gets.map(p=>p.name).join(" + "),
+      myGain, theirGain, fairness, odds, ev: Math.round(myGain*odds.p*10)/10 };
+  }
+  // Numbers for one specific deal against the CURRENT rosters (used for open proposals and the log).
+  // give/get accept a single name or an "A + B" package string on either side.
   function tradeStats(team, giveName, getName){
     if (!R.teams[team]) return null;
     const me = myTeam(), them = teamOf(team);
-    const give = me.find(p=>p.n===norm(giveName)), get = them.find(p=>p.n===norm(getName));
-    if (!give || !get) return null;
-    const myBase = strength(me), theirBase = strength(them);
-    const myGain = strength(me.filter(p=>p.n!==give.n).concat([get])) - myBase;
-    const theirGain = strength(them.filter(p=>p.n!==get.n).concat([give])) - theirBase;
-    const fairness = (give.ros||ROS_MAX)-(get.ros||ROS_MAX);
-    const odds = acceptOdds(theirGain, fairness);
-    return { give, get, myGain, theirGain, odds, ev: Math.round(myGain*odds.p*10)/10, fairness };
+    const gives = parseDeal(giveName).map(x=>me.find(p=>p.n===norm(x)));
+    const gets = parseDeal(getName).map(x=>them.find(p=>p.n===norm(x)));
+    if (!gives.length || !gets.length || gives.some(x=>!x) || gets.some(x=>!x)) return null;
+    return dealStats(me, them, gives, gets, strength(me), strength(them));
   }
-  // 1-for-1 swaps: I give a player, get one back. Keep only trades where my ROS starting
+  // 1-for-1 swaps AND 2-for-2 packages, one list. Keep only trades where my ROS starting
   // strength goes up AND theirs doesn't go down by more than a sliver (so it's acceptable).
   function findTrades(){
     const me = myTeam();
@@ -908,27 +922,28 @@
     Object.keys(R.teams).filter(t=>t!==R.me).forEach(t=>{
       const them = teamOf(t);
       const theirBase = strength(them);
-      me.forEach(give=>{
-        if (undraftable(give) || ["K","DST"].includes(give.pos)) return;
-        them.forEach(get=>{
-          if (undraftable(get) || ["K","DST"].includes(get.pos) || get.ros==null || give.ros==null) return;
-          const me2 = me.filter(p=>p.n!==give.n).concat([get]);
-          const them2 = them.filter(p=>p.n!==get.n).concat([give]);
-          const myGain = strength(me2) - myBase;
-          const theirGain = strength(them2) - theirBase;
-          if (myGain <= 0) return;
-          if (theirGain < -12) return; // no realistic pitch
-          const prior = logEntry(t, give.name, get.name);
-          if (prior && prior.status!=="withdrawn") return; // already proposed / declined / accepted — shown in the log, not here
-          if (theirGain < teamFloor(t)) return;            // they already said no to a better deal than this
-          const fairness = give.ros - get.ros; // + = I'm getting the higher-ranked player
-          out.push({ team:t, give, get, myGain, theirGain, fairness, odds: acceptOdds(theirGain, fairness) });
-        });
-      });
+      const floor = teamFloor(t);
+      const tradeable = p=>!undraftable(p) && !["K","DST"].includes(p.pos) && p.ros!=null;
+      const myC = me.filter(tradeable), thC = them.filter(tradeable);
+      const consider = (gives, gets)=>{
+        const gN = new Set(gives.map(p=>p.n));
+        const myGain = strength(me.filter(p=>!gN.has(p.n)).concat(gets)) - myBase;
+        if (myGain <= 0) return; // cheap half first: most combos don't help me
+        const st = dealStats(me, them, gives, gets, myBase, theirBase);
+        if (st.theirGain < -12) return; // no realistic pitch
+        if (st.theirGain < floor) return; // they already said no to a better deal than this
+        const prior = logEntry(t, st.giveName, st.getName);
+        if (prior && prior.status!=="withdrawn") return; // already proposed / declined / accepted — shown in the log, not here
+        out.push({ team:t, ...st });
+      };
+      myC.forEach(give=> thC.forEach(get=> consider([give],[get])));
+      for (let i=0;i<myC.length;i++) for (let j=i+1;j<myC.length;j++)
+        for (let a=0;a<thC.length;a++) for (let b=a+1;b<thC.length;b++)
+          consider([myC[i],myC[j]],[thC[a],thC[b]]);
     });
-    // One list: expected value = what I gain × how likely they say yes.
-    out.forEach(t=>{ t.ev = Math.round(t.myGain * t.odds.p * 10) / 10; });
-    out.sort((a,b)=> b.ev - a.ev || b.myGain - a.myGain);
+    // One list: expected value = what I gain × how likely they say yes. On ties, the
+    // simpler deal first — a 2-for-2 must beat the 1-for-1 at its core to outrank it.
+    out.sort((a,b)=> b.ev - a.ev || b.myGain - a.myGain || (a.gives.length+a.gets.length) - (b.gives.length+b.gets.length));
     return out;
   }
   // How the other side sees it: their own lineup change is what they'll judge on.
@@ -947,14 +962,15 @@
     return o;
   }
   function tradeButtons(t, statuses){
-    return "<span class='tbtns' data-team='"+esc(t.team)+"' data-give='"+esc(t.give.name||t.give)+"' data-get='"+esc(t.get.name||t.get)+"' data-tg='"+(typeof t.theirGain==="number"?t.theirGain:"")+"'>"+
+    const gv = t.giveName || (t.give && t.give.name) || t.give, gt = t.getName || (t.get && t.get.name) || t.get;
+    return "<span class='tbtns' data-team='"+esc(t.team)+"' data-give='"+esc(gv)+"' data-get='"+esc(gt)+"' data-tg='"+(typeof t.theirGain==="number"?t.theirGain:"")+"'>"+
       statuses.map(s=>"<button class='tb tb-"+s+"' data-status='"+s+"'>"+({proposed:"Proposed",declined:"Declined",countered:"Countered",accepted:"Accepted ✓",withdrawn:"Withdraw"}[s])+"</button>").join("")+"</span>";
   }
   function playerBrief(p){ return esc(p.name)+" ("+p.pos+" ROS #"+(p.ros!=null?p.ros:"–")+(P&&p.mu!=null?", wk proj "+p.mu.toFixed(1):"")+(P&&p.injLive&&p.injLive!=="ACT"?", "+esc(p.injLive):"")+")"; }
   function statsLine(st){
     if (!st) return "<span class='muted'>stats n/a — a player in this deal is no longer on the roster I have; tell Sheldon if rosters changed</span>";
     const oddsCls = st.odds.p>=0.7?"good":st.odds.p>=0.45?"warn":"bad";
-    return "<span class='muted'>give "+playerBrief(st.give)+" · get "+playerBrief(st.get)+"<br>your gain +"+st.myGain+" · their side "+(st.theirGain>=0?"+":"")+st.theirGain+" <span class='tag "+oddsCls+"'>"+st.odds.label+"</span> · EV "+st.ev+"</span>";
+    return "<span class='muted'>give "+st.gives.map(playerBrief).join(" + ")+" · get "+st.gets.map(playerBrief).join(" + ")+"<br>your gain +"+st.myGain+" · their side "+(st.theirGain>=0?"+":"")+st.theirGain+" <span class='tag "+oddsCls+"'>"+st.odds.label+"</span> · EV "+st.ev+"</span>";
   }
   function daysSince(d){ if (!d) return null; const ms = Date.now() - Date.parse(d+"T12:00:00"); return Math.max(0, Math.round(ms/86400000)); }
   function renderTrades(){
@@ -974,13 +990,17 @@
       h += "<button class='tb tb-declined' id='declineAll'>All declined</button> <span class='muted'>marks every open proposal declined (each team's floor goes up accordingly)</span></div>";
     }
     h += "<div class='panel'><h2>Optimal trades</h2>"+
-      "<div class='muted' style='margin-bottom:6px'>One list, ranked by <b>expected value</b> = what your starting lineup gains (rest-of-season rank) × how likely they accept — from what it does to <i>their</i> lineup <b>and</b> how lopsided the deal looks by consensus rank (people turn down insulting-looking offers even when the math helps them). Big upside with a real chance of a yes floats to the top; long shots only appear when the upside is huge.</div>";
-    if (!trades.length) h += "<div class='muted'>No 1-for-1 that helps you found right now.</div>";
+      "<div class='muted' style='margin-bottom:6px'>Every 1-for-1 swap and 2-for-2 package, one list ranked by <b>expected value</b> = what your starting lineup gains (rest-of-season rank) × how likely they accept — from what it does to <i>their</i> lineup <b>and</b> how lopsided the deal looks by consensus rank (people judge a package by its biggest name, and turn down insulting-looking offers even when the math helps them). Big upside with a real chance of a yes floats to the top; long shots only appear when the upside is huge.</div>";
+    if (!trades.length) h += "<div class='muted'>No trade that helps you found right now.</div>";
+    const dealSide = ps => ps.map(p=>"<b>"+esc(p.name)+"</b> ("+p.pos+" ROS #"+p.ros+(p.injLive&&p.injLive!=="ACT"?", "+esc(p.injLive):"")+")").join(" + ");
+    // One card per core deal: keyed by each side's biggest name, so ten variants of
+    // "star + a different throw-in" collapse to the best one instead of filling the list.
+    const bestN = ps => ps.slice().sort((a,b)=>(a.ros!=null?a.ros:ROS_MAX)-(b.ros!=null?b.ros:ROS_MAX))[0].n;
     const seen = new Set();
-    trades.filter(t=>{ const k=t.team+"|"+t.get.n; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0,8).forEach((t,i)=>{
+    trades.filter(t=>{ const k=t.team+"|"+bestN(t.gets)+"|"+bestN(t.gives); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0,10).forEach((t,i)=>{
       const oddsCls = t.odds.p>=0.7?"good":t.odds.p>=0.45?"warn":"bad";
       const floor = teamFloor(t.team);
-      h += "<div class='suggest'>"+(i+1)+". <b class='hl'>"+esc(t.team)+":</b> give <b>"+esc(t.give.name)+"</b> ("+t.give.pos+" ROS #"+t.give.ros+") for <b>"+esc(t.get.name)+"</b> ("+t.get.pos+" ROS #"+t.get.ros+(t.get.inj?", "+esc(t.get.inj.code):"")+") <span class='tag "+oddsCls+"'>"+t.odds.label+"</span>"+
+      h += "<div class='suggest'>"+(i+1)+". <b class='hl'>"+esc(t.team)+":</b> give "+dealSide(t.gives)+" for "+dealSide(t.gets)+" <span class='tag "+oddsCls+"'>"+t.odds.label+"</span>"+
         "<br><span class='muted'>your gain +"+t.myGain+" · their side "+(t.theirGain>=0?"+":"")+t.theirGain+" · expected value "+t.ev+(floor>-12?" · <i>this team has declined before — only deals at "+(floor>=0?"+":"")+floor+" or better for them are shown</i>":"")+"</span><br>"+
         tradeButtons(t, ["proposed","declined","accepted"])+"</div>";
     });

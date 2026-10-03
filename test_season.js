@@ -165,7 +165,9 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
 
   console.log("== Trades ==");
   const trades = T.findTrades();
-  assert(trades.length > 0, "at least one win-win 1-for-1 trade found (" + trades.length + ")");
+  assert(trades.length > 0, "at least one win-win trade found (" + trades.length + ")");
+  assert(trades.some(t => t.gives.length === 1 && t.gets.length === 1), "list includes 1-for-1 swaps");
+  assert(trades.some(t => t.gives.length === 2 && t.gets.length === 2), "list includes 2-for-2 packages");
   assert(trades.every(t => t.myGain > 0 && t.theirGain >= -12), "every suggested trade improves my lineup and has a realistic pitch");
   const isSorted = (arr, key) => arr.every((x, i) => i === 0 || key(arr[i-1]) >= key(x));
   assert(isSorted(trades, t => t.ev), "single list sorted by expected value (my gain × acceptance odds)");
@@ -174,17 +176,17 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const oddsTags = [...d.querySelectorAll("#tab-trades .suggest .tag")].map(x => x.textContent);
   const oddsLabelRx = /^(looks insulting — they give up the far bigger name|(easy yes|likely|coin flip|long shot)(, but they give the bigger name| — they land the bigger name)?)$/;
   assert(oddsTags.length > 0 && oddsTags.every(x => oddsLabelRx.test(x)), "every trade card carries an acceptance-odds label (incl. fairness variants)");
-  assert(trades.some(t => t.get.pos === "RB"), "suggestions include getting a running back somewhere in the list");
+  assert(trades.some(t => t.gets.some(p => p.pos === "RB")), "suggestions include getting a running back somewhere in the list");
   const top = trades[0];
-  const st = T.tradeStats(top.team, top.give.name, top.get.name);
+  const st = T.tradeStats(top.team, top.giveName, top.getName);
   assert(st && st.myGain === top.myGain && st.theirGain === top.theirGain && st.ev === top.ev, "tradeStats reproduces the suggestion's numbers for a named deal");
-  assert(T.tradeStats(top.team, "Nobody Real", top.get.name) === null, "tradeStats returns null when a player is not on the roster");
+  assert(T.tradeStats(top.team, "Nobody Real", top.getName) === null, "tradeStats returns null when a player is not on the roster");
 
   console.log("== Trade tracking ==");
   const before = trades.length;
   d.querySelector("#tab-trades .tbtns button[data-status='declined']").click();   // decline the #1 offer
   let after = T.findTrades();
-  assert(!after.some(x => x.team === top.team && x.get.n === top.get.n && x.give.n === top.give.n), "a declined offer disappears from the list");
+  assert(!after.some(x => x.team === top.team && x.getName === top.getName && x.giveName === top.giveName), "a declined offer disappears from the list");
   assert(T.teamFloor(top.team) === top.theirGain + 3, "declining teaches the model: that team's floor rises to (declined their-side + 3)");
   assert(after.filter(x => x.team === top.team).every(x => x.theirGain >= top.theirGain + 3), "remaining offers to that team are all sweeter for them than the declined one");
   assert(/declined/.test(d.getElementById("tab-trades").textContent) && /Trade log/.test(d.getElementById("tab-trades").textContent), "decline shows up in the trade log");
@@ -204,21 +206,21 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(!/Open proposals/.test(openTxt()) && T.getLog().filter(e => e.status === "proposed").length === 0 && T.getLog().filter(e => e.status === "declined").length === 2, "'All declined' marks every open proposal declined");
   const declinedToTop = T.getLog().filter(e => e.status === "declined" && e.team === top.team && typeof e.theirGain === "number");
   assert(T.teamFloor(top.team) === Math.max(...declinedToTop.map(e => e.theirGain)) + 3, "all-declined raises the floor for the team that said no (max across its declined offers)");
-  assert(!T.findTrades().some(x => x.team === top.team && x.get.n === top.get.n && x.give.n === top.give.n), "declined-by-button offers are gone from the suggestions");
+  assert(!T.findTrades().some(x => x.team === top.team && x.getName === top.getName && x.giveName === top.giveName), "declined-by-button offers are gone from the suggestions");
   // reset local log
   while (d.querySelector("#tab-trades .tb-undo")) d.querySelector("#tab-trades .tb-undo").click();
   assert(T.findTrades().length === before, "undo everything restores the list");
   // a decline that came from Sheldon's repo log (no their-side number stored) still raises the floor
-  T.inject(season, rosters, exclusions, { entries: [{ team: top.team, give: top.give.name, get: top.get.name, status: "declined", date: "2026-09-09" }] }, projections);
+  T.inject(season, rosters, exclusions, { entries: [{ team: top.team, give: top.giveName, get: top.getName, status: "declined", date: "2026-09-09" }] }, projections);
   assert(T.teamFloor(top.team) === top.theirGain + 3, "a repo-logged decline (from tools/trade_log.py) raises that team's floor too");
-  assert(!T.findTrades().some(x => x.team === top.team && x.get.n === top.get.n && x.give.n === top.give.n), "repo-logged declined offer is not re-suggested");
+  assert(!T.findTrades().some(x => x.team === top.team && x.getName === top.getName && x.giveName === top.giveName), "repo-logged declined offer is not re-suggested");
   T.inject(season, rosters, exclusions, tradeLog, projections);
   // accept the #1 offer -> rosters swap locally and everything recomputes
   d.querySelector("#tab-trades .tbtns button[data-status='accepted']").click();
   const RR = T.getRosters();
-  assert(RR.teams[RR.me].some(p => T.norm(p.name) === top.get.n) && !RR.teams[RR.me].some(p => T.norm(p.name) === top.give.n), "accepted: I now have the player I got and no longer have the one I gave");
-  assert(RR.teams[top.team].some(p => T.norm(p.name) === top.give.n), "accepted: the other team now has my player");
-  assert(!T.findTrades().some(x => x.get.n === top.get.n), "accepted trade no longer proposed");
+  assert(top.gets.every(g => RR.teams[RR.me].some(p => T.norm(p.name) === g.n)) && top.gives.every(g => !RR.teams[RR.me].some(p => T.norm(p.name) === g.n)), "accepted: I now have the players I got and no longer have the ones I gave");
+  assert(top.gives.every(g => RR.teams[top.team].some(p => T.norm(p.name) === g.n)), "accepted: the other team now has my players");
+  assert(!T.findTrades().some(x => x.gets.some(p => top.gets.some(q => q.n === p.n))), "accepted trade no longer proposed");
   assert([...d.querySelectorAll("#tab-lineup .row")].some(r => rx(top.get.name).test(r.textContent)), "lineup tab now shows the acquired player");
   while (d.querySelector("#tab-trades .tb-undo")) d.querySelector("#tab-trades .tb-undo").click();
   T.inject(season, rosters, exclusions, tradeLog, projections);
