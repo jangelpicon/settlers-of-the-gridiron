@@ -1068,6 +1068,14 @@
       statuses.map(s=>"<button class='tb tb-"+s+"' data-status='"+s+"'>"+({proposed:"Proposed",declined:"Declined",countered:"Countered",accepted:"Accepted ✓",withdrawn:"Withdraw"}[s])+"</button>").join("")+"</span>";
   }
   function playerBrief(p){ return esc(p.name)+" ("+p.pos+" ROS #"+(p.ros!=null?p.ros:"–")+(P&&p.mu!=null?", wk proj "+p.mu.toFixed(1):"")+(P&&p.injLive&&p.injLive!=="ACT"?", "+esc(p.injLive):"")+")"; }
+  // Hard injuries (OUT/IR/SUSP) never reach a suggestion — undraftable players aren't tradeable —
+  // but a live Questionable/Doubtful flag means his rest-of-season price was set BEFORE the injury
+  // news (expert ranks refresh weekly). Don't pay a pre-injury price on a stale number.
+  function injRepriceTag(gets){
+    const hurt = gets.filter(p=>P && p.injLive && p.injLive!=="ACT");
+    if (!hurt.length) return "";
+    return " <span class='tag bad'>⚠️ "+esc(hurt.map(p=>p.name+" is "+p.injLive).join(", "))+" — his ROS price predates the injury news; wait for the rankings refresh before sending</span>";
+  }
   function statsLine(st){
     if (!st) return "<span class='muted'>stats n/a — a player in this deal is no longer on the roster I have; tell Sheldon if rosters changed</span>";
     const oddsCls = st.odds.p>=0.7?"good":st.odds.p>=0.45?"warn":"bad";
@@ -1110,7 +1118,7 @@
       const oddsCls = t.odds.p>=0.7?"good":t.odds.p>=0.45?"warn":"bad";
       const fills = dealFills(t);
       const topNeed = N.needs.length && fills.some(f=>f.up && f.slot===N.needs[0].slot);
-      return "<div class='suggest'><b class='hl'>"+esc(t.team)+":</b> give "+dealSide(t.gives)+" for "+dealSide(t.gets)+" <span class='tag "+oddsCls+"'>"+t.odds.label+"</span>"+(topNeed?" <span class='tag good'>🎯 fills your biggest need</span>":"")+
+      return "<div class='suggest'><b class='hl'>"+esc(t.team)+":</b> give "+dealSide(t.gives)+" for "+dealSide(t.gets)+" <span class='tag "+oddsCls+"'>"+t.odds.label+"</span>"+(topNeed?" <span class='tag good'>🎯 fills your biggest need</span>":"")+injRepriceTag(t.gets)+
         "<br><span class='muted'>your gain +"+t.myGain+" · their side "+(t.theirGain>=0?"+":"")+t.theirGain+" · expected value "+t.ev+(fills.length?" · lineup: "+esc(fills.map(f=>(f.up?"↑ ":"↓ ")+f.txt).join(" · ")):"")+"</span><br>"+
         tradeButtons(t, ["proposed","declined","accepted"])+"</div>";
     };
@@ -1147,8 +1155,8 @@
       if (!queue.length) h += "<div class='muted'>No clean 1-for-1 sell right now — offer the surplus straight up for a future favor, or package it onto a bigger deal above.</div>";
       queue.forEach((d,i)=>{
         const oddsCls = d.st.odds.p>=0.7?"good":d.st.odds.p>=0.45?"warn":"bad";
-        h += "<div class='suggest'><b class='hl'>#"+(i+1)+" · "+esc(d.team)+":</b> give <b>"+esc(d.sp.p.name)+"</b> ("+d.sp.p.pos+" ROS #"+d.sp.p.ros+") for <b>"+esc(d.get.name)+"</b> ("+d.get.pos+" ROS #"+d.get.ros+") "+
-          (d.sp.dead?"<span class='tag bad'>dead weight — can never start for you</span> ":"")+(d.need?"<span class='tag good'>🎯 cover at a need position</span> ":"")+"<span class='tag "+oddsCls+"'>"+d.st.odds.label+"</span>"+
+        h += "<div class='suggest'><b class='hl'>#"+(i+1)+" · "+esc(d.team)+":</b> give <b>"+esc(d.sp.p.name)+"</b> ("+d.sp.p.pos+" ROS #"+d.sp.p.ros+")"+injBadge(d.sp.p)+" for <b>"+esc(d.get.name)+"</b> ("+d.get.pos+" ROS #"+d.get.ros+")"+injBadge(d.get)+" "+
+          (d.sp.dead?"<span class='tag bad'>dead weight — can never start for you</span> ":"")+(d.need?"<span class='tag good'>🎯 cover at a need position</span> ":"")+"<span class='tag "+oddsCls+"'>"+d.st.odds.label+"</span>"+injRepriceTag([d.get])+
           "<br><span class='muted'>their side "+(d.st.theirGain>=0?"+":"")+d.st.theirGain+" (he starts for them) · expected return "+d.score+"</span><br>"+
           tradeButtons({team:d.team, give:d.sp.p.name, get:d.get.name, theirGain:d.st.theirGain}, ["proposed","declined","accepted"])+"</div>";
       });
@@ -1157,7 +1165,7 @@
         const slotTag = sp.dead ? "<span class='tag bad'>dead weight — can never start for you</span>" : "<span class='tag warn'>surplus — bye/injury cover only</span>";
         const mkt = sp.buyers.length ? "would start for: "+sp.buyers.slice(0,3).map(b=>esc(b.team)+" (+"+b.gain+")").join(" · ")
           : "no team upgrades by starting him — there's no trade market. He's your drop when you need the roster spot for a waiver claim.";
-        h += "<div class='row'><b class='hl'>"+esc(sp.p.name)+"</b> ("+sp.p.pos+" ROS #"+sp.p.ros+") "+slotTag+" <span class='muted'>"+mkt+"</span></div>";
+        h += "<div class='row'><b class='hl'>"+esc(sp.p.name)+"</b> ("+sp.p.pos+" ROS #"+sp.p.ros+")"+injBadge(sp.p)+" "+slotTag+" <span class='muted'>"+mkt+"</span></div>";
       });
       h += "</div>";
     }

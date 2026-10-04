@@ -1,7 +1,7 @@
 {
  "me": "ur done",
  "updated": "2026-10-04",
- "source": "ESPN league 882823976 sync 2026-10-04 08:00 CDT",
+ "source": "ESPN league 882823976 sync 2026-10-04 10:30 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -501,11 +501,6 @@
     "team": "BAL"
    },
    {
-    "name": "Denver Broncos",
-    "pos": "DST",
-    "team": "DEN"
-   },
-   {
     "name": "Ollie Gordon II",
     "pos": "RB",
     "team": "MIA"
@@ -524,6 +519,11 @@
     "name": "Cleveland Browns",
     "pos": "DST",
     "team": "CLE"
+   },
+   {
+    "name": "Zach Charbonnet",
+    "pos": "RB",
+    "team": "SEA"
    }
   ],
   "ur done": [

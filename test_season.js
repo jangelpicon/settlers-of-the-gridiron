@@ -177,7 +177,8 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const oddsLabelRx = /^(looks insulting — they give up the far bigger name|(easy yes|likely|coin flip|long shot)(, but they give the bigger name| — they land the bigger name)?)$/;
   const needTagRx = /fills your biggest need/;
   const surTagRx = /dead weight — can never start for you|surplus — bye\/injury cover only|cover at a need position/;
-  assert(oddsTags.length > 0 && oddsTags.every(x => oddsLabelRx.test(x) || needTagRx.test(x) || surTagRx.test(x)), "every trade card carries an acceptance-odds label (incl. fairness variants; need and surplus tags allowed)");
+  const injTagRx = /ROS price predates the injury news/;
+  assert(oddsTags.length > 0 && oddsTags.every(x => oddsLabelRx.test(x) || needTagRx.test(x) || surTagRx.test(x) || injTagRx.test(x)), "every trade card carries an acceptance-odds label (incl. fairness variants; need, surplus and injury-reprice tags allowed)");
   assert(oddsTags.some(x => oddsLabelRx.test(x)), "odds labels still present among the tags");
   const needs = T.teamNeeds();
   assert(Array.isArray(needs.needs) && needs.needs.every(n => n.gap > 0 && n.mine && n.lgMedian != null), "teamNeeds reports only real starter gaps (my ROS rank worse than the league-median starter in that slot)");
@@ -229,6 +230,17 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     assert(/#1 · /.test(d.getElementById("tab-trades").textContent), "queue entries are numbered so the top priority is unambiguous");
     const surBtn = [...d.querySelectorAll("#tab-trades .tbtns")].find(w => w.dataset.give === queue[0].sp.p.name && w.dataset.get === queue[0].get.name);
     assert(!!surBtn, "the #1 sell carries working propose/decline/accept buttons");
+  }
+
+  console.log("== Injuries in trade math ==");
+  const hardInj = p => ["IR","O","SUSP"].includes(p.injLive);
+  const allSuggested = trades.flatMap(t => t.gives.concat(t.gets)).concat(queue.flatMap(dl => [dl.sp.p, dl.get]));
+  assert(allSuggested.every(p => !hardInj(p)), "no OUT/IR/SUSP player (live designation) ever appears on either side of a suggested deal");
+  const softIncoming = trades.flatMap(t => t.gets).concat(queue.map(dl => dl.get)).filter(p => p.injLive && p.injLive !== "ACT");
+  if (softIncoming.length) {
+    assert(injTagRx.test(d.getElementById("tab-trades").textContent), "a Questionable/Doubtful incoming player triggers the stale-ROS-price warning on his card (" + softIncoming.map(p => p.name + " " + p.injLive).join(", ") + ")");
+  } else {
+    console.log("  ok - (no Q/D incoming players in this snapshot — reprice-warning render untestable today, filter asserted above)");
   }
 
   console.log("== Trade tracking ==");
