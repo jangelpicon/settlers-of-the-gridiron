@@ -1145,11 +1145,21 @@
     let h = "";
     const PS = {};
     const teamNames = Object.keys(R.teams);
+    // Same slot count for every team (best QB, top-2 RB, top-2 WR, best TE) so the
+    // per-position comparison is apples-to-apples — the FLEX would otherwise credit a
+    // third RB to some teams and a third WR to others. Everyone past the counted slots
+    // is listed as depth: that's the tradeable surplus.
     teamNames.forEach(t=>{
-      const slots2 = optimalLineup(teamOf(t), "ros").slots;
-      const by = {QB:0,RB:0,WR:0,TE:0}, names = {QB:[],RB:[],WR:[],TE:[]};
-      slots2.forEach(s=>{ if (s.p && by[s.p.pos]!=null){ by[s.p.pos]+=rosVal(s.p); names[s.p.pos].push(s.p.name); } });
-      PS[t] = { by, names };
+      const tm = teamOf(t);
+      const by = {}, names = {}, depth = {};
+      ["QB","RB","WR","TE"].forEach(pos=>{
+        const ps = tm.filter(p=>p.pos===pos && !undraftable(p) && p.ros!=null).sort((a,b)=>a.ros-b.ros);
+        const take = ps.slice(0, LINEUP[pos]);
+        by[pos] = take.reduce((s,p)=>s+rosVal(p),0);
+        names[pos] = take.map(p=>p.name);
+        depth[pos] = ps.slice(LINEUP[pos]).map(p=>p.name+" #"+p.ros);
+      });
+      PS[t] = { by, names, depth };
     });
     // Rank grid: each team's rank at every position plus overall starter strength, 1 = strongest.
     const rankOf = {};
@@ -1160,7 +1170,7 @@
     const oSorted = teamNames.slice().sort((a,b)=>overall[b]-overall[a]);
     oSorted.forEach((t,i)=>{ rankOf[t].OVR=i+1; });
     h += "<div class='panel'><h2>League rank by position — and overall</h2>"+
-      "<div class='muted' style='margin-bottom:6px'>Rest-of-season value of the starters each team would actually run (a FLEX player counts at his real position). 1 = strongest. Green = top 3, red = bottom 3.</div>";
+      "<div class='muted' style='margin-bottom:6px'>Rest-of-season value over the same slots for every team — best QB, top two RBs, top two WRs, best TE — so positions compare apples-to-apples (FLEX and bench count toward Overall and show as depth below). 1 = strongest. Green = top 3, red = bottom 3.</div>";
     const rGrid = "display:grid;grid-template-columns:minmax(110px,1.5fr) repeat(5,minmax(32px,1fr));gap:4px;align-items:center";
     const rCell = v => "<span class='tag "+(v<=3?"good":v>=teamNames.length-2?"bad":"")+"' style='text-align:center"+(v===1?";font-weight:700":"")+"'>"+v+"</span>";
     h += "<div style='"+rGrid+";margin-bottom:10px'><span class='muted'>League rank (1 = strongest)</span><span class='muted' style='text-align:center'>QB</span><span class='muted' style='text-align:center'>RB</span><span class='muted' style='text-align:center'>WR</span><span class='muted' style='text-align:center'>TE</span><span class='muted' style='text-align:center'><b>Overall</b></span>"+
@@ -1195,14 +1205,14 @@
     }
     // Position bars: the trade map.
     h += "<div class='panel'><h2>Position strength by team</h2>"+
-      "<div class='muted' style='margin-bottom:6px'>Long bar = strong. This is the trade map: buy from the teams at the top of a column (they have surplus), sell to the ones at the bottom (they have the hole).</div>";
+      "<div class='muted' style='margin-bottom:6px'>Same slots counted for every team (best QB, top-2 RB, top-2 WR, best TE); anyone past that shows after the + as depth. Long bar = strong. This is the trade map: buy from the teams at the top of a column (they have the surplus — especially the ones with names after the +), sell to the ones at the bottom (they have the hole).</div>";
     ["QB","RB","WR","TE"].forEach(pos=>{
-      const rows = teamNames.map(t=>({t, v:PS[t].by[pos], names:PS[t].names[pos]})).sort((a,b)=>b.v-a.v);
+      const rows = teamNames.map(t=>({t, v:PS[t].by[pos], names:PS[t].names[pos], depth:PS[t].depth[pos]})).sort((a,b)=>b.v-a.v);
       const max = rows[0].v || 1;
       h += "<div style='margin:10px 0 2px'><b>"+pos+"</b></div>";
       rows.forEach((r,i)=>{
         const mine = r.t===R.me;
-        h += "<div style='display:flex;align-items:center;gap:8px;margin:2px 0'><span class='muted' style='width:14px;text-align:right;flex:none'>"+(i+1)+"</span><span style='width:150px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>"+(mine?"<b class='hl'>":"")+esc(r.t)+(mine?"</b>":"")+"</span><span class='bar' style='flex:1;max-width:none'><i style='width:"+Math.round(r.v/max*100)+"%'></i></span><span class='muted' style='flex:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>"+esc(r.names.join(", "))+"</span></div>";
+        h += "<div style='display:flex;align-items:center;gap:8px;margin:2px 0'><span class='muted' style='width:14px;text-align:right;flex:none'>"+(i+1)+"</span><span style='width:150px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>"+(mine?"<b class='hl'>":"")+esc(r.t)+(mine?"</b>":"")+"</span><span class='bar' style='flex:1;max-width:none'><i style='width:"+Math.round(r.v/max*100)+"%'></i></span><span class='muted' style='flex:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>"+esc(r.names.join(", "))+(r.depth.length?" <span style='opacity:.75'>+ "+esc(r.depth.join(", "))+"</span>":"")+"</span></div>";
       });
     });
     h += "</div>";
