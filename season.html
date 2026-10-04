@@ -179,6 +179,9 @@
   // ================= Live rosters from the ESPN league =================
   // Same shape tools/sync_league.py writes. Read live in the browser when data/league.json says the league is public.
   const IR_SLOT = 21;
+  // Actual lineup slot — must survive the live refresh too, or the locked-lineup mirror dies the
+  // moment this fetch replaces the repo rosters (same mapping as tools/sync_league.py).
+  const ESPN_SLOT_NAME = {0:"QB",2:"RB",4:"WR",6:"TE",16:"DST",17:"K",23:"FLEX",20:"BN",21:"IR"};
   function rostersFromLeague(d){
     const teams = {};
     (d.teams||[]).forEach(t=>{
@@ -190,6 +193,7 @@
         const tm = ESPN_TEAM[p.proTeamId];
         const row = { name: pos==="DST" ? (TEAM_NAME[tm] || p.fullName) : p.fullName, pos, team: tm };
         if (e.lineupSlotId===IR_SLOT) row.ir = true;
+        const sl = ESPN_SLOT_NAME[e.lineupSlotId]; if (sl) row.slot = sl;
         rows.push(row);
       });
       teams[name] = rows;

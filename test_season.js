@@ -333,6 +333,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const lt = T.rostersFromLeague(leagueFix);
   assert(Object.keys(lt).length === 2 && lt[rosters.me] && lt["SACK OF WHEAT"], "league payload parsed into team rosters (both ESPN team-name shapes)");
   assert(lt[rosters.me].map(p => p.name).join(",") === "Drake Maye,Minnesota Vikings,Hurt Guy" && lt[rosters.me][1].pos === "DST" && lt[rosters.me][1].team === "MIN" && lt[rosters.me][2].ir === true, "players, D/ST full name, NFL team and IR flag come through");
+  assert(lt[rosters.me][0].slot === "QB" && lt[rosters.me][1].slot === "DST" && lt[rosters.me][2].slot === "IR" && lt["SACK OF WHEAT"][0].slot === "RB", "live in-browser roster refresh keeps the actual lineup slot — the locked-lineup mirror survives the live overwrite");
   T.setRosters({ me: rosters.me, updated: "2026-09-09", teams: lt, live: true });
   assert([...d.querySelectorAll("#tab-lineup .row")].some(r => /Drake Maye/.test(r.textContent)) && [...d.querySelectorAll("#tab-league .row")].length === 2, "page re-renders from live ESPN rosters");
   // pool restriction: inject a two-man pool (one rostered, one genuine FA) — only the FA may come through.
