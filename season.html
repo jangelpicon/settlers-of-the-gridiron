@@ -66,6 +66,7 @@
   <button data-tab="matchup">Matchup</button>
   <button data-tab="waivers">Waivers</button>
   <button data-tab="trades">Trades</button>
+  <button data-tab="strength">Strength</button>
   <button data-tab="byes">Byes</button>
   <button data-tab="league">League</button>
 </nav>
@@ -95,6 +96,7 @@
   <div id="tab-matchup" class="hidden"></div>
   <div id="tab-waivers" class="hidden"></div>
   <div id="tab-trades" class="hidden"></div>
+  <div id="tab-strength" class="hidden"></div>
   <div id="tab-byes" class="hidden"></div>
   <div id="tab-league" class="hidden"></div>
 </main>
@@ -1068,42 +1070,6 @@
     if (valueDeals.length) tiers.push({ label:(needDeals.length?"Tier 4":"Tier 1")+" — value, not need", deals:valueDeals });
     tiers.forEach(tr=>{ h += "<h3>"+tr.label+"</h3>"; tr.deals.forEach(t=>{ h += dealCard(t); }); });
     h += "</div>";
-    // ---- Position strength by team: who can afford to sell what ----
-    h += "<div class='panel'><h2>Position strength by team</h2>"+
-      "<div class='muted' style='margin-bottom:6px'>For every position, the rest-of-season value of the starters each team would actually run (a FLEX player counts at his real position). Long bar = strong. This is the trade map: buy from the teams at the top of a column (they have surplus), sell to the ones at the bottom (they have the hole).</div>";
-    const PS = {};
-    const teamNames = Object.keys(R.teams);
-    teamNames.forEach(t=>{
-      const slots2 = optimalLineup(teamOf(t), "ros").slots;
-      const by = {QB:0,RB:0,WR:0,TE:0}, names = {QB:[],RB:[],WR:[],TE:[]};
-      slots2.forEach(s=>{ if (s.p && by[s.p.pos]!=null){ by[s.p.pos]+=rosVal(s.p); names[s.p.pos].push(s.p.name); } });
-      PS[t] = { by, names };
-    });
-    // Rank grid: each team's rank at every position plus overall starter strength, 1 = strongest.
-    const rankOf = {};
-    ["QB","RB","WR","TE"].forEach(pos=>{
-      teamNames.slice().sort((a,b)=>PS[b].by[pos]-PS[a].by[pos]).forEach((t,i)=>{ (rankOf[t]=rankOf[t]||{})[pos]=i+1; });
-    });
-    const overall = {}; teamNames.forEach(t=>{ overall[t]=strength(teamOf(t)); });
-    const oSorted = teamNames.slice().sort((a,b)=>overall[b]-overall[a]);
-    oSorted.forEach((t,i)=>{ rankOf[t].OVR=i+1; });
-    const rGrid = "display:grid;grid-template-columns:minmax(110px,1.5fr) repeat(5,minmax(32px,1fr));gap:4px;align-items:center";
-    const rCell = v => "<span class='tag "+(v===1?"good":v<=3?"good":v>=teamNames.length-2?"bad":"")+"' style='text-align:center"+(v===1?";font-weight:700":"")+"'>"+v+"</span>";
-    h += "<div style='"+rGrid+";margin-bottom:10px'><span class='muted'>League rank (1 = strongest)</span><span class='muted' style='text-align:center'>QB</span><span class='muted' style='text-align:center'>RB</span><span class='muted' style='text-align:center'>WR</span><span class='muted' style='text-align:center'>TE</span><span class='muted' style='text-align:center'><b>Overall</b></span>"+
-      oSorted.map(t=>{
-        const mine = t===R.me, rk = rankOf[t];
-        return "<span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>"+(mine?"<b class='hl'>":"")+esc(t)+(mine?"</b>":"")+"</span>"+rCell(rk.QB)+rCell(rk.RB)+rCell(rk.WR)+rCell(rk.TE)+rCell(rk.OVR);
-      }).join("")+"</div>";
-    ["QB","RB","WR","TE"].forEach(pos=>{
-      const rows = Object.keys(PS).map(t=>({t, v:PS[t].by[pos], names:PS[t].names[pos]})).sort((a,b)=>b.v-a.v);
-      const max = rows[0].v || 1;
-      h += "<div style='margin:10px 0 2px'><b>"+pos+"</b></div>";
-      rows.forEach((r,i)=>{
-        const mine = r.t===R.me;
-        h += "<div style='display:flex;align-items:center;gap:8px;margin:2px 0'><span class='muted' style='width:14px;text-align:right;flex:none'>"+(i+1)+"</span><span style='width:150px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>"+(mine?"<b class='hl'>":"")+esc(r.t)+(mine?"</b>":"")+"</span><span class='bar' style='flex:1;max-width:none'><i style='width:"+Math.round(r.v/max*100)+"%'></i></span><span class='muted' style='flex:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>"+esc(r.names.join(", "))+"</span></div>";
-      });
-    });
-    h += "</div>";
     // ---- Every deal, grouped by opponent ----
     h += "<div class='panel'><h2>All deals — by team</h2>"+
       "<div class='muted' style='margin-bottom:6px'>Every 1-for-1 swap and 2-for-2 package, grouped by opponent (teams ordered by their best deal, top 3 deals each), ranked by <b>expected value</b> — from what the deal does to <i>their</i> lineup <b>and</b> how lopsided it looks by consensus rank (people judge a package by its biggest name, and turn down insulting-looking offers even when the math helps them).</div>";
@@ -1145,6 +1111,104 @@
     });
   }
 
+  // ---------- Strength tab ----------
+  // Chart colors: validated for the dark surface (#1a2028) with the dataviz six-check
+  // validator — gold = my team, blue = the league leader, gray = everyone else (context,
+  // identity carried by hover tooltips, end labels and the table, never color alone).
+  const CH = { me:"#c98500", rival:"#3987e5", other:"#55606b", grid:"#2a323b" };
+  // One SVG line chart: series = [{name, color, w, pts:[{x,y}]}], xs = tick values.
+  function lineChart(title, note, series, xs, yFmt){
+    const W=720, H=250, L=46, Rm=14, T=12, B=26, pw=W-L-Rm, ph=H-T-B;
+    const ys = series.flatMap(s=>s.pts.map(p=>p.y));
+    let y0=Math.min(...ys), y1=Math.max(...ys); const pad=(y1-y0)*0.08||1; y0-=pad; y1+=pad;
+    const X = x => L + (xs.length>1 ? (x-xs[0])/(xs[xs.length-1]-xs[0]) : 0.5)*pw;
+    const Y = y => T + (1-(y-y0)/(y1-y0))*ph;
+    const f = yFmt || (v=>Math.round(v));
+    let g = "";
+    // recessive grid: 4 horizontal lines + y labels, week ticks on x
+    for (let i=0;i<=3;i++){ const yv=y0+(y1-y0)*i/3, yy=Y(yv);
+      g += "<line x1='"+L+"' y1='"+yy+"' x2='"+(W-Rm)+"' y2='"+yy+"' stroke='"+CH.grid+"' stroke-width='1'/><text x='"+(L-6)+"' y='"+(yy+3)+"' text-anchor='end' font-size='10' fill='var(--muted)'>"+f(yv)+"</text>"; }
+    xs.forEach(x=>{ g += "<text x='"+X(x)+"' y='"+(H-8)+"' text-anchor='middle' font-size='10' fill='var(--muted)'>Wk "+x+"</text>"; });
+    // gray context first, highlighted on top; 2px lines, markers + end labels on highlights only
+    const draw = s => {
+      const d = s.pts.map((p,i)=>(i?"L":"M")+X(p.x).toFixed(1)+" "+Y(p.y).toFixed(1)).join(" ");
+      let out = "<path d='"+d+"' fill='none' stroke='"+s.color+"' stroke-width='2' stroke-linejoin='round' stroke-linecap='round'"+(s.color===CH.other?" opacity='0.65'":"")+"/>";
+      s.pts.forEach(p=>{ out += "<circle cx='"+X(p.x)+"' cy='"+Y(p.y)+"' r='"+(s.color===CH.other?0:3.5)+"' fill='"+s.color+"'/><circle cx='"+X(p.x)+"' cy='"+Y(p.y)+"' r='12' fill='transparent'><title>"+esc(s.name)+" · Wk "+p.x+" · "+f(p.y)+"</title></circle>"; });
+      return out;
+    };
+    series.filter(s=>s.color===CH.other).forEach(s=>{ g += draw(s); });
+    series.filter(s=>s.color!==CH.other).forEach(s=>{ g += draw(s); });
+    const legend = "<div class='muted' style='display:flex;gap:14px;flex-wrap:wrap;margin:4px 0 8px'>"+series.filter(s=>s.color!==CH.other).map(s=>"<span><span style='display:inline-block;width:10px;height:10px;border-radius:2px;background:"+s.color+";margin-right:5px'></span>"+esc(s.name)+"</span>").join("")+"<span><span style='display:inline-block;width:10px;height:10px;border-radius:2px;background:"+CH.other+";margin-right:5px'></span>everyone else (hover a line for the name)</span></div>";
+    return "<h3>"+esc(title)+"</h3><div class='muted' style='margin-bottom:4px'>"+note+"</div>"+legend+"<svg viewBox='0 0 "+W+" "+H+"' style='width:100%;height:auto;display:block' role='img' aria-label='"+esc(title)+"'>"+g+"</svg>";
+  }
+  function renderStrength(){
+    let h = "";
+    const PS = {};
+    const teamNames = Object.keys(R.teams);
+    teamNames.forEach(t=>{
+      const slots2 = optimalLineup(teamOf(t), "ros").slots;
+      const by = {QB:0,RB:0,WR:0,TE:0}, names = {QB:[],RB:[],WR:[],TE:[]};
+      slots2.forEach(s=>{ if (s.p && by[s.p.pos]!=null){ by[s.p.pos]+=rosVal(s.p); names[s.p.pos].push(s.p.name); } });
+      PS[t] = { by, names };
+    });
+    // Rank grid: each team's rank at every position plus overall starter strength, 1 = strongest.
+    const rankOf = {};
+    ["QB","RB","WR","TE"].forEach(pos=>{
+      teamNames.slice().sort((a,b)=>PS[b].by[pos]-PS[a].by[pos]).forEach((t,i)=>{ (rankOf[t]=rankOf[t]||{})[pos]=i+1; });
+    });
+    const overall = {}; teamNames.forEach(t=>{ overall[t]=strength(teamOf(t)); });
+    const oSorted = teamNames.slice().sort((a,b)=>overall[b]-overall[a]);
+    oSorted.forEach((t,i)=>{ rankOf[t].OVR=i+1; });
+    h += "<div class='panel'><h2>League rank by position — and overall</h2>"+
+      "<div class='muted' style='margin-bottom:6px'>Rest-of-season value of the starters each team would actually run (a FLEX player counts at his real position). 1 = strongest. Green = top 3, red = bottom 3.</div>";
+    const rGrid = "display:grid;grid-template-columns:minmax(110px,1.5fr) repeat(5,minmax(32px,1fr));gap:4px;align-items:center";
+    const rCell = v => "<span class='tag "+(v<=3?"good":v>=teamNames.length-2?"bad":"")+"' style='text-align:center"+(v===1?";font-weight:700":"")+"'>"+v+"</span>";
+    h += "<div style='"+rGrid+";margin-bottom:10px'><span class='muted'>League rank (1 = strongest)</span><span class='muted' style='text-align:center'>QB</span><span class='muted' style='text-align:center'>RB</span><span class='muted' style='text-align:center'>WR</span><span class='muted' style='text-align:center'>TE</span><span class='muted' style='text-align:center'><b>Overall</b></span>"+
+      oSorted.map(t=>{
+        const mine = t===R.me, rk = rankOf[t];
+        return "<span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>"+(mine?"<b class='hl'>":"")+esc(t)+(mine?"</b>":"")+"</span>"+rCell(rk.QB)+rCell(rk.RB)+rCell(rk.WR)+rCell(rk.TE)+rCell(rk.OVR);
+      }).join("")+"</div></div>";
+    // Timeseries: weekly and cumulative points from the real schedule.
+    const scores = allScores();
+    const wks = Object.keys(scores).map(Number).sort((a,b)=>a-b);
+    if (wks.length >= 2){
+      const rival = oSorted.find(t=>t!==R.me);
+      const color = t => t===R.me ? CH.me : t===rival ? CH.rival : CH.other;
+      const mkSeries = cum => teamNames.map(t=>{
+        let run = 0;
+        const pts = wks.filter(w=>scores[w][t]!=null).map(w=>{ run += scores[w][t]; return { x:w, y: cum?run:scores[w][t] }; });
+        return { name:t, color:color(t), pts };
+      }).filter(s=>s.pts.length);
+      h += "<div class='panel'><h2>Scoring over time</h2>";
+      h += lineChart("Points per week", "Real scores from the schedule, every completed week. Gold = you, blue = the strongest other roster ("+esc(rival)+").", mkSeries(false), wks);
+      h += lineChart("Cumulative points", "Season total as it builds — the gap is the season story.", mkSeries(true), wks);
+      // table view of the same data (accessibility + exact numbers)
+      const totals = {}; teamNames.forEach(t=>{ totals[t] = wks.reduce((s,w)=>s+(scores[w][t]||0),0); });
+      const tg = "display:grid;grid-template-columns:minmax(110px,1.5fr) repeat("+(wks.length+1)+",minmax(44px,1fr));gap:4px;align-items:center";
+      h += "<div style='"+tg+";margin-top:10px'><span class='muted'>Scores</span>"+wks.map(w=>"<span class='muted' style='text-align:right'>Wk "+w+"</span>").join("")+"<span class='muted' style='text-align:right'><b>Total</b></span>"+
+        teamNames.slice().sort((a,b)=>totals[b]-totals[a]).map(t=>{
+          const mine = t===R.me;
+          return "<span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>"+(mine?"<b class='hl'>":"")+esc(t)+(mine?"</b>":"")+"</span>"+wks.map(w=>"<span class='c num' style='text-align:right'>"+(scores[w][t]!=null?scores[w][t].toFixed(1):"–")+"</span>").join("")+"<span class='num' style='text-align:right'><b>"+totals[t].toFixed(1)+"</b></span>";
+        }).join("")+"</div></div>";
+    } else {
+      h += "<div class='panel'><h2>Scoring over time</h2><div class='muted'>Charts appear once at least two weeks of real scores exist in the schedule data.</div></div>";
+    }
+    // Position bars: the trade map.
+    h += "<div class='panel'><h2>Position strength by team</h2>"+
+      "<div class='muted' style='margin-bottom:6px'>Long bar = strong. This is the trade map: buy from the teams at the top of a column (they have surplus), sell to the ones at the bottom (they have the hole).</div>";
+    ["QB","RB","WR","TE"].forEach(pos=>{
+      const rows = teamNames.map(t=>({t, v:PS[t].by[pos], names:PS[t].names[pos]})).sort((a,b)=>b.v-a.v);
+      const max = rows[0].v || 1;
+      h += "<div style='margin:10px 0 2px'><b>"+pos+"</b></div>";
+      rows.forEach((r,i)=>{
+        const mine = r.t===R.me;
+        h += "<div style='display:flex;align-items:center;gap:8px;margin:2px 0'><span class='muted' style='width:14px;text-align:right;flex:none'>"+(i+1)+"</span><span style='width:150px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>"+(mine?"<b class='hl'>":"")+esc(r.t)+(mine?"</b>":"")+"</span><span class='bar' style='flex:1;max-width:none'><i style='width:"+Math.round(r.v/max*100)+"%'></i></span><span class='muted' style='flex:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>"+esc(r.names.join(", "))+"</span></div>";
+      });
+    });
+    h += "</div>";
+    document.getElementById("tab-strength").innerHTML = h;
+  }
+
   // ---------- Byes tab ----------
   function renderByes(){
     const me = myTeam();
@@ -1177,11 +1241,11 @@
     document.getElementById("stamp").textContent = S.generated;
     const rs = document.getElementById("rosterStamp"); rs.textContent = RSTAMP.text; rs.className = RSTAMP.cls;
     const ps = document.getElementById("pstamp"); ps.textContent = PSTAMP.text; ps.className = PSTAMP.cls;
-    renderLineup(); renderMatchup(); renderWaivers(); renderTrades(); renderByes(); renderLeague();
+    renderLineup(); renderMatchup(); renderWaivers(); renderTrades(); renderStrength(); renderByes(); renderLeague();
   }
   document.querySelectorAll("nav button").forEach(b=>b.addEventListener("click", ()=>{
     document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active")); b.classList.add("active");
-    ["lineup","matchup","waivers","trades","byes","league"].forEach(t=>document.getElementById("tab-"+t).classList.toggle("hidden", t!==b.dataset.tab));
+    ["lineup","matchup","waivers","trades","strength","byes","league"].forEach(t=>document.getElementById("tab-"+t).classList.toggle("hidden", t!==b.dataset.tab));
   }));
 
   async function loadProjections(){

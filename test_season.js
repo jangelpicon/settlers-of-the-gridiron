@@ -431,6 +431,16 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   console.log(d.getElementById("tab-matchup").textContent.replace(/\s+/g, " ").slice(0, 700));
   T.inject(season, rosters, exclusions, tradeLog, projections, null, matchups, histReal);
 
+  console.log("== Strength tab ==");
+  const stTab = d.getElementById("tab-strength");
+  assert(/League rank \(1 = strongest\)/.test(stTab.textContent), "rank grid renders (per-position + overall)");
+  assert(/Position strength by team/.test(stTab.textContent) && !/Position strength by team/.test(d.getElementById("tab-trades").textContent), "position bars live on the Strength tab, not Trades");
+  const stSvgs = [...stTab.querySelectorAll("svg")];
+  assert(stSvgs.length === 2 && stSvgs.every(s => s.querySelectorAll("path").length === 9), "both timeseries charts render one line per team");
+  assert(stSvgs.every(s => s.querySelectorAll("title").length >= 18), "every chart point carries a hover tooltip (team · week · points)");
+  assert(/everyone else/.test(stTab.textContent), "legend explains the gray context lines");
+  assert(/Total/.test(stTab.textContent), "scores table view renders beside the charts");
+
   console.log("\n--- POWER ---");
   [...d.querySelectorAll("#tab-league .row")].forEach(r => console.log(" ", r.textContent.replace(/\s+/g, " ").trim()));
   console.log(failures ? failures + " FAILED" : "ALL SEASON TESTS PASSED"); process.exit(failures ? 1 : 0);
