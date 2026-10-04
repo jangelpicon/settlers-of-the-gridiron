@@ -984,6 +984,55 @@
     out.sort((a,b)=> b.ev - a.ev || b.myGain - a.myGain || (a.gives.length+a.gets.length) - (b.gives.length+b.gets.length));
     return out;
   }
+  // ---------- Surplus: bench players who can't help me but would start for someone else ----------
+  // findTrades() only keeps deals that upgrade MY starting nine, so a bench QB with real market
+  // value never shows up there — holding him looks free on that math. This prices the bench itself:
+  // a player is surplus when he never cracks my optimal rest-of-season lineup, and DEAD surplus when
+  // there's already a starter plus a cover body ahead of him at a position he can't flex into (a
+  // third QB can literally never score me a point). Selling dead surplus for bench cover at a need
+  // position converts a frozen roster spot into usable depth even though the starting nine doesn't move.
+  function findSurplus(){
+    const me = myTeam();
+    const L = optimalLineup(me, "ros");
+    const out = [];
+    L.bench.filter(p=>!["K","DST"].includes(p.pos) && p.ros!=null && !undraftable(p)).forEach(p=>{
+      const better = me.filter(q=>q.pos===p.pos && q.ros!=null && q.ros < p.ros).length;
+      const startable = (LINEUP[p.pos]||0) + (FLEX.includes(p.pos) ? LINEUP.FLEX : 0);
+      const dead = better >= startable + 1; // starter(s) + one injury/bye cover already ahead of him
+      const buyers = [];
+      Object.keys(R.teams).filter(t=>t!==R.me).forEach(t=>{
+        const them = teamOf(t);
+        const gain = Math.round(strength(them.concat([p])) - strength(them));
+        if (gain > 0) buyers.push({ team:t, gain });
+      });
+      buyers.sort((a,b)=>b.gain-a.gain);
+      if (dead || buyers.length) out.push({ p, dead, buyers });
+    });
+    out.sort((a,b)=> (b.dead?1:0)-(a.dead?1:0) || rosVal(b.p)-rosVal(a.p));
+    return out;
+  }
+  // For one surplus player: the best 1-for-1 sells — his buyers' bench pieces that give me cover
+  // where I'm thin, priced so the other side still comes out ahead (they land a starter).
+  function surplusDeals(sp, N){
+    const deals = [];
+    const mine = myTeam();
+    // Never buy a piece that would itself be dead weight here: if starters + a cover body at his
+    // position already outrank him (after the surplus guy leaves), he'd just be the new frozen spot.
+    const wouldBeDead = q => mine.filter(x=>x.n!==sp.p.n && x.pos===q.pos && x.ros!=null && x.ros < q.ros).length
+      >= (LINEUP[q.pos]||0) + (FLEX.includes(q.pos) ? LINEUP.FLEX : 0) + 1;
+    sp.buyers.forEach(b=>{
+      const theirL = optimalLineup(teamOf(b.team), "ros");
+      theirL.bench.filter(q=>!["K","DST"].includes(q.pos) && q.ros!=null && !undraftable(q) && q.pos!==sp.p.pos && !wouldBeDead(q)).forEach(q=>{
+        const st = tradeStats(b.team, sp.p.name, q.name);
+        if (!st || st.theirGain < -3) return;
+        const prior = logEntry(b.team, st.giveName, st.getName);
+        if (prior && prior.status!=="withdrawn") return;
+        deals.push({ team:b.team, get:q, st, need: N.needPos.has(q.pos) });
+      });
+    });
+    deals.sort((a,b)=> ((b.need?1:0)-(a.need?1:0)) || rosVal(b.get)-rosVal(a.get));
+    return deals.slice(0,3);
+  }
   // How the other side sees it: their own lineup change is what they'll judge on.
   // p = rough probability they accept.
   function acceptOdds(theirGain, fairness){
@@ -1073,6 +1122,34 @@
     if (valueDeals.length) tiers.push({ label:(needDeals.length?"Tier 4":"Tier 1")+" — value, not need", deals:valueDeals });
     tiers.forEach(tr=>{ h += "<h3>"+tr.label+"</h3>"; tr.deals.forEach(t=>{ h += dealCard(t); }); });
     h += "</div>";
+    // ---- Surplus: sell the bench pieces that can't help you ----
+    const SP = findSurplus();
+    if (SP.length){
+      h += "<div class='panel'><h2>Surplus — bench players who can't help you</h2>"+
+        "<div class='muted' style='margin-bottom:6px'>The deal lists above only show trades that upgrade your starting nine, so a valuable backup never appears in them — which can read as \"hold everyone.\" Don't. These players never crack your optimal lineup; the ones marked <b>dead weight</b> can't even cover a bye or injury because better bodies already sit ahead of them. Every week they stay, a roster spot is frozen. Sell them to the teams listed (where they <i>would</i> start) for bench cover where you're thin — or drop them when you need the spot for a waiver claim.</div>";
+      SP.forEach(sp=>{
+        const slotTag = sp.dead ? "<span class='tag bad'>dead weight — can never start for you</span>" : "<span class='tag warn'>surplus — bye/injury cover only</span>";
+        h += "<div class='suggest'><b class='hl'>"+esc(sp.p.name)+"</b> ("+sp.p.pos+" ROS #"+sp.p.ros+") "+slotTag;
+        if (sp.buyers.length){
+          h += "<br><span class='muted'>would start for: "+sp.buyers.slice(0,3).map(b=>esc(b.team)+" (+"+b.gain+")").join(" · ")+"</span>";
+          const deals = surplusDeals(sp, N);
+          if (deals.length){
+            deals.forEach(dl=>{
+              const oddsCls = dl.st.odds.p>=0.7?"good":dl.st.odds.p>=0.45?"warn":"bad";
+              h += "<br><b class='hl'>"+esc(dl.team)+":</b> give <b>"+esc(sp.p.name)+"</b> for <b>"+esc(dl.get.name)+"</b> ("+dl.get.pos+" ROS #"+dl.get.ros+")"+(dl.need?" <span class='tag good'>🎯 cover at a need position</span>":"")+
+                " <span class='tag "+oddsCls+"'>"+dl.st.odds.label+"</span> <span class='muted'>their side "+(dl.st.theirGain>=0?"+":"")+dl.st.theirGain+"</span><br>"+
+                tradeButtons({team:dl.team, give:sp.p.name, get:dl.get.name, theirGain:dl.st.theirGain}, ["proposed","declined","accepted"]);
+            });
+          } else {
+            h += "<br><span class='muted'>no clean 1-for-1 on their bench right now — offer him straight up for a future pick/favor, or package him onto a bigger deal above</span>";
+          }
+        } else {
+          h += "<br><span class='muted'>no team upgrades by starting him — there's no trade market. He's your drop when you need the roster spot for a waiver claim.</span>";
+        }
+        h += "</div>";
+      });
+      h += "</div>";
+    }
     // ---- Every deal, grouped by opponent ----
     h += "<div class='panel'><h2>All deals — by team</h2>"+
       "<div class='muted' style='margin-bottom:6px'>Every 1-for-1 swap and 2-for-2 package, grouped by opponent (teams ordered by their best deal, top 3 deals each), ranked by <b>expected value</b> — from what the deal does to <i>their</i> lineup <b>and</b> how lopsided it looks by consensus rank (people judge a package by its biggest name, and turn down insulting-looking offers even when the math helps them).</div>";
@@ -1307,7 +1384,7 @@
   window.__seasonTest = { inject:(s,r,x,tl,pj,pool,mu,hist)=>{ S=s; R=JSON.parse(JSON.stringify(r)); X=x||{players:[]}; P=pj||null; POOL=pool||null; MU=mu||null; HIST=hist||null; LG=null; PSTAMP = pj ? {text:"snapshot "+pj.generated, cls:"stale"} : {text:"none", cls:""}; RSTAMP = {text:R.updated||"–", cls:""}; mergeLog((tl||{}).entries); applyAcceptedTrades(); buildIndex(); renderAll(); },
     setHistory:(h)=>{ HIST=h||null; renderMatchup(); }, historyFromLeague, teamSeason, currentOpponent, allScores, scoringRank,
     rostersFromLeague, setRosters:(r)=>{ R = JSON.parse(JSON.stringify(r)); buildIndex(); renderAll(); },
-    logTrade, teamFloor, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, strength, findTrades, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M, teamNeeds,
+    logTrade, teamFloor, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, strength, findTrades, findSurplus, surplusDeals, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M, teamNeeds,
     waiverSuggestions:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,
     dropOrder:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return dropOrder(me, bench); }, fitNote, scarcityPool,
     setTeamParam:(qs)=>{ applyTeamParam(qs); buildIndex(); renderAll(); },

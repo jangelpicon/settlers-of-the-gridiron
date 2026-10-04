@@ -176,7 +176,8 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const oddsTags = [...d.querySelectorAll("#tab-trades .suggest .tag")].map(x => x.textContent);
   const oddsLabelRx = /^(looks insulting — they give up the far bigger name|(easy yes|likely|coin flip|long shot)(, but they give the bigger name| — they land the bigger name)?)$/;
   const needTagRx = /fills your biggest need/;
-  assert(oddsTags.length > 0 && oddsTags.every(x => oddsLabelRx.test(x) || needTagRx.test(x)), "every trade card carries an acceptance-odds label (incl. fairness variants; need tags allowed)");
+  const surTagRx = /dead weight — can never start for you|surplus — bye\/injury cover only|cover at a need position/;
+  assert(oddsTags.length > 0 && oddsTags.every(x => oddsLabelRx.test(x) || needTagRx.test(x) || surTagRx.test(x)), "every trade card carries an acceptance-odds label (incl. fairness variants; need and surplus tags allowed)");
   assert(oddsTags.some(x => oddsLabelRx.test(x)), "odds labels still present among the tags");
   const needs = T.teamNeeds();
   assert(Array.isArray(needs.needs) && needs.needs.every(n => n.gap > 0 && n.mine && n.lgMedian != null), "teamNeeds reports only real starter gaps (my ROS rank worse than the league-median starter in that slot)");
@@ -186,6 +187,37 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const st = T.tradeStats(top.team, top.giveName, top.getName);
   assert(st && st.myGain === top.myGain && st.theirGain === top.theirGain && st.ev === top.ev, "tradeStats reproduces the suggestion's numbers for a named deal");
   assert(T.tradeStats(top.team, "Nobody Real", top.getName) === null, "tradeStats returns null when a player is not on the roster");
+
+  console.log("== Surplus ==");
+  const sur = T.findSurplus();
+  const meInfo = rosters.teams[rosters.me].map(T.info);
+  const optRos = T.optimalLineup(meInfo, "ros");
+  assert(sur.every(s => !optRos.used.has(s.p.n)), "no starter is ever listed as surplus (" + sur.map(s => s.p.name).join(", ") + ")");
+  const myQBcount = meInfo.filter(p => p.pos === "QB").length;
+  if (myQBcount >= 3) {
+    assert(sur.some(s => s.p.pos === "QB" && s.dead), "with " + myQBcount + " QBs rostered, a third-string QB is flagged dead weight");
+  }
+  assert(sur.filter(s => s.dead).every(s => {
+    const better = meInfo.filter(q => q.pos === s.p.pos && q.ros != null && q.ros < s.p.ros).length;
+    return better >= 2;
+  }), "dead weight means at least a starter AND a cover body already rank ahead of him");
+  sur.forEach(s => assert(s.buyers.every(b => b.gain > 0), s.p.name + ": every listed buyer genuinely upgrades by starting him" + (s.buyers.length ? " (" + s.buyers.map(b => b.team).join(", ") + ")" : " (no market)")));
+  const withBuyers = sur.find(s => s.buyers.length);
+  if (withBuyers) {
+    const sd = T.surplusDeals(withBuyers, T.teamNeeds());
+    assert(sd.every(dl => dl.st.theirGain >= -3), withBuyers.p.name + ": surplus sell offers keep the other side at worst a near-yes (their gain ≥ −3)");
+    assert(sd.every(dl => dl.get.pos !== withBuyers.p.pos), "sell offers bring back a different position (cover, not another copy of the surplus)");
+    sur.forEach(s => T.surplusDeals(s, T.teamNeeds()).forEach(dl => {
+      const better = meInfo.filter(x => x.n !== s.p.n && x.pos === dl.get.pos && x.ros != null && x.ros < dl.get.ros).length;
+      const startable = { QB:1, RB:3, WR:3, TE:2 }[dl.get.pos];
+      assert(better < startable + 1, s.p.name + " sell: incoming " + dl.get.name + " (" + dl.get.pos + ") would not himself be dead weight here");
+    }));
+  }
+  if (sur.length) {
+    assert(/Surplus — bench players who can't help you/.test(d.getElementById("tab-trades").textContent), "surplus panel renders on the Trades tab");
+    assert(/dead weight|bye\/injury cover/.test(d.getElementById("tab-trades").textContent), "surplus players carry a dead-weight or cover tag");
+    assert(/no team upgrades by starting him|would start for:/.test(d.getElementById("tab-trades").textContent), "each surplus player shows his market (buyers) or says there is none");
+  }
 
   console.log("== Trade tracking ==");
   const before = trades.length;
