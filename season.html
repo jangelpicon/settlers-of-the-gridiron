@@ -487,6 +487,36 @@
     const bench = players.filter(p=>!used.has(p.n));
     return { slots, bench, used };
   }
+  // Once a game kicks, the ESPN lineup is frozen fact — mirror it, don't re-plan it. Locked
+  // players are pinned to the slot ESPN has them in (a locked starter stays started even if he
+  // got hurt mid-game; a locked bench player can't be swapped in anymore); only players whose
+  // games haven't kicked are optimized into the remaining openings. Needs roster slot data from
+  // sync_league.py — without it (or without live projections) this falls back to the pure optimizer.
+  function lockAwareLineup(players, key){
+    const pinned = P ? players.filter(p=>p.locked && p.slot && p.slot!=="IR") : [];
+    if (!pinned.length) return optimalLineup(players, key);
+    const slots = [];
+    ["QB","RB","WR","TE","DST","K"].forEach(pos=>{ for (let i=0;i<LINEUP[pos];i++) slots.push({slot:pos+(LINEUP[pos]>1?(i+1):""), base:pos, p:null}); });
+    for (let i=0;i<LINEUP.FLEX;i++) slots.push({slot:"FLEX", base:"FLEX", p:null});
+    const used = new Set();
+    pinned.filter(p=>p.slot!=="BN").forEach(p=>{
+      const s = slots.find(x=>!x.p && x.base===p.slot);
+      if (s){ s.p = p; used.add(p.n); }
+    });
+    const open = players.filter(p=>!used.has(p.n) && !(p.locked && p.slot) && !p.onBye && !undraftable(p) && p[key]!=null);
+    const desc = key==="mu";
+    const sortBy = arr=>arr.slice().sort((a,b)=> desc ? b[key]-a[key] : a[key]-b[key]);
+    slots.filter(s=>!s.p && s.base!=="FLEX").forEach(s=>{
+      const c = sortBy(open.filter(p=>!used.has(p.n) && p.pos===s.base))[0];
+      if (c){ s.p = c; used.add(c.n); }
+    });
+    slots.filter(s=>!s.p && s.base==="FLEX").forEach(s=>{
+      const c = sortBy(open.filter(p=>!used.has(p.n) && FLEX.includes(p.pos)))[0];
+      if (c){ s.p = c; used.add(c.n); }
+    });
+    const bench = players.filter(p=>!used.has(p.n));
+    return { slots: slots.map(s=>({slot:s.slot, p:s.p})), bench, used, pinned: pinned.length };
+  }
   function strength(players){ // ROS-based starter strength
     const { slots } = optimalLineup(players, "ros");
     return slots.reduce((s,x)=> s + (x.p ? rosVal(x.p) : 0), 0);
@@ -589,8 +619,8 @@
     // For every bench player who could start, the starter he'd replace and the chance he outscores him.
     const out = [];
     bench.forEach(b=>{
-      if (b.mu==null || b.onBye || undraftable(b)) return;
-      const cands = slots.filter(s=>s.p && (s.slot.replace(/\d$/,"")===b.pos || (s.slot==="FLEX" && FLEX.includes(b.pos))));
+      if (b.mu==null || b.onBye || undraftable(b) || b.locked) return; // a locked bench player can't come in anymore
+      const cands = slots.filter(s=>s.p && !s.p.locked && (s.slot.replace(/\d$/,"")===b.pos || (s.slot==="FLEX" && FLEX.includes(b.pos))));
       if (!cands.length) return;
       const worst = cands.slice().sort((x,y)=>x.p.mu-y.p.mu)[0].p;
       out.push({ bench:b, starter:worst, p: pBeats(b, worst) });
@@ -600,18 +630,21 @@
   function renderLineup(){
     const me = myTeam();
     const key = lineupKey();
-    const { slots, bench } = optimalLineup(me, key);
+    const { slots, bench, pinned } = lockAwareLineup(me, key);
     let h = "<div class='panel'><h2>Week "+S.week+" — start these</h2><div class='muted' style='margin-bottom:6px'>"+
-      (P ? "Best lineup by <b>predicted points</b>. The gray line under each player is the receipt: every step from the raw projections to his number."
-         : "Best lineup by this week's consensus ranks (live projections unavailable).")+" Bye-week and OUT/IR players are automatically benched.</div>";
+      (pinned ? "Games have kicked off: <b>locked players are shown where your ESPN lineup actually has them</b> (a locked starter stays started even if he got hurt mid-game — that decision is already spent). Only players whose games haven't started are still optimized by predicted points."
+       : P ? "Best lineup by <b>predicted points</b>. The gray line under each player is the receipt: every step from the raw projections to his number."
+         : "Best lineup by this week's consensus ranks (live projections unavailable).")+" Bye-week and OUT/IR players are automatically benched"+(pinned?" (unless already locked in)":"")+".</div>";
     h += "<div class='tbl'><div class='gs'>"+playerHeader(true);
     slots.forEach(s=>{ h += "<div class='row grid start'>"+(s.p ? playerLine(s.p, "", s.slot, true)+projDetail(s.p) : "<span class='slot'>"+s.slot+"</span><span class='bad' style='grid-column:2 / -1'>— nobody available — grab a streamer on the Waivers tab</span>")+"</div>"; });
     h += "</div></div><h3>Bench</h3><div class='tbl'><div class='gs'>"+playerHeader(true);
     bench.forEach(p=>{ h += "<div class='row grid sit'>"+playerLine(p, "", "BN", true)+projDetail(p)+"</div>"; });
     h += "</div></div>";
     if (P){
-      const total = slots.reduce((s,x)=>s+(x.p&&x.p.mu!=null?x.p.mu:0),0);
-      h += "<div class='muted' style='margin-top:8px'>Projected total for this lineup: <b>"+total.toFixed(1)+"</b> points.</div>";
+      const slotPts = x => !x.p ? 0 : (x.p.actual!=null && x.p.gameState && x.p.gameState!=="pre") ? x.p.actual : (x.p.mu!=null ? x.p.mu : 0);
+      const total = slots.reduce((s,x)=>s+slotPts(x),0);
+      const anyLive = slots.some(x=>x.p && x.p.actual!=null && x.p.gameState && x.p.gameState!=="pre");
+      h += "<div class='muted' style='margin-top:8px'>"+(anyLive?"Total so far (actual points for started games, projections for the rest): ":"Projected total for this lineup: ")+"<b>"+total.toFixed(1)+"</b> points.</div>";
       const dec = decisions(me, slots, bench);
       h += "<h3>Start/sit calls</h3><div class='muted' style='margin-bottom:6px'>Chance a bench player outscores the starter he would replace. Under 35% = leave it alone; 35–55% = genuine coin flip, check Sunday-morning news; over 55% = the tool already swapped him in.</div>";
       if (!dec.length) h += "<div class='muted'>No bench player is close to a starter.</div>";
@@ -1403,7 +1436,7 @@
   window.__seasonTest = { inject:(s,r,x,tl,pj,pool,mu,hist)=>{ S=s; R=JSON.parse(JSON.stringify(r)); X=x||{players:[]}; P=pj||null; POOL=pool||null; MU=mu||null; HIST=hist||null; LG=null; PSTAMP = pj ? {text:"snapshot "+pj.generated, cls:"stale"} : {text:"none", cls:""}; RSTAMP = {text:R.updated||"–", cls:""}; mergeLog((tl||{}).entries); applyAcceptedTrades(); buildIndex(); renderAll(); },
     setHistory:(h)=>{ HIST=h||null; renderMatchup(); }, historyFromLeague, teamSeason, currentOpponent, allScores, scoringRank,
     rostersFromLeague, setRosters:(r)=>{ R = JSON.parse(JSON.stringify(r)); buildIndex(); renderAll(); },
-    logTrade, teamFloor, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, strength, findTrades, findSurplus, surplusDeals, allSurplusDeals, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M, teamNeeds,
+    logTrade, teamFloor, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, lockAwareLineup, strength, findTrades, findSurplus, surplusDeals, allSurplusDeals, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M, teamNeeds,
     waiverSuggestions:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,
     dropOrder:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return dropOrder(me, bench); }, fitNote, scarcityPool,
     setTeamParam:(qs)=>{ applyTeamParam(qs); buildIndex(); renderAll(); },

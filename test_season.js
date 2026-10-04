@@ -7,6 +7,12 @@ const rosters = JSON.parse(fs.readFileSync(path.join(__dirname, "data/rosters.js
 const exclusions = JSON.parse(fs.readFileSync(path.join(__dirname, "data/exclusions.json"), "utf8"));
 const tradeLog = JSON.parse(fs.readFileSync(path.join(__dirname, "data/trades.json"), "utf8"));
 const projections = JSON.parse(fs.readFileSync(path.join(__dirname, "data/projections.json"), "utf8"));
+// Pre-lock twin of the snapshot: kicks pushed 24h out, games reset to pre, live points wiped.
+// The decision tests (start/sit, swaps, close calls) exercise THIS world — those decisions
+// vanish by design once games lock. The lock-aware section injects the real snapshot instead.
+const unlockedProjections = JSON.parse(JSON.stringify(projections));
+Object.values(unlockedProjections.games || {}).forEach(g => { g.kick = new Date(Date.now() + 86400000).toISOString().replace(/\.\d+Z?$/, "Z"); g.state = "pre"; g.status = ""; g.score = null; });
+Object.values(unlockedProjections.players || {}).forEach(p => { if (p && typeof p === "object") p.actual = null; });
 let failures = 0;
 const assert = (c, m) => { console.log((c ? "  ok - " : "  FAIL - ") + m); if (!c) failures++; };
 const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
@@ -35,7 +41,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(/consensus ranks/.test(d.getElementById("tab-lineup").textContent), "fallback mode says it is using consensus ranks");
 
   // ======================= Projection mode (the real thing) =======================
-  T.inject(season, rosters, exclusions, tradeLog, projections);
+  T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
   console.log("== Projections ==");
   assert(projections.sources.espn >= 200 && projections.sources.sleeper >= 200 && projections.sources.games >= 20, "projection snapshot has all three feeds (espn " + projections.sources.espn + ", sleeper " + projections.sources.sleeper + ", games " + projections.sources.games + ")");
   assert(projections.week === season.week, "projections and rankings are for the same week (" + projections.week + ")");
@@ -232,6 +238,37 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     assert(!!surBtn, "the #1 sell carries working propose/decline/accept buttons");
   }
 
+  console.log("== Lock-aware lineup ==");
+  const mk = (n, pos, slot, locked, mu, extra) => ({ name: n, n: T.norm(n), pos, slot, locked, mu, ros: 50, wkRank: 20, pPlay: 1, injLive: "ACT", srcs: [], ...extra });
+  const synth = [
+    mk("Hurt Star", "WR", "WR", true, 0, { injLive: "O", pPlay: 0, actual: 5.7, gameState: "live" }),
+    mk("Bench Stud", "WR", "BN", true, 19, { actual: 11.4, gameState: "live" }),
+    mk("Free Wr", "WR", null, false, 8, {}),
+    mk("Free Wr Two", "WR", null, false, 7, {}),
+  ];
+  const LA = T.lockAwareLineup(synth, "mu");
+  assert(LA.slots.find(s => s.slot === "WR1").p && LA.slots.find(s => s.slot === "WR1").p.name === "Hurt Star", "a locked starter who got hurt mid-game STAYS in his ESPN slot — not auto-benched after kickoff");
+  assert(!LA.slots.some(s => s.p && s.p.name === "Bench Stud") && LA.bench.some(p => p.name === "Bench Stud"), "a locked bench player is never recommended into the lineup, even when he outscores a starter");
+  assert(LA.slots.find(s => s.slot === "WR2").p && LA.slots.find(s => s.slot === "WR2").p.name === "Free Wr", "unlocked players still fill the open slots by predicted points");
+  assert(LA.slots.find(s => s.slot === "FLEX").p && LA.slots.find(s => s.slot === "FLEX").p.name === "Free Wr Two", "FLEX still fills from the unlocked pool");
+  const noSlots = T.lockAwareLineup(synth.map(p => ({ ...p, slot: null })), "mu");
+  assert(noSlots.slots.find(s => s.slot === "WR1").p.name === "Bench Stud", "without ESPN slot data the page falls back to the pure optimizer");
+  const meSlots = rosters.teams[rosters.me].filter(p => p.slot && p.slot !== "BN" && p.slot !== "IR");
+  assert(meSlots.length === 9, "sync_league.py now records every actual ESPN lineup slot (9 starters found)");
+  // The real snapshot (games kicked) drives the locked-mirror render; restored to pre-lock after.
+  T.inject(season, rosters, exclusions, tradeLog, projections);
+  const anyLocked = rosters.teams[rosters.me].map(T.info).some(p => p.locked);
+  if (anyLocked) {
+    const lineupTxt = d.getElementById("tab-lineup").textContent;
+    assert(/locked players are shown where your ESPN lineup actually has them/.test(lineupTxt), "lineup header explains the locked-mirror mode once games kick");
+    rosters.teams[rosters.me].filter(p => p.slot && p.slot !== "BN" && p.slot !== "IR").forEach(p => {
+      const ip = T.info(p);
+      if (!ip.locked) return;
+      assert([...d.querySelectorAll("#tab-lineup .row.start")].some(r => rx(p.name).test(r.textContent)), p.name + " (locked ESPN starter) renders as a starter, matching ESPN");
+    });
+  }
+  T.inject(season, rosters, exclusions, tradeLog, unlockedProjections); // back to the pre-lock world
+
   console.log("== Injuries in trade math ==");
   const hardInj = p => ["IR","O","SUSP"].includes(p.injLive);
   const allSuggested = trades.flatMap(t => t.gives.concat(t.gets)).concat(queue.flatMap(dl => [dl.sp.p, dl.get]));
@@ -272,10 +309,10 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   while (d.querySelector("#tab-trades .tb-undo")) d.querySelector("#tab-trades .tb-undo").click();
   assert(T.findTrades().length === before, "undo everything restores the list");
   // a decline that came from Sheldon's repo log (no their-side number stored) still raises the floor
-  T.inject(season, rosters, exclusions, { entries: [{ team: top.team, give: top.giveName, get: top.getName, status: "declined", date: "2026-09-09" }] }, projections);
+  T.inject(season, rosters, exclusions, { entries: [{ team: top.team, give: top.giveName, get: top.getName, status: "declined", date: "2026-09-09" }] }, unlockedProjections);
   assert(T.teamFloor(top.team) === top.theirGain + 3, "a repo-logged decline (from tools/trade_log.py) raises that team's floor too");
   assert(!T.findTrades().some(x => x.team === top.team && x.getName === top.getName && x.giveName === top.giveName), "repo-logged declined offer is not re-suggested");
-  T.inject(season, rosters, exclusions, tradeLog, projections);
+  T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
   // accept the #1 offer -> rosters swap locally and everything recomputes
   d.querySelector("#tab-trades .tbtns button[data-status='accepted']").click();
   const RR = T.getRosters();
@@ -284,7 +321,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(!T.findTrades().some(x => x.gets.some(p => top.gets.some(q => q.n === p.n))), "accepted trade no longer proposed");
   assert([...d.querySelectorAll("#tab-lineup .row")].some(r => rx(top.get.name).test(r.textContent)), "lineup tab now shows the acquired player");
   while (d.querySelector("#tab-trades .tb-undo")) d.querySelector("#tab-trades .tb-undo").click();
-  T.inject(season, rosters, exclusions, tradeLog, projections);
+  T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
 
   console.log("== ESPN league roster sync ==");
   const leagueFix = { teams: [
@@ -300,13 +337,13 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert([...d.querySelectorAll("#tab-lineup .row")].some(r => /Drake Maye/.test(r.textContent)) && [...d.querySelectorAll("#tab-league .row")].length === 2, "page re-renders from live ESPN rosters");
   // pool restriction: inject a two-man pool (one rostered, one genuine FA) — only the FA may come through.
   // Names are picked at test time so leaguemates' pickups can't rot this fixture.
-  T.inject(season, rosters, exclusions, tradeLog, projections);
+  T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
   const poolFA = T.freeAgents()[0];
   const poolRostered = rosters.teams[rosters.me].find(p => !["DST","K"].includes(p.pos));
   T.inject(season, rosters, exclusions, tradeLog, projections, { players: [T.norm(poolRostered.name), poolFA.n] });
   const faPool = T.freeAgents();
   assert(faPool.length === 1 && faPool[0].n === poolFA.n, "with an ESPN league pool synced, only players in that pool count as free agents (rostered " + poolRostered.name + " filtered, FA " + poolFA.name + " kept)");
-  T.inject(season, rosters, exclusions, tradeLog, projections);
+  T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
   console.log("== Column headers ==");
   const headers = tab => [...d.querySelectorAll("#tab-" + tab + " .hrow")];
   assert(headers("lineup").length >= 3 && headers("waivers").length >= 4 && headers("trades").length >= 0 && headers("byes").length === 1 && headers("league").length === 1, "every tab's list has a header row (lineup " + headers("lineup").length + ", waivers " + headers("waivers").length + ", byes 1, league 1)");
@@ -353,22 +390,22 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     Object.values(pjH.players).forEach(q => { if (q.name === "A.J. Brown") { q.injE = "ACT"; q.injS = "ACT"; delete q.injNote; } });
     T.inject(season, rosters, exclusions, tradeLog, pjH);
     assert(!/Drake Maye alert/.test(d.getElementById("tab-lineup").textContent), "no WR1 alert when the receiver is healthy");
-    T.inject(season, rosters, exclusions, tradeLog, projections);
+    T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
   }
 
   console.log("== Plug-and-play ?team= link ==");
   {
-    T.inject(season, rosters, exclusions, tradeLog, projections);
+    T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
     T.setTeamParam("?team=sack+of+wheat");
     assert(d.getElementById("teamTitle").textContent === "SACK OF WHEAT", "?team=sack+of+wheat repoints the whole page (case/punctuation-insensitive match)");
     const sackNames = new Set(rosters.teams["SACK OF WHEAT"].map(p => T.norm(p.name)));
     const lu = [...d.querySelectorAll("#tab-lineup .row.start")];
     assert(lu.length === 9 && T.getRosters().me === "SACK OF WHEAT", "their view renders a full 9-slot lineup as 'me'");
     assert(T.benchSkill().every(p => sackNames.has(p.n)), "waiver drop candidates come from THEIR bench, not Jose's");
-    T.inject(season, rosters, exclusions, tradeLog, projections);
+    T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
     T.setTeamParam("?team=nobody+real");
     assert(T.getRosters().me === rosters.me && /not found/.test(d.getElementById("teamTitle").textContent) && /SACK OF WHEAT/.test(d.getElementById("teamTitle").textContent), "unknown team name: keeps the default view and lists the league's team names");
-    T.inject(season, rosters, exclusions, tradeLog, projections);
+    T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
     T.setTeamParam("?nothing=here");
     assert(T.getRosters().me === rosters.me, "no ?team= param: Jose's view, unchanged");
   }
@@ -380,7 +417,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(["QB","RB","WR","TE","K","DST"].every(pos => matchups.leagueAvg[pos] > 0), "league average present for all six positions");
   assert(matchups.defVsPos.DET && matchups.defVsPos.DET.QB && matchups.defVsPos.DET.QB.avg > matchups.leagueAvg.QB * 1.3, "sanity anchor: Detroit is a far-above-average QB matchup (" + (matchups.defVsPos.DET ? matchups.defVsPos.DET.QB.avg : "?") + " vs lg " + matchups.leagueAvg.QB + ")");
   // graceful degrade: no matchups file = consensus-only, no matchup fields, no errors
-  T.inject(season, rosters, exclusions, tradeLog, projections);
+  T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
   const anyQB = rosters.teams[rosters.me].filter(p => p.pos === "QB").map(p => T.info(p));
   assert(anyQB.length > 0 && anyQB.every(p => p.matchup == null && p.mu != null), "without matchups.json every projection still computes, consensus-only");
   const consensusMu = {}; anyQB.forEach(p => consensusMu[p.n] = p.mu);

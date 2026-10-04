@@ -18,6 +18,9 @@ ESPN_TEAM = {1:"ATL",2:"BUF",3:"CHI",4:"CIN",5:"CLE",6:"DAL",7:"DEN",8:"DET",9:"
 TEAM_NAME = {"ATL":"Atlanta Falcons","BUF":"Buffalo Bills","CHI":"Chicago Bears","CIN":"Cincinnati Bengals","CLE":"Cleveland Browns","DAL":"Dallas Cowboys","DEN":"Denver Broncos","DET":"Detroit Lions","GB":"Green Bay Packers","TEN":"Tennessee Titans","IND":"Indianapolis Colts","KC":"Kansas City Chiefs","LV":"Las Vegas Raiders","LAR":"Los Angeles Rams","MIA":"Miami Dolphins","MIN":"Minnesota Vikings","NE":"New England Patriots","NO":"New Orleans Saints","NYG":"New York Giants","NYJ":"New York Jets","PHI":"Philadelphia Eagles","ARI":"Arizona Cardinals","PIT":"Pittsburgh Steelers","LAC":"Los Angeles Chargers","SF":"San Francisco 49ers","SEA":"Seattle Seahawks","TB":"Tampa Bay Buccaneers","WAS":"Washington Commanders","CAR":"Carolina Panthers","JAX":"Jacksonville Jaguars","BAL":"Baltimore Ravens","HOU":"Houston Texans"}
 ESPN_POS = {1:"QB",2:"RB",3:"WR",4:"TE",5:"K",16:"DST"}
 IR_SLOT = 21
+# Current lineup slot (lineupSlotId) — lets the page mirror the ACTUAL ESPN lineup for players whose
+# games already kicked instead of re-optimizing a locked week. Unknown ids are simply omitted.
+ESPN_SLOT = {0:"QB",2:"RB",4:"WR",6:"TE",16:"DST",17:"K",23:"FLEX",20:"BN",21:"IR"}
 
 def norm(name):
     n = unicodedata.normalize("NFKD", name or "").encode("ascii", "ignore").decode().lower()
@@ -63,6 +66,8 @@ def parse_league(d):
             r = player_row(e)
             if r:
                 if e.get("lineupSlotId") == IR_SLOT: r["ir"] = True
+                sl = ESPN_SLOT.get(e.get("lineupSlotId"))
+                if sl: r["slot"] = sl
                 rows.append(r)
         out[team_name_of(t)] = rows
     return out
