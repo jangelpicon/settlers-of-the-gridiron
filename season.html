@@ -1033,6 +1033,20 @@
     deals.sort((a,b)=> ((b.need?1:0)-(a.need?1:0)) || rosVal(b.get)-rosVal(a.get));
     return deals.slice(0,3);
   }
+  // One ranked queue across every surplus player: the order to actually send the offers.
+  // Dead weight sells first (a frozen roster spot costs you more than any cover body does),
+  // then deals that bring back cover at a need position, then by expected return — the
+  // incoming player's rest-of-season value × the odds they say yes. When the same incoming
+  // piece is reachable by paying with different players, only the cheapest payment survives
+  // (the queue is sorted cheapest-asset-first, so the dedupe keeps the deadest seller).
+  function allSurplusDeals(){
+    const N = teamNeeds();
+    let all = [];
+    findSurplus().forEach(sp=> surplusDeals(sp, N).forEach(dl=> all.push({ sp, ...dl, score: Math.round(rosVal(dl.get)*dl.st.odds.p) })));
+    all.sort((a,b)=> ((b.sp.dead?1:0)-(a.sp.dead?1:0)) || ((b.need?1:0)-(a.need?1:0)) || b.score-a.score);
+    const seen = new Set();
+    return all.filter(d=>{ const k = d.team+"|"+d.get.n; if (seen.has(k)) return false; seen.add(k); return true; });
+  }
   // How the other side sees it: their own lineup change is what they'll judge on.
   // p = rough probability they accept.
   function acceptOdds(theirGain, fairness){
@@ -1126,27 +1140,24 @@
     const SP = findSurplus();
     if (SP.length){
       h += "<div class='panel'><h2>Surplus — bench players who can't help you</h2>"+
-        "<div class='muted' style='margin-bottom:6px'>The deal lists above only show trades that upgrade your starting nine, so a valuable backup never appears in them — which can read as \"hold everyone.\" Don't. These players never crack your optimal lineup; the ones marked <b>dead weight</b> can't even cover a bye or injury because better bodies already sit ahead of them. Every week they stay, a roster spot is frozen. Sell them to the teams listed (where they <i>would</i> start) for bench cover where you're thin — or drop them when you need the spot for a waiver claim.</div>";
+        "<div class='muted' style='margin-bottom:6px'>The deal lists above only show trades that upgrade your starting nine, so a valuable backup never appears in them — which can read as \"hold everyone.\" Don't. These players never crack your optimal lineup; the ones marked <b>dead weight</b> can't even cover a bye or injury because better bodies already sit ahead of them. Every week they stay, a roster spot is frozen.</div>";
+      const queue = allSurplusDeals();
+      h += "<h3>Sell queue — in the order to send them</h3>"+
+        "<div class='muted' style='margin-bottom:6px'>Ranked: dead-weight sells first (the frozen spot costs you more than the player), then deals returning cover at a need position, then by expected return (what comes back × odds they accept). When several of your players could buy the same piece, only the cheapest payment is shown.</div>";
+      if (!queue.length) h += "<div class='muted'>No clean 1-for-1 sell right now — offer the surplus straight up for a future favor, or package it onto a bigger deal above.</div>";
+      queue.forEach((d,i)=>{
+        const oddsCls = d.st.odds.p>=0.7?"good":d.st.odds.p>=0.45?"warn":"bad";
+        h += "<div class='suggest'><b class='hl'>#"+(i+1)+" · "+esc(d.team)+":</b> give <b>"+esc(d.sp.p.name)+"</b> ("+d.sp.p.pos+" ROS #"+d.sp.p.ros+") for <b>"+esc(d.get.name)+"</b> ("+d.get.pos+" ROS #"+d.get.ros+") "+
+          (d.sp.dead?"<span class='tag bad'>dead weight — can never start for you</span> ":"")+(d.need?"<span class='tag good'>🎯 cover at a need position</span> ":"")+"<span class='tag "+oddsCls+"'>"+d.st.odds.label+"</span>"+
+          "<br><span class='muted'>their side "+(d.st.theirGain>=0?"+":"")+d.st.theirGain+" (he starts for them) · expected return "+d.score+"</span><br>"+
+          tradeButtons({team:d.team, give:d.sp.p.name, get:d.get.name, theirGain:d.st.theirGain}, ["proposed","declined","accepted"])+"</div>";
+      });
+      h += "<h3>Status board</h3>";
       SP.forEach(sp=>{
         const slotTag = sp.dead ? "<span class='tag bad'>dead weight — can never start for you</span>" : "<span class='tag warn'>surplus — bye/injury cover only</span>";
-        h += "<div class='suggest'><b class='hl'>"+esc(sp.p.name)+"</b> ("+sp.p.pos+" ROS #"+sp.p.ros+") "+slotTag;
-        if (sp.buyers.length){
-          h += "<br><span class='muted'>would start for: "+sp.buyers.slice(0,3).map(b=>esc(b.team)+" (+"+b.gain+")").join(" · ")+"</span>";
-          const deals = surplusDeals(sp, N);
-          if (deals.length){
-            deals.forEach(dl=>{
-              const oddsCls = dl.st.odds.p>=0.7?"good":dl.st.odds.p>=0.45?"warn":"bad";
-              h += "<br><b class='hl'>"+esc(dl.team)+":</b> give <b>"+esc(sp.p.name)+"</b> for <b>"+esc(dl.get.name)+"</b> ("+dl.get.pos+" ROS #"+dl.get.ros+")"+(dl.need?" <span class='tag good'>🎯 cover at a need position</span>":"")+
-                " <span class='tag "+oddsCls+"'>"+dl.st.odds.label+"</span> <span class='muted'>their side "+(dl.st.theirGain>=0?"+":"")+dl.st.theirGain+"</span><br>"+
-                tradeButtons({team:dl.team, give:sp.p.name, get:dl.get.name, theirGain:dl.st.theirGain}, ["proposed","declined","accepted"]);
-            });
-          } else {
-            h += "<br><span class='muted'>no clean 1-for-1 on their bench right now — offer him straight up for a future pick/favor, or package him onto a bigger deal above</span>";
-          }
-        } else {
-          h += "<br><span class='muted'>no team upgrades by starting him — there's no trade market. He's your drop when you need the roster spot for a waiver claim.</span>";
-        }
-        h += "</div>";
+        const mkt = sp.buyers.length ? "would start for: "+sp.buyers.slice(0,3).map(b=>esc(b.team)+" (+"+b.gain+")").join(" · ")
+          : "no team upgrades by starting him — there's no trade market. He's your drop when you need the roster spot for a waiver claim.";
+        h += "<div class='row'><b class='hl'>"+esc(sp.p.name)+"</b> ("+sp.p.pos+" ROS #"+sp.p.ros+") "+slotTag+" <span class='muted'>"+mkt+"</span></div>";
       });
       h += "</div>";
     }
@@ -1384,7 +1395,7 @@
   window.__seasonTest = { inject:(s,r,x,tl,pj,pool,mu,hist)=>{ S=s; R=JSON.parse(JSON.stringify(r)); X=x||{players:[]}; P=pj||null; POOL=pool||null; MU=mu||null; HIST=hist||null; LG=null; PSTAMP = pj ? {text:"snapshot "+pj.generated, cls:"stale"} : {text:"none", cls:""}; RSTAMP = {text:R.updated||"–", cls:""}; mergeLog((tl||{}).entries); applyAcceptedTrades(); buildIndex(); renderAll(); },
     setHistory:(h)=>{ HIST=h||null; renderMatchup(); }, historyFromLeague, teamSeason, currentOpponent, allScores, scoringRank,
     rostersFromLeague, setRosters:(r)=>{ R = JSON.parse(JSON.stringify(r)); buildIndex(); renderAll(); },
-    logTrade, teamFloor, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, strength, findTrades, findSurplus, surplusDeals, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M, teamNeeds,
+    logTrade, teamFloor, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, strength, findTrades, findSurplus, surplusDeals, allSurplusDeals, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M, teamNeeds,
     waiverSuggestions:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,
     dropOrder:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return dropOrder(me, bench); }, fitNote, scarcityPool,
     setTeamParam:(qs)=>{ applyTeamParam(qs); buildIndex(); renderAll(); },

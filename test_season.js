@@ -218,6 +218,18 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     assert(/dead weight|bye\/injury cover/.test(d.getElementById("tab-trades").textContent), "surplus players carry a dead-weight or cover tag");
     assert(/no team upgrades by starting him|would start for:/.test(d.getElementById("tab-trades").textContent), "each surplus player shows his market (buyers) or says there is none");
   }
+  const queue = T.allSurplusDeals();
+  const cls = dl => (dl.sp.dead ? 2 : 0) + (dl.need ? 1 : 0);
+  assert(queue.every((dl, i) => i === 0 || (cls(queue[i-1]) > cls(dl)) || (cls(queue[i-1]) === cls(dl) && queue[i-1].score >= dl.score)), "sell queue is strictly ordered: dead-weight sells, then need-position cover, then expected return");
+  assert(queue.every(dl => dl.score === Math.round((420 - dl.get.ros) * dl.st.odds.p)), "expected return = incoming player's ROS value × acceptance odds");
+  const qKeys = queue.map(dl => dl.team + "|" + dl.get.n);
+  assert(new Set(qKeys).size === qKeys.length, "same incoming piece never listed twice — cheapest payment wins");
+  if (queue.length) {
+    assert(/Sell queue — in the order to send them/.test(d.getElementById("tab-trades").textContent), "sell queue renders with explicit ordering");
+    assert(/#1 · /.test(d.getElementById("tab-trades").textContent), "queue entries are numbered so the top priority is unambiguous");
+    const surBtn = [...d.querySelectorAll("#tab-trades .tbtns")].find(w => w.dataset.give === queue[0].sp.p.name && w.dataset.get === queue[0].get.name);
+    assert(!!surBtn, "the #1 sell carries working propose/decline/accept buttons");
+  }
 
   console.log("== Trade tracking ==");
   const before = trades.length;
