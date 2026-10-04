@@ -204,7 +204,7 @@
       const teams = rostersFromLeague(d);
       if (Object.keys(teams).length < 2) throw new Error("no teams returned");
       if (!teams[R.me]) throw new Error("my team '"+R.me+"' not in league team names");
-      R = { me: R.me, updated: new Date().toISOString().slice(0,10), teams, live:true };
+      R = { me: R.me, updated: new Date().toLocaleDateString("en-CA",{timeZone:"America/Chicago"}), teams, live:true };
       RSTAMP = { text:"LIVE from ESPN "+new Date().toLocaleString("en-US",{timeZone:"America/Chicago",month:"numeric",day:"numeric",hour:"numeric",minute:"2-digit"})+" CT", cls:"live" };
     } catch(e){ RSTAMP = { text:(R.updated||"–")+" (repo copy — live ESPN read failed: "+e.message+")", cls:"stale" }; }
   }
@@ -423,9 +423,12 @@
   // Entries that came from Sheldon's repo log carry no their-side number; work it out from the current rosters so a
   // logged decline still raises that team's floor.
   function hydrateLog(){ TL.forEach(e=>{ if (typeof e.theirGain!=="number"){ const st = tradeStats(e.team, e.give, e.get); if (st) e.theirGain = st.theirGain; } }); }
-  // Accepted trades newer than the repo's roster file get applied locally so the page is right immediately.
+  // Accepted trades ESPN hasn't processed yet get applied locally so the page is right immediately.
+  // On live ESPN rosters the date check is skipped: the players-still-on-the-wrong-sides guard below
+  // is the real test (a processed trade finds nobody to move), and the UTC/Chicago date mismatch was
+  // silently skipping same-day trades after 7 PM CT.
   function applyAcceptedTrades(){
-    TL.filter(e=>e.status==="accepted" && (!R.updated || e.date >= R.updated)).forEach(e=>{
+    TL.filter(e=>e.status==="accepted" && (R.live || !R.updated || e.date >= R.updated)).forEach(e=>{
       const mine = R.teams[R.me], theirs = R.teams[e.team]; if (!theirs) return;
       const gi = parseDeal(e.give).map(x=>mine.findIndex(p=>norm(p.name)===norm(x)));
       const ti = parseDeal(e.get).map(x=>theirs.findIndex(p=>norm(p.name)===norm(x)));
