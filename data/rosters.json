@@ -568,11 +568,6 @@
     "team": "JAX"
    },
    {
-    "name": "Jaylen Waddle",
-    "pos": "WR",
-    "team": "DEN"
-   },
-   {
     "name": "Tyler Loop",
     "pos": "K",
     "team": "BAL"
@@ -596,6 +591,11 @@
     "name": "Rome Odunze",
     "pos": "WR",
     "team": "CHI"
+   },
+   {
+    "name": "Trevor Lawrence",
+    "pos": "QB",
+    "team": "JAX"
    }
   ],
   "PapasCabezas": [
@@ -640,11 +640,6 @@
     "team": "HOU"
    },
    {
-    "name": "Trevor Lawrence",
-    "pos": "QB",
-    "team": "JAX"
-   },
-   {
     "name": "Dalton Kincaid",
     "pos": "TE",
     "team": "BUF"
@@ -668,6 +663,11 @@
     "name": "Tony Pollard",
     "pos": "RB",
     "team": "TEN"
+   },
+   {
+    "name": "Jaylen Waddle",
+    "pos": "WR",
+    "team": "DEN"
    }
   ]
  }

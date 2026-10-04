@@ -1,1 +1,13 @@
-{"note": "Trade proposal log (repo copy, maintained by Sheldon via tools/trade_log.py). The page merges this with the browser's local log; local entries win. status: proposed | declined | countered | accepted | withdrawn", "entries": []}
+{
+ "note": "Trade proposal log (repo copy, maintained by Sheldon via tools/trade_log.py). The page merges this with the browser's local log; local entries win. status: proposed | declined | countered | accepted | withdrawn",
+ "entries": [
+  {
+   "key": "PapasCabezas|jaylen waddle|trevor lawrence",
+   "team": "PapasCabezas",
+   "give": "Jaylen Waddle",
+   "get": "Trevor Lawrence",
+   "status": "accepted",
+   "date": "2026-10-03"
+  }
+ ]
+}
