@@ -1022,11 +1022,7 @@
       h += "<div class='muted' style='margin-top:6px'>If everything landed: +"+sumMy+" lineup strength · expected acceptances "+expAcc.toFixed(1)+" of "+open.length+"</div>";
       h += "<button class='tb tb-declined' id='declineAll'>All declined</button> <span class='muted'>marks every open proposal declined (each team's floor goes up accordingly)</span></div>";
     }
-    h += "<div class='panel'><h2>Optimal trades — by team</h2>"+
-      "<div class='muted' style='margin-bottom:6px'>Every 1-for-1 swap and 2-for-2 package, grouped by opponent (teams ordered by their best deal, top 3 deals each), ranked by <b>expected value</b> = what your starting lineup gains (rest-of-season rank) × how likely they accept — from what it does to <i>their</i> lineup <b>and</b> how lopsided the deal looks by consensus rank (people judge a package by its biggest name, and turn down insulting-looking offers even when the math helps them). Big upside with a real chance of a yes floats to the top; long shots only appear when the upside is huge.</div>";
     const N = teamNeeds();
-    h += needsStrip(N);
-    if (!trades.length) h += "<div class='muted'>No trade that helps you found right now.</div>";
     const me2 = myTeam(), preSlots = optimalLineup(me2, "ros").slots;
     // Which of my starting slots does this deal actually upgrade (rest-of-season lineup diff)?
     const dealFills = t => {
@@ -1042,21 +1038,65 @@
     const bestN = ps => ps.slice().sort((a,b)=>(a.ros!=null?a.ros:ROS_MAX)-(b.ros!=null?b.ros:ROS_MAX))[0].n;
     const seen = new Set();
     const deduped = trades.filter(t=>{ const k=t.team+"|"+bestN(t.gets)+"|"+bestN(t.gives); if (seen.has(k)) return false; seen.add(k); return true; });
-    // Grouped by team: each opponent gets its own section with its best deals, teams
-    // ordered by their best deal's EV. A team with no win-win deal doesn't appear.
+    const dealCard = (t)=>{
+      const oddsCls = t.odds.p>=0.7?"good":t.odds.p>=0.45?"warn":"bad";
+      const fills = dealFills(t);
+      const topNeed = N.needs.length && fills.some(f=>f.up && f.slot===N.needs[0].slot);
+      return "<div class='suggest'><b class='hl'>"+esc(t.team)+":</b> give "+dealSide(t.gives)+" for "+dealSide(t.gets)+" <span class='tag "+oddsCls+"'>"+t.odds.label+"</span>"+(topNeed?" <span class='tag good'>🎯 fills your biggest need</span>":"")+
+        "<br><span class='muted'>your gain +"+t.myGain+" · their side "+(t.theirGain>=0?"+":"")+t.theirGain+" · expected value "+t.ev+(fills.length?" · lineup: "+esc(fills.map(f=>(f.up?"↑ ":"↓ ")+f.txt).join(" · ")):"")+"</span><br>"+
+        tradeButtons(t, ["proposed","declined","accepted"])+"</div>";
+    };
+    // ---- The plan: tiered, in the order to actually try them ----
+    h += "<div class='panel'><h2>The plan — deals in the order to try them</h2>"+
+      "<div class='muted' style='margin-bottom:6px'>Tier 1 is the offer to send first: the biggest gain at your biggest need. Tier 2 is the counter ladder — the same target paid for differently — for when Tier 1 comes back declined. Tier 3 is the cheapest deal that still fixes the need, the fallback when the target proves unavailable. Tier 4 helps the lineup without touching the top need. Expected value = your gain × their odds of accepting.</div>";
+    h += needsStrip(N);
+    if (!deduped.length) h += "<div class='muted'>No trade that helps you found right now.</div>";
+    const needSlot = N.needs.length ? N.needs[0].slot : null;
+    const fillsTop = t => !!needSlot && dealFills(t).some(f=>f.up && f.slot===needSlot);
+    const needDeals = deduped.filter(fillsTop);
+    const giveCost = t => t.gives.reduce((s,p)=>s+rosVal(p),0);
+    const tiers = [];
+    if (needDeals.length){
+      const first = needDeals[0];
+      tiers.push({ label:"Tier 1 — fire first", deals:[first] });
+      const counters = needDeals.slice(1).filter(t=>bestN(t.gets)===bestN(first.gets)).slice(0,2);
+      if (counters.length) tiers.push({ label:"Tier 2 — counters if they say no (same target, different payment)", deals:counters });
+      const cheap = needDeals.filter(t=>bestN(t.gets)!==bestN(first.gets) && t.odds.p>=0.45).sort((a,b)=> giveCost(a)-giveCost(b) || b.ev-a.ev).slice(0,1);
+      if (cheap.length) tiers.push({ label:"Tier 3 — cheap fallback (smallest price that still fixes the need)", deals:cheap });
+    }
+    const valueDeals = deduped.filter(t=>!fillsTop(t)).slice(0,2);
+    if (valueDeals.length) tiers.push({ label:(needDeals.length?"Tier 4":"Tier 1")+" — value, not need", deals:valueDeals });
+    tiers.forEach(tr=>{ h += "<h3>"+tr.label+"</h3>"; tr.deals.forEach(t=>{ h += dealCard(t); }); });
+    h += "</div>";
+    // ---- Position strength by team: who can afford to sell what ----
+    h += "<div class='panel'><h2>Position strength by team</h2>"+
+      "<div class='muted' style='margin-bottom:6px'>For every position, the rest-of-season value of the starters each team would actually run (a FLEX player counts at his real position). Long bar = strong. This is the trade map: buy from the teams at the top of a column (they have surplus), sell to the ones at the bottom (they have the hole).</div>";
+    const PS = {};
+    Object.keys(R.teams).forEach(t=>{
+      const slots2 = optimalLineup(teamOf(t), "ros").slots;
+      const by = {QB:0,RB:0,WR:0,TE:0}, names = {QB:[],RB:[],WR:[],TE:[]};
+      slots2.forEach(s=>{ if (s.p && by[s.p.pos]!=null){ by[s.p.pos]+=rosVal(s.p); names[s.p.pos].push(s.p.name); } });
+      PS[t] = { by, names };
+    });
+    ["QB","RB","WR","TE"].forEach(pos=>{
+      const rows = Object.keys(PS).map(t=>({t, v:PS[t].by[pos], names:PS[t].names[pos]})).sort((a,b)=>b.v-a.v);
+      const max = rows[0].v || 1;
+      h += "<div style='margin:10px 0 2px'><b>"+pos+"</b></div>";
+      rows.forEach((r,i)=>{
+        const mine = r.t===R.me;
+        h += "<div style='display:flex;align-items:center;gap:8px;margin:2px 0'><span class='muted' style='width:14px;text-align:right;flex:none'>"+(i+1)+"</span><span style='width:150px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>"+(mine?"<b class='hl'>":"")+esc(r.t)+(mine?"</b>":"")+"</span><span class='bar' style='flex:1;max-width:none'><i style='width:"+Math.round(r.v/max*100)+"%'></i></span><span class='muted' style='flex:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>"+esc(r.names.join(", "))+"</span></div>";
+      });
+    });
+    h += "</div>";
+    // ---- Every deal, grouped by opponent ----
+    h += "<div class='panel'><h2>All deals — by team</h2>"+
+      "<div class='muted' style='margin-bottom:6px'>Every 1-for-1 swap and 2-for-2 package, grouped by opponent (teams ordered by their best deal, top 3 deals each), ranked by <b>expected value</b> — from what the deal does to <i>their</i> lineup <b>and</b> how lopsided it looks by consensus rank (people judge a package by its biggest name, and turn down insulting-looking offers even when the math helps them).</div>";
     const byTeam = {};
     deduped.forEach(t=>{ (byTeam[t.team] = byTeam[t.team]||[]).push(t); });
     Object.keys(byTeam).sort((a,b)=> byTeam[b][0].ev - byTeam[a][0].ev).forEach(team=>{
       const floor = teamFloor(team);
       h += "<h3>"+esc(team)+"</h3>"+(floor>-12?"<div class='muted'>heads-up: this team has already turned down a deal worth "+(floor-3>=0?"+":"")+(floor-3)+" to them — anything at or below that is probably a no, but everything is shown</div>":"");
-      byTeam[team].slice(0,3).forEach((t,i)=>{
-        const oddsCls = t.odds.p>=0.7?"good":t.odds.p>=0.45?"warn":"bad";
-        const fills = dealFills(t);
-        const topNeed = N.needs.length && fills.some(f=>f.up && f.slot===N.needs[0].slot);
-        h += "<div class='suggest'>"+(i+1)+". give "+dealSide(t.gives)+" for "+dealSide(t.gets)+" <span class='tag "+oddsCls+"'>"+t.odds.label+"</span>"+(topNeed?" <span class='tag good'>🎯 fills your biggest need</span>":"")+
-          "<br><span class='muted'>your gain +"+t.myGain+" · their side "+(t.theirGain>=0?"+":"")+t.theirGain+" · expected value "+t.ev+(fills.length?" · lineup: "+esc(fills.map(f=>(f.up?"↑ ":"↓ ")+f.txt).join(" · ")):"")+"</span><br>"+
-          tradeButtons(t, ["proposed","declined","accepted"])+"</div>";
-      });
+      byTeam[team].slice(0,3).forEach(t=>{ h += dealCard(t); });
     });
     h += "</div>";
     // Log
