@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-10-02",
- "source": "ESPN league 882823976 sync 2026-10-02 13:59 CDT",
+ "updated": "2026-10-03",
+ "source": "ESPN league 882823976 sync 2026-10-03 21:11 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -23,22 +23,13 @@
    {
     "name": "DeVonta Smith",
     "pos": "WR",
-    "team": "PHI"
+    "team": "PHI",
+    "ir": true
    },
    {
     "name": "Ladd McConkey",
     "pos": "WR",
     "team": "LAC"
-   },
-   {
-    "name": "Javonte Williams",
-    "pos": "RB",
-    "team": "DAL"
-   },
-   {
-    "name": "DJ Moore",
-    "pos": "WR",
-    "team": "BUF"
    },
    {
     "name": "Jameson Williams",
@@ -61,11 +52,6 @@
     "team": "DEN"
    },
    {
-    "name": "Travis Kelce",
-    "pos": "TE",
-    "team": "KC"
-   },
-   {
     "name": "Chicago Bears",
     "pos": "DST",
     "team": "CHI"
@@ -74,6 +60,26 @@
     "name": "Spencer Shrader",
     "pos": "K",
     "team": "IND"
+   },
+   {
+    "name": "Darren Waller",
+    "pos": "TE",
+    "team": "CAR"
+   },
+   {
+    "name": "Garrett Wilson",
+    "pos": "WR",
+    "team": "NYJ"
+   },
+   {
+    "name": "Bhayshul Tuten",
+    "pos": "RB",
+    "team": "JAX"
+   },
+   {
+    "name": "Dontayvion Wicks",
+    "pos": "WR",
+    "team": "PHI"
    }
   ],
   "SACK OF WHEAT": [
@@ -206,24 +212,24 @@
     "team": "SF"
    },
    {
-    "name": "Kenyon Sadiq",
-    "pos": "TE",
-    "team": "NYJ"
-   },
-   {
     "name": "Buffalo Bills",
     "pos": "DST",
     "team": "BUF"
    },
    {
-    "name": "Bhayshul Tuten",
-    "pos": "RB",
-    "team": "JAX"
+    "name": "DJ Moore",
+    "pos": "WR",
+    "team": "BUF"
    },
    {
-    "name": "Garrett Wilson",
-    "pos": "WR",
-    "team": "NYJ"
+    "name": "Travis Kelce",
+    "pos": "TE",
+    "team": "KC"
+   },
+   {
+    "name": "Javonte Williams",
+    "pos": "RB",
+    "team": "DAL"
    }
   ],
   "Unnecessary Sanctions": [
@@ -654,14 +660,14 @@
     "team": "KC"
    },
    {
-    "name": "Blake Corum",
-    "pos": "RB",
-    "team": "LAR"
-   },
-   {
     "name": "Minnesota Vikings",
     "pos": "DST",
     "team": "MIN"
+   },
+   {
+    "name": "Tony Pollard",
+    "pos": "RB",
+    "team": "TEN"
    }
   ]
  }
