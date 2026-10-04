@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-10-03",
- "source": "ESPN league 882823976 sync 2026-10-03 21:11 CDT",
+ "updated": "2026-10-04",
+ "source": "ESPN league 882823976 sync 2026-10-04 08:00 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -645,11 +645,6 @@
     "team": "BUF"
    },
    {
-    "name": "Matthew Golden",
-    "pos": "WR",
-    "team": "GB"
-   },
-   {
     "name": "Harrison Butker",
     "pos": "K",
     "team": "KC"
@@ -668,6 +663,11 @@
     "name": "Jaylen Waddle",
     "pos": "WR",
     "team": "DEN"
+   },
+   {
+    "name": "Jayden Daniels",
+    "pos": "QB",
+    "team": "WAS"
    }
   ]
  }
