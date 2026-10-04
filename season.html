@@ -1072,12 +1072,28 @@
     h += "<div class='panel'><h2>Position strength by team</h2>"+
       "<div class='muted' style='margin-bottom:6px'>For every position, the rest-of-season value of the starters each team would actually run (a FLEX player counts at his real position). Long bar = strong. This is the trade map: buy from the teams at the top of a column (they have surplus), sell to the ones at the bottom (they have the hole).</div>";
     const PS = {};
-    Object.keys(R.teams).forEach(t=>{
+    const teamNames = Object.keys(R.teams);
+    teamNames.forEach(t=>{
       const slots2 = optimalLineup(teamOf(t), "ros").slots;
       const by = {QB:0,RB:0,WR:0,TE:0}, names = {QB:[],RB:[],WR:[],TE:[]};
       slots2.forEach(s=>{ if (s.p && by[s.p.pos]!=null){ by[s.p.pos]+=rosVal(s.p); names[s.p.pos].push(s.p.name); } });
       PS[t] = { by, names };
     });
+    // Rank grid: each team's rank at every position plus overall starter strength, 1 = strongest.
+    const rankOf = {};
+    ["QB","RB","WR","TE"].forEach(pos=>{
+      teamNames.slice().sort((a,b)=>PS[b].by[pos]-PS[a].by[pos]).forEach((t,i)=>{ (rankOf[t]=rankOf[t]||{})[pos]=i+1; });
+    });
+    const overall = {}; teamNames.forEach(t=>{ overall[t]=strength(teamOf(t)); });
+    const oSorted = teamNames.slice().sort((a,b)=>overall[b]-overall[a]);
+    oSorted.forEach((t,i)=>{ rankOf[t].OVR=i+1; });
+    const rGrid = "display:grid;grid-template-columns:minmax(110px,1.5fr) repeat(5,minmax(32px,1fr));gap:4px;align-items:center";
+    const rCell = v => "<span class='tag "+(v===1?"good":v<=3?"good":v>=teamNames.length-2?"bad":"")+"' style='text-align:center"+(v===1?";font-weight:700":"")+"'>"+v+"</span>";
+    h += "<div style='"+rGrid+";margin-bottom:10px'><span class='muted'>League rank (1 = strongest)</span><span class='muted' style='text-align:center'>QB</span><span class='muted' style='text-align:center'>RB</span><span class='muted' style='text-align:center'>WR</span><span class='muted' style='text-align:center'>TE</span><span class='muted' style='text-align:center'><b>Overall</b></span>"+
+      oSorted.map(t=>{
+        const mine = t===R.me, rk = rankOf[t];
+        return "<span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>"+(mine?"<b class='hl'>":"")+esc(t)+(mine?"</b>":"")+"</span>"+rCell(rk.QB)+rCell(rk.RB)+rCell(rk.WR)+rCell(rk.TE)+rCell(rk.OVR);
+      }).join("")+"</div>";
     ["QB","RB","WR","TE"].forEach(pos=>{
       const rows = Object.keys(PS).map(t=>({t, v:PS[t].by[pos], names:PS[t].names[pos]})).sort((a,b)=>b.v-a.v);
       const max = rows[0].v || 1;
