@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-10-04",
- "source": "ESPN league 882823976 sync 2026-10-04 14:45 CDT",
+ "updated": "2026-10-06",
+ "source": "ESPN league 882823976 sync 2026-10-06 02:26 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -576,13 +576,13 @@
     "name": "Jalen Hurts",
     "pos": "QB",
     "team": "PHI",
-    "slot": "BN"
+    "slot": "QB"
    },
    {
     "name": "Quinshon Judkins",
     "pos": "RB",
     "team": "CLE",
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Brandon Aubrey",
@@ -600,13 +600,13 @@
     "name": "Ollie Gordon II",
     "pos": "RB",
     "team": "MIA",
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "Sam Darnold",
     "pos": "QB",
     "team": "SEA",
-    "slot": "QB"
+    "slot": "BN"
    },
    {
     "name": "Michael Wilson",
@@ -638,7 +638,7 @@
     "name": "Drake London",
     "pos": "WR",
     "team": "ATL",
-    "slot": "FLEX"
+    "slot": "WR"
    },
    {
     "name": "Trey McBride",
@@ -662,7 +662,7 @@
     "name": "Bucky Irving",
     "pos": "RB",
     "team": "TB",
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Luther Burden III",
@@ -674,7 +674,7 @@
     "name": "Parker Washington",
     "pos": "WR",
     "team": "JAX",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Tyler Loop",
