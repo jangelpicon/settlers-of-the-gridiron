@@ -87,6 +87,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(/One-week streamers/.test(d.getElementById("tab-waivers").textContent) && /predicted points/.test(d.getElementById("tab-waivers").textContent), "streamer section rendered, ranked by predicted points");
   console.log("== Waivers: season-long rule ==");
   const WS = T.waiverSuggestions();
+  const SC = T.weeklyStreamClaims();
   assert(WS.sugg.every(s => s.gain >= T.ROS_MARGIN), "every add/drop suggestion is at least " + T.ROS_MARGIN + " rest-of-season rank spots better (" + WS.sugg.length + " suggestions)");
   assert(WS.sugg.concat(WS.marginal).every(s => s.add.seasonProj == null || s.drop.seasonProj == null || s.add.seasonProj >= s.drop.seasonProj), "no suggestion drops a player with a higher ESPN full-season projection than the add");
   const benchSkill = T.benchSkill().slice().sort((a, b) => (b.ros || 420) - (a.ros || 420));
@@ -129,7 +130,9 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(DO.every((p, i) => i === 0 || (DO[i-1].ros || 420) >= (p.ros || 420)), "drop order runs least season-long value first");
   assert(WS.sugg.concat(WS.marginal).filter(s => s.add.pos !== "QB").every(s => s.drop.n === scarceDrop(s.add.pos).n), "every claim names the scarcity-aware top of the drop order — the ladder explains multi-add drops");
   const wtxt2 = d.getElementById("tab-waivers").textContent;
-  assert(/Your drop order/.test(wtxt2) && (WS.sugg.length ? /Your claim sheet — enter exactly this in ESPN/.test(wtxt2) : /Nothing on the wire is a clear season-long upgrade/.test(wtxt2)), "waiver tab shows the drop order plus the claim sheet (or the empty-wire note when there are no suggestions)");
+  assert(/Your drop order/.test(wtxt2) && ((WS.sugg.length || SC.length) ? /Your claim sheet — enter exactly this in ESPN/.test(wtxt2) : /Nothing on the wire is a clear season-long upgrade/.test(wtxt2)), "waiver tab shows the drop order plus the claim sheet (or the empty-wire note when there are no season-long OR weekly K/DST moves)");
+  assert(SC.every(s => ["K","DST"].includes(s.pos) && (s.drop == null || s.drop.pos === s.pos)), "weekly stream claims are K/DST only and swap straight for your own (" + SC.map(s => s.pos + ":" + s.add.name).join(", ") + ")");
+  assert(!SC.length || (/weekly (K|DST)/.test(wtxt2) && SC.every(s => rx(s.add.name).test(wtxt2))), "weekly K/DST streams appear on the claim sheet, tagged weekly, so the order is never empty when there's a stream to make");
   {
     let pri = 0;
     const rows = [];

@@ -896,6 +896,26 @@
   function waiverBoard(me, bench, fa){
     return fa.map(f=>{ const drop = dropCandidate(bench, me, f); return { fa:f, drop, verdict: dropVerdict(f, drop) }; });
   }
+  // Weekly K/DST claims for the claim sheet. For DST and K: take your best playable one this week and the best
+  // free agent, and surface a claim when (a) you have no one this week (bye/empty slot), or (b) the free agent is
+  // a clear this-week upgrade — +1.5 proj pts when we have live projections, else >=3 weekly-rank spots better.
+  // Mirrors the streamer filters below (onBye/undraftable). Straight same-position swap, so it never touches the
+  // skill-player drop ladder. Returns [{ add, drop|null, pos, delta|null }], DST before K.
+  function weeklyStreamClaims(me, fa, wkey){
+    const out = [];
+    ["DST","K"].forEach(pos=>{
+      const at = p => p.pos===pos && !p.onBye && !undraftable(p) && p[wkey]!=null;
+      const ord = (a,b)=> wkey==="mu" ? b.mu-a.mu : a.wkRank-b.wkRank;
+      const mine = me.filter(at).sort(ord)[0];
+      const best = fa.filter(at).sort(ord)[0];
+      if (!best) return;
+      if (!mine){ out.push({ add:best, drop:null, pos, delta:null }); return; }
+      if (best.n===mine.n) return;
+      if (best.mu!=null && mine.mu!=null){ const d = Math.round((best.mu-mine.mu)*10)/10; if (d>=1.5) out.push({ add:best, drop:mine, pos, delta:d }); }
+      else if (best.wkRank!=null && mine.wkRank!=null){ if ((mine.wkRank-best.wkRank)>=3) out.push({ add:best, drop:mine, pos, delta:null }); }
+    });
+    return out;
+  }
   const WCOLS = [["Drop for him","The bench player you'd drop to add him (least rest-of-season value at a position you can spare — your only backup at a position never drops for a different position; K/DST = straight swap)"],["Verdict","Is the swap worth it under the season-long rule?"]];
   function waiverHeader(){ return playerHeader(); } // drop + verdict sit on a full-width line under each player so nothing is cut off
   function waiverRow(b, tag){
@@ -918,9 +938,13 @@
     let h = "<div class='panel'><h2>Waiver moves that beat your bench — season-long only</h2><div class='muted' style='margin-bottom:6px'>An add/drop is suggested only when the free agent is better for the <b>rest of the season</b>, judged two ways at once: FantasyPros rest-of-season rank (refreshed Tuesdays) must be at least "+ROS_MARGIN+" spots better, and ESPN's live full-season projection must agree. This week's matchup is never a reason to drop a player. Smaller edges are listed as marginal so you don't churn.</div>";
     const { sugg, marginal, needs: N } = waiverSuggestions(me, bench, fa);
     h += needsStrip(N);
-    if (!sugg.length) h += "<div class='muted'>Nothing on the wire is a clear season-long upgrade over your bench. Good sign.</div>";
-    if (sugg.length){
-      h += "<div class='muted' style='margin-bottom:6px'><b>Your claim sheet — enter exactly this in ESPN, top to bottom.</b> Same shape as ESPN's Pending Waiver Claims: one row per claim, priority order, add + drop. A <b>backup</b> row re-tries the same add with the next drop, for when the first drop is already gone; a row without a backup simply fails if its drop is taken — that's fine and by design. Ordered by season-long gain, then roster fit.</div>";
+    // Weekly K/DST streamer claims belong on the claim sheet too. A kicker/defense on a bye (empty slot) or a
+    // clearly better matchup this week is a real waiver move even when nothing is a season-long add — otherwise
+    // the order looks empty when there's actually a stream to make. Straight same-position swap (drop your own).
+    const streamC = weeklyStreamClaims(me, fa, wkey);
+    if (!sugg.length && !streamC.length) h += "<div class='muted'>Nothing on the wire is a clear season-long upgrade over your bench, and your K/DST are fine this week. Good sign.</div>";
+    if (sugg.length || streamC.length){
+      h += "<div class='muted' style='margin-bottom:6px'><b>Your claim sheet — enter exactly this in ESPN, top to bottom.</b> Same shape as ESPN's Pending Waiver Claims: one row per claim, priority order, add + drop. A <b>backup</b> row re-tries the same add with the next drop, for when the first drop is already gone; a row without a backup simply fails if its drop is taken — that's fine and by design. Season-long upgrades first, then weekly K/DST streams.</div>";
       let pri = 0;
       const player = (p, dropSide) => "<b"+(dropSide?"":" class='hl'")+">"+esc(p.name)+"</b>, "+esc(p.team||"?")+" "+p.pos+" <span class='muted'>(ROS "+(p.ros!=null?"#"+p.ros:"unranked")+(p.seasonProj!=null?", "+p.seasonProj.toFixed(0)+" season pts":"")+(p.inj?", "+esc(p.inj.code):"")+")</span>";
       sugg.slice(0,6).forEach(s=>{
@@ -932,6 +956,17 @@
           pri++;
           h += "<div class='suggest'><b>Priority "+pri+"</b> · ➕ Add "+player(s.add)+" &nbsp;➖ Drop "+player(s.chain.drop,true)+"<br><span class='tag good'>backup for Priority "+(pri-1)+" — fires when "+esc(s.drop.name)+" is already gone; still +"+s.chain.verdict.rosDelta+" ROS spots"+(s.chain.samePos?" · straight "+s.chain.drop.pos+"-for-"+s.chain.drop.pos+" swap":"")+"</span></div>";
         }
+      });
+      // Weekly K/DST streams, after the season-long claims. Shows this-week projection (or rank) instead of ROS.
+      const wkLine = p => "<b class='hl'>"+esc(p.name)+"</b>, "+esc(p.team||"?")+" "+p.pos+" <span class='muted'>("+(p.mu!=null?p.mu.toFixed(1)+" proj this week":"wk #"+(p.wkRank!=null?p.wkRank:"–"))+")</span>";
+      const wkDrop = p => "<b>"+esc(p.name)+"</b>, "+esc(p.team||"?")+" "+p.pos+" <span class='muted'>("+(p.mu!=null?p.mu.toFixed(1)+" proj this week":"wk #"+(p.wkRank!=null?p.wkRank:"–"))+")</span>";
+      streamC.forEach(s=>{
+        pri++;
+        const dropHtml = s.drop ? wkDrop(s.drop) : "<span class='muted'>nobody — you have an open "+s.pos+" slot</span>";
+        const note = !s.drop ? "fills your empty "+s.pos+" slot this week"
+          : (s.delta!=null ? "+"+s.delta.toFixed(1)+" points this week" : "better "+s.pos+" matchup this week")
+            + " — weekly stream, straight "+s.pos+"-for-"+s.pos+" swap (not a season-long hold)";
+        h += "<div class='suggest'><b>Priority "+pri+"</b> · ➕ Add "+wkLine(s.add)+" &nbsp;➖ Drop "+dropHtml+" <span class='tag good'>weekly "+s.pos+"</span><br><span class='muted'>"+note+"</span></div>";
       });
     }
     marginal.slice(0,4).forEach(s=>{ h += "<div class='suggest'>⚖️ <b class='hl'>Marginal: "+esc(s.add.name)+"</b> ("+s.add.pos+", ROS #"+s.add.ros+(s.add.seasonProj!=null?", ESPN season "+s.add.seasonProj.toFixed(0)+" pts":"")+") over "+esc(s.drop.name)+" (ROS #"+s.drop.ros+(s.drop.seasonProj!=null?", "+s.drop.seasonProj.toFixed(0)+" pts":"")+")<br><span class='muted'>+"+s.gain+" rest-of-season spots"+(s.seasonDelta!=null?" · "+(s.seasonDelta>=0?"+":"")+s.seasonDelta+" projected season points":"")+" — under the "+ROS_MARGIN+"-spot bar, so not worth the churn unless you want that position's depth</span>"+(s.fit?"<br><span class='tag warn'>"+esc(s.fit)+"</span>":"")+"</div>"; });
@@ -1442,6 +1477,7 @@
     rostersFromLeague, setRosters:(r)=>{ R = JSON.parse(JSON.stringify(r)); buildIndex(); renderAll(); },
     logTrade, teamFloor, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, lockAwareLineup, strength, findTrades, findSurplus, surplusDeals, allSurplusDeals, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M, teamNeeds,
     waiverSuggestions:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,
+    weeklyStreamClaims:()=>{ const me = myTeam(); return weeklyStreamClaims(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
     dropOrder:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return dropOrder(me, bench); }, fitNote, scarcityPool,
     setTeamParam:(qs)=>{ applyTeamParam(qs); buildIndex(); renderAll(); },
     benchSkill:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return bench.filter(p=>!["K","DST"].includes(p.pos)); },
