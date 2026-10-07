@@ -1,7 +1,7 @@
 {
  "me": "ur done",
  "updated": "2026-10-06",
- "source": "ESPN league 882823976 sync 2026-10-06 02:26 CDT",
+ "source": "ESPN league 882823976 sync 2026-10-06 20:16 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -102,13 +102,13 @@
     "name": "Puka Nacua",
     "pos": "WR",
     "team": "LAR",
-    "slot": "FLEX"
+    "slot": "WR"
    },
    {
     "name": "Rashee Rice",
     "pos": "WR",
     "team": "KC",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Breece Hall",
@@ -150,7 +150,7 @@
     "name": "Carnell Tate",
     "pos": "WR",
     "team": "TEN",
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Jaylen Warren",
@@ -225,13 +225,13 @@
     "name": "Tucker Kraft",
     "pos": "TE",
     "team": "GB",
-    "slot": "BN"
+    "slot": "TE"
    },
    {
     "name": "New England Patriots",
     "pos": "DST",
     "team": "NE",
-    "slot": "BN"
+    "slot": "DST"
    },
    {
     "name": "Chase McLaughlin",
@@ -255,7 +255,7 @@
     "name": "Buffalo Bills",
     "pos": "DST",
     "team": "BUF",
-    "slot": "DST"
+    "slot": "BN"
    },
    {
     "name": "DJ Moore",
@@ -267,7 +267,7 @@
     "name": "Travis Kelce",
     "pos": "TE",
     "team": "KC",
-    "slot": "TE"
+    "slot": "BN"
    },
    {
     "name": "Javonte Williams",
@@ -299,7 +299,7 @@
     "name": "Tetairoa McMillan",
     "pos": "WR",
     "team": "CAR",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Houston Texans",
@@ -323,7 +323,7 @@
     "name": "TreVeyon Henderson",
     "pos": "RB",
     "team": "NE",
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Marvin Harrison Jr.",
@@ -335,13 +335,13 @@
     "name": "Harold Fannin Jr.",
     "pos": "TE",
     "team": "CLE",
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Deebo Samuel Sr.",
     "pos": "WR",
     "team": "SF",
-    "slot": "FLEX"
+    "slot": "WR"
    },
    {
     "name": "MarShawn Lloyd",
@@ -353,7 +353,7 @@
     "name": "Chuba Hubbard",
     "pos": "RB",
     "team": "CAR",
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "Tyler Shough",
@@ -560,12 +560,6 @@
     "slot": "BN"
    },
    {
-    "name": "Emeka Egbuka",
-    "pos": "WR",
-    "team": "TB",
-    "slot": "BN"
-   },
-   {
     "name": "Travis Etienne Jr.",
     "pos": "RB",
     "team": "NO",
@@ -632,7 +626,7 @@
     "name": "Ja'Marr Chase",
     "pos": "WR",
     "team": "CIN",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Drake London",
@@ -662,7 +656,7 @@
     "name": "Bucky Irving",
     "pos": "RB",
     "team": "TB",
-    "slot": "FLEX"
+    "slot": "RB"
    },
    {
     "name": "Luther Burden III",
@@ -674,7 +668,7 @@
     "name": "Parker Washington",
     "pos": "WR",
     "team": "JAX",
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Tyler Loop",
@@ -698,7 +692,7 @@
     "name": "Jeremiyah Love",
     "pos": "RB",
     "team": "ARI",
-    "slot": "RB"
+    "slot": "FLEX"
    },
    {
     "name": "Rome Odunze",
@@ -730,13 +724,13 @@
     "name": "Kenneth Walker III",
     "pos": "RB",
     "team": "KC",
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "Zay Flowers",
     "pos": "WR",
     "team": "BAL",
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Lamar Jackson",
@@ -748,19 +742,19 @@
     "name": "Cam Skattebo",
     "pos": "RB",
     "team": "NYG",
-    "slot": "FLEX"
+    "slot": "BN"
    },
    {
     "name": "Christian Watson",
     "pos": "WR",
     "team": "GB",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "David Montgomery",
     "pos": "RB",
     "team": "HOU",
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Dalton Kincaid",
@@ -784,7 +778,7 @@
     "name": "Tony Pollard",
     "pos": "RB",
     "team": "TEN",
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Jaylen Waddle",
