@@ -20,6 +20,8 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://localhost/", beforeParse(w){ w.__seasonNoAutoLoad = true; } });
   await new Promise(r => setTimeout(r, 30));
   const w = dom.window, d = w.document, T = w.__seasonTest;
+  const settings = JSON.parse(fs.readFileSync(path.join(__dirname, "data/settings.json"), "utf8"));
+  T.setSettings(settings); // persists across inject(); the simulator runs wherever schedule data is injected
   const txt = s => s.textContent;
   const slotOf = s => s.querySelector(".slot").textContent.trim();
 
@@ -357,7 +359,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(/Wk rank/.test(hw) && /ROS rank/.test(hw) && /Season pts/.test(hw), "waiver header keeps the season-long columns: " + hw.replace(/\s+/g, " ").trim());
   assert(headers("lineup")[0].children.length === d.querySelector("#tab-lineup .row.grid.start").querySelectorAll(":scope > *:not(.detail)").length, "player rows have exactly as many cells as the header");
   assert(/Odds/.test(d.getElementById("tab-lineup").textContent) && headers("lineup").some(x => /Verdict/.test(x.textContent)), "start/sit table has its own header (Odds … Verdict)");
-  assert(/Rank/.test(headers("league")[0].textContent) && /Strength/.test(headers("league")[0].textContent), "league header names rank / this week / strength");
+  assert(/Rank/.test(headers("league")[0].textContent) && /Roster talent \(ROS\)/.test(headers("league")[0].textContent), "league header names rank / this week / roster talent (relabeled from 'Strength' — paper talent, not a ranking)");
   assert(/Coverage/.test(headers("byes")[0].textContent), "byes header names coverage");
   assert(d.getElementById("legend") && /What the columns mean/.test(d.getElementById("legend").textContent) && d.querySelectorAll("#legend dt").length >= 12, "plain-language legend explains every column");
   d.querySelector("#tab-trades .tbtns button[data-status='declined']").click();
@@ -537,6 +539,114 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(stSvgs.every(s => s.querySelectorAll("title").length >= 18), "every chart point carries a hover tooltip (team · week · points)");
   assert(/everyone else/.test(stTab.textContent), "legend explains the gray context lines");
   assert(/Total/.test(stTab.textContent), "scores table view renders beside the charts");
+
+  console.log("== Championship simulator ==");
+  { // own scope: this section reuses short names (mk, calls) used earlier in the file
+  // --- strength() unchanged: hand-computed fixture (independent of the weekly data files) ---
+  const mk = (name, pos, ros) => ({ name, n: T.norm(name), pos, ros, onBye: false, pPlay: 1, injLive: "ACT", mu: 10, sd: 3 });
+  const fxRoster = [mk("Q One","QB",10), mk("R One","RB",20), mk("R Two","RB",30), mk("R Three","RB",40), mk("W One","WR",5), mk("W Two","WR",50), mk("W Three","WR",60), mk("T One","TE",70), mk("K One","K",200), mk("D One","DST",150)];
+  // QB10 RB20 RB30 WR5 WR50 TE70 FLEX=RB40 (beats WR60) K200 DST150 → Σ(420 − rank) = 410+400+390+415+370+350+380+220+270
+  assert(T.strength(fxRoster) === 3205, "strength() unchanged: hand-computed 9-starter fixture = 3205 (" + T.strength(fxRoster) + ")");
+  T.inject(season, rosters, exclusions, tradeLog, projections, null, matchups, histReal);
+  const lgRows = [...d.querySelectorAll("#tab-league .gl .row")];
+  const talentCol = r => +r.children[8].textContent.trim().split(" ")[0];
+  assert(lgRows.length === 9 && lgRows.every(r => { const t = r.children[1].textContent.replace(" 🐑", "").trim(); return talentCol(r) === T.strength(rosters.teams[t].map(T.info)); }), "League tab 'Roster talent (ROS)' column is exactly strength() for every team (relabeled, not recomputed)");
+
+  // --- determinism with the fixed seed ---
+  const L1 = T.leagueSim(); const c1 = Object.keys(L1.byTeam).map(t => L1.byTeam[t].champ);
+  T.setSettings(settings); // drops the cache → full rebuild
+  const L2 = T.leagueSim(); const c2 = Object.keys(L2.byTeam).map(t => L2.byTeam[t].champ);
+  assert(L1 !== L2 && c1.every((v, i) => v === c2[i]), "sim determinism: a full rebuild with the fixed seed reproduces every title % exactly");
+  const Za = T.simNormals(T.SIM_SEED, 1000), Zb = T.simNormals(T.SIM_SEED, 1000), Zc = T.simNormals(T.SIM_SEED + 1, 1000);
+  assert(Za.every((v, i) => v === Zb[i]) && Za.some((v, i) => v !== Zc[i]), "normal draws: same seed → identical stream, different seed → different stream");
+  const zm = Za.reduce((a, b) => a + b, 0) / Za.length, zv = Za.reduce((a, b) => a + (b - zm) * (b - zm), 0) / (Za.length - 1);
+  assert(Math.abs(zm) < 0.1 && Math.abs(zv - 1) < 0.15, "normal draws are standard normal (mean " + zm.toFixed(3) + ", var " + zv.toFixed(3) + ")");
+  const champSum = c2.reduce((a, b) => a + b, 0), poSum = Object.values(L2.byTeam).reduce((a, x) => a + x.playoff, 0);
+  assert(Math.abs(champSum - 1) < 1e-9 && Math.abs(poSum - settings.playoffTeamCount) < 1e-9, "every simulated season crowns exactly one champion and seeds exactly " + settings.playoffTeamCount + " playoff teams");
+  assert(L2.spec.games.length > 0 && L2.spec.games.every(g => g[2] >= histReal.currentWeek && g[2] <= settings.regularSeasonWeeks), "remaining schedule = undecided weeks " + histReal.currentWeek + "–" + settings.regularSeasonWeeks + " only (" + L2.spec.games.length + " games)");
+  const lev = L2.leverage;
+  assert(!lev || (lev.champIfWin >= lev.champIfLoss && lev.pWin > 0 && lev.pWin < 1), "this week's leverage: title % if I win ≥ title % if I lose");
+
+  // --- seeding against a known standings fixture: ESPN's own playoffSeed + pointsFor after week 4 ---
+  // (frozen from ESPN mTeam 2026-10-06; sat-week scores are NOT in ESPN's points-for — The Brady Bunch
+  //  out-seeds ur done on points at 1-2 only if the 77.0 / 119.22 sat-week scores are excluded)
+  const FX_ROWS = [{"w":1,"home":"PapasCabezas","away":null,"hp":135.16,"ap":null,"winner":"UNDECIDED"},{"w":1,"home":"Knight Moves Ore Else","away":"ur done","hp":156.92,"ap":128.12,"winner":"HOME"},{"w":1,"home":"Bad Hombres","away":"Resting Blitz Face","hp":121.66,"ap":105.36,"winner":"HOME"},{"w":1,"home":"SACK OF WHEAT","away":"The Brady Bunch","hp":117.3,"ap":148.56,"winner":"AWAY"},{"w":1,"home":"Unnecessary Sanctions","away":"BlitzAndGiggles","hp":132.06,"ap":139.56,"winner":"AWAY"},{"w":2,"home":"ur done","away":null,"hp":119.22,"ap":null,"winner":"UNDECIDED"},{"w":2,"home":"Resting Blitz Face","away":"PapasCabezas","hp":121.04,"ap":142.5,"winner":"AWAY"},{"w":2,"home":"The Brady Bunch","away":"Knight Moves Ore Else","hp":115.02,"ap":141.96,"winner":"AWAY"},{"w":2,"home":"BlitzAndGiggles","away":"Bad Hombres","hp":89.48,"ap":136.58,"winner":"AWAY"},{"w":2,"home":"Unnecessary Sanctions","away":"SACK OF WHEAT","hp":152.32,"ap":110.96,"winner":"HOME"},{"w":3,"home":"Resting Blitz Face","away":null,"hp":139.18,"ap":null,"winner":"UNDECIDED"},{"w":3,"home":"ur done","away":"The Brady Bunch","hp":121.66,"ap":95.6,"winner":"HOME"},{"w":3,"home":"PapasCabezas","away":"BlitzAndGiggles","hp":149.14,"ap":98.44,"winner":"HOME"},{"w":3,"home":"Knight Moves Ore Else","away":"Unnecessary Sanctions","hp":106.26,"ap":142.76,"winner":"AWAY"},{"w":3,"home":"Bad Hombres","away":"SACK OF WHEAT","hp":105.34,"ap":117.04,"winner":"AWAY"},{"w":4,"home":"The Brady Bunch","away":null,"hp":77.0,"ap":null,"winner":"UNDECIDED"},{"w":4,"home":"BlitzAndGiggles","away":"Resting Blitz Face","hp":127.36,"ap":121.72,"winner":"HOME"},{"w":4,"home":"Unnecessary Sanctions","away":"ur done","hp":174.42,"ap":83.18,"winner":"HOME"},{"w":4,"home":"SACK OF WHEAT","away":"PapasCabezas","hp":126.5,"ap":129.38,"winner":"AWAY"},{"w":4,"home":"Bad Hombres","away":"Knight Moves Ore Else","hp":112.48,"ap":155.12,"winner":"AWAY"}];
+  const ESPN_W4 = {"PapasCabezas":{seed:1,pf:421.02},"Unnecessary Sanctions":{seed:2,pf:601.56},"Knight Moves Ore Else":{seed:3,pf:560.26},"Bad Hombres":{seed:4,pf:476.06},"BlitzAndGiggles":{seed:5,pf:454.84},"The Brady Bunch":{seed:6,pf:359.18},"ur done":{seed:7,pf:332.96},"SACK OF WHEAT":{seed:8,pf:471.8},"Resting Blitz Face":{seed:9,pf:348.12}};
+  T.setHistory({ currentWeek: 5, standings: {}, schedule: FX_ROWS });
+  const LF = T.leagueSim();
+  assert(LF && LF.spec.teams.every((t, i) => Math.abs(LF.spec.pf0[i] - ESPN_W4[t].pf) < 0.01), "points-for (game weeks only) matches ESPN's pointsFor for all 9 teams");
+  const fxOrder = T.simSeedOrder(9, LF.spec.w0, LF.spec.g0, LF.spec.pf0).map(i => LF.spec.teams[i]);
+  assert(fxOrder.every((t, k) => ESPN_W4[t].seed === k + 1), "standings → seeds reproduce ESPN's playoffSeed 1–9 exactly (win % first — 3-0 over 3-1 — then points): " + fxOrder.join(" > "));
+  assert(LF.spec.games.length === 0 && Object.entries(LF.byTeam).every(([t, x]) => x.playoff === (ESPN_W4[t].seed <= 5 ? 1 : 0)), "no games left → the top-5 seeds make the bracket with certainty, the rest never do");
+  T.setHistory(histReal);
+  // bracket structure: 5 teams, 3 rounds, no reseed → round 1 is 4v5 only; then 1 v W(4/5), 2 v 3; final
+  const calls = []; const score = (t, r) => { calls.push([t, r]); return 100 - t; }; // team index = seed-1 → better seed scores more
+  const champ5 = T.simPlayoffs([0, 1, 2, 3, 4], 3, false, score);
+  const r0 = calls.filter(c => c[1] === 0).map(c => c[0]).sort(), r1 = calls.filter(c => c[1] === 1).map(c => c[0]).sort(), r2 = calls.filter(c => c[1] === 2).map(c => c[0]).sort();
+  assert(champ5 === 0 && JSON.stringify(r0) === "[3,4]" && JSON.stringify(r1) === "[0,1,2,3]" && JSON.stringify(r2) === "[0,1]", "5-team bracket: seeds 1–3 bye, 4v5 in round 1, 1 v W(4/5) + 2v3 in round 2, final in round 3");
+  const upset = T.simPlayoffs([0, 1, 2, 3, 4], 3, false, (t, r) => t === 4 ? 999 : 100 - t);
+  assert(upset === 4, "the 5 seed can run the table (beats 4, then 1, then the final)");
+  assert(JSON.stringify(T.simBracketOrder(3)) === "[1,8,4,5,2,7,3,6]", "standard 8-slot bracket order");
+  const rc = []; T.simPlayoffs([0, 1, 2, 3, 4, 5], 3, true, (t, r) => { rc.push([t, r]); return t === 5 ? 999 : 100 - t; });
+  const rs1 = rc.filter(c => c[1] === 1).map(c => c[0]);
+  assert(rs1.includes(0) && rs1.includes(1) && rs1.includes(5) && rs1.length === 4, "6-team reseeded bracket: 1 and 2 bye, the 6-seed winner is reseeded into round 2 against the 1 seed");
+
+  // --- shrinkage edge cases ---
+  // Real between-team spread (A ~150, E ~100) so tau² > 0; B averages 125 with a wild ±35 swing.
+  const talent = { A: 3000, B: 3000, C: 3000, D: 3100, E: 2900 };
+  const base = { A: [150, 154, 147, 151], B: [100, 160, 90, 150], D: [125, 129, 122, 126], E: [100, 97, 104, 101] };
+  assert(T.simScoringModel(base, talent, 0.05).tau2 > 0, "fixture sanity: teams genuinely differ (tau² > 0)");
+  const m0 = T.simScoringModel({ ...base, C: [] }, talent, 0.05);
+  assert(m0.teams.C.n === 0 && m0.teams.C.w === 0 && Math.abs(m0.teams.C.mu - m0.teams.C.prior) < 1e-9 && m0.teams.C.sigma === m0.sigmaPool, "n=0: rate = talent prior exactly, weight on actual 0, swing = league-pooled");
+  assert(Math.abs(m0.teams.C.muSd - Math.sqrt(m0.tau2)) < 1e-9, "n=0: rate uncertainty = full talent-line spread (sqrt tau²)");
+  const m1 = T.simScoringModel({ ...base, C: [140] }, talent, 0.05);
+  assert(m1.teams.C.n === 1 && m1.teams.C.sigma === m1.sigmaPool && m1.teams.C.w > 0 && m1.teams.C.w < m1.teams.A.w, "n=1: swing = league-pooled (no SD from one score); weight on actual > 0 but below a 4-game team's");
+  assert(m1.teams.C.mu > m1.teams.C.prior && m1.teams.C.mu < 140, "n=1: one big week pulls the rate up, but only part way (" + m1.teams.C.prior.toFixed(1) + " → " + m1.teams.C.mu.toFixed(1) + ", not 140)");
+  assert(m1.teams.B.sigma > m1.sigmaPool && m1.teams.A.sigma === m1.sigmaPool, "sigma: a wild team keeps its own bigger swing; a steady team is floored at the pooled swing (can't collapse)");
+  assert(m1.teams.B.w < m1.teams.A.w, "high-variance team: its average is less informative, so it shrinks harder toward the prior (" + m1.teams.B.w.toFixed(2) + " vs " + m1.teams.A.w.toFixed(2) + ")");
+  assert(T.simScoringModel({ A: [120], B: [130] }, { A: 3000, B: 3000 }, 0.05) === null, "every team at n=1 → no week-to-week swing measurable → simulator refuses (null), no guessed variance");
+  const flat = T.simScoringModel({ A: [118, 122], B: [121, 119], C: [119, 121] }, { A: 3000, B: 3000, C: 3000 }, 0.05); // identical means
+  assert(flat.tau2 === 0 && Object.values(flat.teams).every(x => x.w === 0 && x.muSd === 0), "tau² = 0 (observed spread fully explained by noise) → everyone at the talent line, no rate uncertainty");
+  const grow = [1, 2, 4, 8].map(n => T.simScoringModel({ ...base, C: Array(n).fill(0).map((_, i) => 140 + (i % 2 ? 6 : -6)) }, talent, 0.05).teams.C.w);
+  assert(grow.every((v, i) => i === 0 || v > grow[i - 1]), "prior weight decays as games pile up: weight on actual " + grow.map(v => v.toFixed(2)).join(" → "));
+  const mObs = T.simScoringModel(base, talent, null);
+  assert(mObs.slopeSrc === "observed" && mObs.slope >= 0, "no projections → talent→points slope fitted across teams, clamped ≥ 0 (" + mObs.slope.toFixed(4) + ")");
+
+  // --- decisions on title odds ---
+  T.inject(season, rosters, exclusions, tradeLog, unlockedProjections, null, matchups, histReal);
+  const Ls = T.leagueSim();
+  assert(Ls && Ls.model.slopeSrc === "projections" && Ls.model.slope > 0, "talent→points slope calibrated from player projections (" + Ls.model.slope.toFixed(4) + " pts/week per talent point)");
+  const dUp = T.simDelta({ [rosters.me]: 40 }), dUp2 = T.simDelta({ [rosters.me]: 80 });
+  assert(dUp > 0 && dUp2 > dUp, "more talent for me → higher title odds, monotone (" + (dUp * 100).toFixed(2) + " → " + (dUp2 * 100).toFixed(2) + " pp)");
+  const fav = Object.keys(Ls.byTeam).filter(t => t !== rosters.me).sort((a, b) => Ls.byTeam[b].champ - Ls.byTeam[a].champ)[0];
+  assert(T.simDelta({ [fav]: 80 }) < 0, "arming the title favourite (" + fav + ") costs me title odds");
+  assert(T.simDelta({}) === 0 && T.simDelta({ [rosters.me]: 40 }) === dUp, "no change → 0; repeated deltas are exact (common random numbers, memoized)");
+  const fastUp = T.simDeltaFast({ [rosters.me]: 40 });
+  assert(fastUp > 0 && Math.abs(fastUp - dUp) < Math.max(0.01, Math.abs(dUp) * 0.5), "fast gradient estimate tracks the exact re-sim (" + (fastUp * 100).toFixed(2) + " vs " + (dUp * 100).toFixed(2) + " pp)");
+  const simTrades = T.findTrades();
+  assert(simTrades.length > 0 && simTrades.every(t => t.dChamp > 0), "with the simulator on, every listed trade raises my title odds (" + simTrades.length + ")");
+  assert(isSorted(simTrades, t => t.ev) && simTrades.every(t => Math.abs(t.ev - t.dChamp * t.odds.p) < 1e-12), "trades ranked by EV = Δ title % × acceptance odds");
+  assert(simTrades.slice(0, 40).every(t => t.exact), "every trade near the top was re-simulated exactly (no gradient estimates on screen)");
+  const stS = T.tradeStats(simTrades[0].team, simTrades[0].giveName, simTrades[0].getName);
+  assert(stS && stS.exact && Math.abs(stS.dChamp - simTrades[0].dChamp) < 1e-12, "tradeStats reproduces the top deal's exact Δ title %");
+  assert(simTrades.every(t => t.odds.p === T.acceptOdds(t.theirGain, t.fairness).p), "acceptance odds still read the other side's roster-talent change (how managers judge offers)");
+  const trTxt = d.getElementById("tab-trades").textContent;
+  assert(/title [+−]\d+\.\d pp/.test(trTxt) && /change in your title odds/.test(trTxt), "Trades tab prices deals in title-odds points");
+  const lgTxt = d.getElementById("tab-league").textContent;
+  assert(/Title odds — who wins the league/.test(lgTxt) && !/Power ranking/.test(lgTxt) && /Roster talent \(ROS\)/.test(lgTxt), "League headline is title odds; roster talent demoted to a labeled column");
+  const lgR = [...d.querySelectorAll("#tab-league .gl .row")].map(r => { const v = x => { const s = x.textContent.trim(); return s.startsWith("<") ? 0.05 : parseFloat(s); }; return { c: v(r.children[2]), p: v(r.children[3]) }; });
+  assert(lgR.every((r, i) => i === 0 || r.c < lgR[i - 1].c || (r.c === lgR[i - 1].c && r.p <= lgR[i - 1].p + 1e-9)), "League rows sorted by title %, then playoff %");
+  assert(/Roster talent \(ROS\)/.test(d.getElementById("tab-strength").textContent) && !/<b>Overall<\/b>/.test(d.getElementById("tab-strength").innerHTML) && /Title %/.test(d.getElementById("tab-strength").textContent), "Strength tab: 'Overall' relabeled 'Roster talent (ROS)', title % beside it");
+  const leg = d.getElementById("legend").textContent;
+  assert(/Title %/.test(leg) && /Roster talent \(ROS\)/.test(leg) && /never ranks teams on its own/.test(leg) && !/the power ranking/.test(leg), "glossary defines title %, scoring rate, roster talent (as an input, not a ranking)");
+  const ssTxt = d.getElementById("tab-lineup").textContent;
+  if (T.simLeverage() != null && T.currentOpponent() && T.currentOpponent().opp) assert(/Title stakes this week/.test(ssTxt) && /swap = title|variance play/.test(ssTxt), "start/sit calls priced in title odds via this week's win odds × leverage");
+  const wb = T.waiverBoard().filter(b => b.drop && !["K","DST"].includes(b.fa.pos));
+  assert(wb.length && wb.every(b => typeof b.verdict.dChamp === "number"), "waiver board carries a Δ title % on every season-long add/drop");
+  T.setSettings(null); T.inject(season, rosters, exclusions, tradeLog, unlockedProjections, null, matchups, histReal);
+  assert(/Title odds unavailable — roster talent only/.test(d.getElementById("tab-league").textContent) && T.findTrades().every(t => t.dChamp == null), "no league settings → League tab says so, trades fall back to talent EV (nothing simulated on a guessed format)");
+  T.setSettings(settings); T.inject(season, rosters, exclusions, tradeLog, projections, null, matchups, histReal);
+  }
 
   console.log("\n--- POWER ---");
   [...d.querySelectorAll("#tab-league .row")].forEach(r => console.log(" ", r.textContent.replace(/\s+/g, " ").trim()));

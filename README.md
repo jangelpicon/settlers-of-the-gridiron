@@ -158,7 +158,7 @@ Live at the same site: `…/settlers-of-the-gridiron/season.html`. Reads
   (Sheldon records outcomes with `tools/trade_log.py <status> "<team>" "<give>" "<get>"`;
   `accepted` also applies the roster swap in `data/rosters.json`).
 - **Byes**: which week each starter is out and whether the bench covers it.
-- **League**: power ranking of every team's rest-of-season starters.
+- **League**: **title odds** — 10,000 simulated seasons (remaining real schedule → standings by win % + the league's tiebreaker → the playoff bracket from `data/settings.json`). Ranked by championship %, then playoff %, with projected seed. Each team's scoring rate is an empirical-Bayes blend of its actual weekly average and its roster talent (talent dominates early, real scoring takes over as weeks accumulate; the blend weight is estimated from the league's own scores). Roster talent (ROS) — the old power-ranking number — is shown as a labeled input column only. Trades, waiver claims and start/sit calls are priced as Δ your title % (re-simulated on the same random draws).
 
 Refresh data weekly (Tuesday after waivers, and again Sunday morning):
 

@@ -27,4 +27,15 @@ ok(me[0]["pos"] == "QB" and me[0]["team"] == "NE" and me[1]["pos"] == "DST" and 
 ok(me[2].get("ir") is True and not me[0].get("ir"), "IR slot flagged")
 ok(t["SACK OF WHEAT"][0]["team"] == "LAR", "LAR mapping")
 ok(sl.norm("Vikings D/ST") == sl.norm("Minnesota Vikings D/ST".replace("Minnesota ", "")) and sl.norm("Luther Burden III") == "lutherburden", "name normalisation matches the page's")
+SET = {"settings": {"name": "I got sheep FF", "size": 9, "scheduleSettings": {"matchupPeriodCount": 14, "playoffTeamCount": 5,
+    "matchupPeriods": {str(i): [i] for i in range(1, 18)}, "playoffMatchupPeriodLength": 1, "playoffMatchupPeriodLengthByRound": {},
+    "variablePlayoffMatchupPeriodLength": False, "playoffReseed": False, "playoffSeedingRule": "TOTAL_POINTS_SCORED", "playoffSeedingRuleBy": 0,
+    "divisions": [{"id": 0, "name": "League Standings", "size": 9}]}}}
+st = sl.parse_settings(SET)
+ok(st["regularSeasonWeeks"] == 14 and st["playoffTeamCount"] == 5 and st["playoffRounds"] == 3, "settings: 14-week regular season, 5 playoff teams -> 3 rounds")
+ok(st["playoffScoringPeriods"] == [[15], [16], [17]] and st["playoffRoundLengths"] == [1, 1, 1], "settings: playoff weeks = matchup periods after the regular season, 1 week per round")
+ok(st["playoffSeedingRule"] == "TOTAL_POINTS_SCORED" and st["playoffReseed"] is False and len(st["divisions"]) == 1, "settings: tiebreaker, reseed flag, divisions carried through")
+VAR = json.loads(json.dumps(SET)); VAR["settings"]["scheduleSettings"].update({"playoffTeamCount": 6, "variablePlayoffMatchupPeriodLength": True, "playoffMatchupPeriodLengthByRound": {"3": 2}})
+ok(sl.parse_settings(VAR)["playoffRoundLengths"] == [1, 1, 2], "settings: variable-length playoff rounds honoured (two-week final)")
+ok(sl.parse_settings({"settings": {"scheduleSettings": {"playoffTeamCount": 4}}}) is None, "settings: missing regular-season length -> None (no guessed format)")
 print("ALL SYNC TESTS PASSED" if not fails else f"{fails} FAILED"); sys.exit(1 if fails else 0)

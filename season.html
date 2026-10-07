@@ -46,7 +46,8 @@
   .row.grid .sub{grid-column:1 / -1;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 16px;align-items:center;font-size:.78rem;color:var(--text);padding:2px 0 2px 96px;white-space:normal;} .row.grid .sub .lbl{color:var(--muted);font-size:.64rem;text-transform:uppercase;letter-spacing:.3px;margin-right:4px;} .row.grid .sub .tag{white-space:normal;display:inline-block;line-height:1.3;padding:1px 6px;}
   .tbl .g4 .row.grid,.tbl .g4 .hrow{grid-template-columns:60px minmax(200px,1.2fr) 200px minmax(160px,1fr);min-width:620px;}
   .tbl .g3 .row.grid,.tbl .g3 .hrow{grid-template-columns:60px minmax(220px,1.5fr) minmax(160px,1fr);min-width:500px;}
-  .tbl .gl .row.grid,.tbl .gl .hrow{grid-template-columns:44px minmax(180px,1.5fr) 110px 130px;min-width:480px;}
+  .tbl .gl .row.grid,.tbl .gl .hrow{grid-template-columns:40px minmax(160px,1.5fr) 64px 72px 66px 56px 120px 70px 110px;min-width:860px;}
+  .tbl .gl.gl-fallback .row.grid,.tbl .gl.gl-fallback .hrow{grid-template-columns:44px minmax(180px,1.5fr) 110px 130px;min-width:480px;}
   .tbl .gt .row.grid,.tbl .gt .hrow{grid-template-columns:80px minmax(220px,1.5fr) 90px minmax(200px,1fr) 60px;min-width:640px;}
   .tbl .gd .row.grid,.tbl .gd .hrow{grid-template-columns:60px minmax(180px,1fr) minmax(180px,1fr) minmax(90px,.6fr) minmax(170px,1fr);min-width:700px;} .gd .row.grid .tag{text-align:center;}
   .tbl .gm .row.grid,.tbl .gm .hrow{grid-template-columns:44px minmax(140px,1.2fr) 52px minmax(140px,1.2fr) 52px 76px;min-width:560px;}
@@ -84,9 +85,11 @@
       <dt>Bye</dt><dd>The week his NFL team doesn't play.</dd>
       <dt>Status</dt><dd>Injury tag (Q = questionable, D = doubtful, OUT, IR) with his chance of playing; "locked" = his game already kicked off; BYE = off this week.</dd>
       <dt>Odds (start/sit)</dt><dd>Chance the bench player outscores the starter he would replace. Under 35% leave it; 35–55% coin flip, check news; over 55% the tool already swapped him in.</dd>
-      <dt>Your gain / their side (trades)</dt><dd>Change in rest-of-season lineup strength for each team if the trade happens. Strength = sum over your 9 starters of (420 − ROS rank), so +10 ≈ upgrading one starter by 10 rank spots.</dd>
-      <dt>EV (trades)</dt><dd>Your gain × the chance they say yes. The one number to sort trades by.</dd>
-      <dt>Strength (league)</dt><dd>Same rest-of-season lineup strength for every team; the power ranking. "This week" = that team's projected points with its best lineup.</dd>
+      <dt>Title % (league)</dt><dd><b>The ranking.</b> Chance a team wins the championship, from 10,000 simulated seasons: every remaining matchup on the real schedule, then the playoff bracket exactly as the league settings define it (playoff teams, seeding tiebreaker, reseeding). Playoff % = chance it makes the bracket; Proj seed = its average final standing (1 = top seed).</dd>
+      <dt>Scoring rate (league)</dt><dd>A team's expected points per week from here on: a blend of its <b>actual</b> weekly average and its <b>roster talent</b> converted to points. Early on talent carries more weight; every real week shifts the weight toward actual scoring (the % in brackets). The blend weight is measured from the league's own scores, not chosen.</dd>
+      <dt>Roster talent (ROS)</dt><dd>Paper strength: sum over a team's 9 best starters of (420 − rest-of-season rank), so +10 ≈ upgrading one starter by 10 rank spots. It is an <b>input</b> to the scoring rate — it ignores record and real scoring, so it never ranks teams on its own. "This week" = that team's projected points with its best lineup.</dd>
+      <dt>Title Δ (trades, waivers, start/sit)</dt><dd>How much a move changes <b>your</b> title %, re-simulated with both rosters' talent updated (same random seasons, so the difference is the move itself). Shown in percentage points (pp). Talent you / them = the roster-talent change on each side — the other manager judges the offer on that, so it drives the odds they accept.</dd>
+      <dt>EV (trades)</dt><dd>Title Δ × the chance they say yes. The one number to sort trades by.</dd>
       <dt>Win odds (matchup)</dt><dd>Chance your best lineup outscores theirs this week, from both teams' predicted totals and the usual week-to-week swing of every player involved.</dd>
       <dt>All-play (matchup)</dt><dd>What a team's record would be if it played <b>everyone</b> every week. Strips the schedule out: a 1-2 team with a 12-4 all-play has been good and unlucky.</dd>
       <dt>Luck (matchup)</dt><dd>Actual wins minus the wins the all-play record says the scores deserved. Positive = the schedule has been kind; negative = better than the record shows.</dd>
@@ -527,6 +530,252 @@
   }
   function lineupKey(){ return P ? "mu" : "wkRank"; }
 
+  // ================= Championship simulator =================
+  // The headline number: probability of winning the league. Self-contained block — the pure functions
+  // (simRng … simRun) take explicit inputs; leagueSim() at the bottom is the only piece that reads page
+  // state, and the rest of the page only calls leagueSim() / simDelta() / simLeverage().
+  //   1. Scoring model per team (simScoringModel): empirical-Bayes blend of the team's actual weekly scores
+  //      and a talent prior from strength() (roster talent, converted to points/week). The prior's weight is
+  //      not hand-set: tau² (how far true scoring rates sit from the talent line) and each team's sampling
+  //      noise (sigma²/n) are estimated from the league's own scores, so the prior dominates at low n and
+  //      decays toward observed scoring as games pile up.
+  //   2. Monte Carlo season (simRun): each sim draws every team's TRUE scoring rate from its posterior
+  //      (rate uncertainty is shared across all its weeks — that's what makes long-shot titles possible),
+  //      plays every remaining regular-season matchup as Normal(rate, sigma), ranks by win % then the
+  //      league's tiebreaker, seeds the bracket from data/settings.json and plays it out.
+  //   3. Decisions (simDelta): re-run with shifted rates on the SAME random draws (common random numbers),
+  //      so a trade's Δ title % is signal, not Monte Carlo noise.
+  const SIM_N = 10000, SIM_SEED = 20261006;
+  let SETTINGS = null; // data/settings.json (ESPN mSettings via tools/sync_league.py); null = no sim, page falls back to roster talent
+  function simRng(seed){ // mulberry32: tiny, fast, deterministic for a fixed seed
+    let a = seed>>>0;
+    return ()=>{ a = (a + 0x6D2B79F5)>>>0; let t = a; t = Math.imul(t ^ (t>>>15), t | 1); t ^= t + Math.imul(t ^ (t>>>7), t | 61); return ((t ^ (t>>>14))>>>0) / 4294967296; };
+  }
+  function simNormals(seed, count){ // Box–Muller standard normals
+    const rng = simRng(seed), out = new Float64Array(count);
+    for (let i=0;i<count;i+=2){
+      let u = rng(); while (u <= 0) u = rng();
+      const r = Math.sqrt(-2*Math.log(u)), th = 2*Math.PI*rng();
+      out[i] = r*Math.cos(th); if (i+1<count) out[i+1] = r*Math.sin(th);
+    }
+    return out;
+  }
+  // obs: {team: [weekly scores]} — every recorded score, sat weeks included (a lineup's output is evidence
+  // about its scoring rate whether or not it had an opponent). talent: {team: strength()}.
+  // slope: points/week per strength unit (calibrated outside), or null = fit across teams from obs.
+  function simScoringModel(obs, talent, slope){
+    const teams = Object.keys(talent);
+    const mean = a => a.reduce((s,x)=>s+x,0)/a.length;
+    const seen = teams.filter(t=>(obs[t]||[]).length>0);
+    if (!seen.length) return null;
+    let ss = 0, df = 0;
+    seen.forEach(t=>{ const y = obs[t]; if (y.length<2) return; const m = mean(y); y.forEach(v=>{ ss += (v-m)*(v-m); }); df += y.length-1; });
+    if (df < 1) return null; // no team has two scores yet: no way to measure week-to-week swing
+    const sigmaPool = Math.sqrt(ss/df);
+    // sigma_i: the team's own week-to-week SD, floored at the league-pooled SD so a thin or lucky-steady
+    // sample can't collapse the variance (n<2 → pooled).
+    const sigma = {};
+    teams.forEach(t=>{ const y = obs[t]||[]; let s = 0; if (y.length>=2){ const m = mean(y); s = Math.sqrt(y.reduce((a,v)=>a+(v-m)*(v-m),0)/(y.length-1)); } sigma[t] = Math.max(s, sigmaPool); });
+    const ybar = {}; seen.forEach(t=>{ ybar[t] = mean(obs[t]); });
+    const lgMean = mean(seen.map(t=>ybar[t])), sBar = mean(seen.map(t=>talent[t]));
+    let b = slope, slopeSrc = "projections", params = 1;
+    if (b==null || !(b>=0)){
+      const xs = seen.map(t=>talent[t]-sBar), ys = seen.map(t=>ybar[t]-lgMean);
+      const sxx = xs.reduce((a,x)=>a+x*x,0);
+      b = sxx>0 ? Math.max(0, xs.reduce((a,x,i)=>a+x*ys[i],0)/sxx) : 0; slopeSrc = "observed"; params = 2;
+    }
+    const prior = {}; teams.forEach(t=>{ prior[t] = lgMean + b*(talent[t]-sBar); });
+    // tau² by method of moments: spread of observed means around the talent line, minus the part that
+    // sampling noise alone explains. Positive-part: 0 means "the talent line explains everything so far".
+    let tau2 = 0;
+    if (seen.length > params){
+      const rss = seen.reduce((a,t)=>a+(ybar[t]-prior[t])*(ybar[t]-prior[t]),0)/(seen.length-params);
+      tau2 = Math.max(0, rss - mean(seen.map(t=>sigma[t]*sigma[t]/obs[t].length)));
+    }
+    const out = {};
+    teams.forEach(t=>{
+      const n = (obs[t]||[]).length, s2 = sigma[t]*sigma[t];
+      const w = n===0 || tau2===0 ? 0 : tau2/(tau2 + s2/n);          // weight on the team's own average
+      out[t] = { n, obsMean: n ? ybar[t] : null, prior: prior[t], w, mu: n ? w*ybar[t] + (1-w)*prior[t] : prior[t],
+        sigma: sigma[t], muSd: Math.sqrt(n===0 ? tau2 : w*s2/n) };   // posterior SD of the true rate
+    });
+    return { teams: out, lgMean, sBar, slope: b, slopeSrc, sigmaPool, tau2 };
+  }
+  // Standard bracket order for a 2^R field: [1,8,4,5,2,7,3,6] for 8. Seeds past the playoff count are byes.
+  function simBracketOrder(rounds){ let o = [1]; while (o.length < (1<<rounds)){ const m = o.length*2; o = o.flatMap(s=>[s, m+1-s]); } return o; }
+  // seeds: team indices, best seed first. score(team, round) → that team's playoff score. Ties go to the higher seed.
+  function simPlayoffs(seeds, rounds, reseed, score){
+    const P = seeds.length; if (!P) return -1; if (P===1 || rounds===0) return seeds[0];
+    const play = (a,b,r)=>{ const sa = score(a.t,r), sb = score(b.t,r); return sa>sb || (sa===sb && a.s<b.s) ? a : b; };
+    if (!reseed){
+      let cur = simBracketOrder(rounds).map(s=> s<=P ? { s, t: seeds[s-1] } : null);
+      for (let r=0;r<rounds;r++){
+        const nx = [];
+        for (let i=0;i<cur.length;i+=2){ const a = cur[i], b = cur[i+1]; nx.push(!a ? b : !b ? a : play(a,b,r)); }
+        cur = nx;
+      }
+      return cur[0].t;
+    }
+    let alive = seeds.map((t,i)=>({ s:i+1, t }));
+    for (let r=0;r<rounds && alive.length>1;r++){
+      alive.sort((a,b)=>a.s-b.s);
+      const field = r===0 ? Math.max(0, (1<<rounds) - P) : 0; // round-one byes for the top seeds
+      const nx = alive.slice(0, field), rest = alive.slice(field);
+      for (let i=0;i<rest.length/2;i++) nx.push(play(rest[i], rest[rest.length-1-i], r));
+      alive = nx;
+    }
+    alive.sort((a,b)=>a.s-b.s);
+    return alive[0].t;
+  }
+  // Rank by win % (9-team leagues: teams play different game counts), then points scored, then index.
+  function simSeedOrder(T, wins, games, pf){
+    const idx = []; for (let i=0;i<T;i++) idx.push(i);
+    return idx.sort((x,y)=>{ const d = wins[y]/(games[y]||1) - wins[x]/(games[x]||1); return d || (pf[y]-pf[x]) || (x-y); });
+  }
+  // spec: { teams[], mu[], muSd[], sigma[], w0[] (wins + ½ties), g0[], pf0[] (game points only — ESPN's
+  //   points-for excludes sat weeks), games: [[a,b,week]], playoffTeams, rounds, roundLengths[], reseed,
+  //   track: { team, game } | null }. Z: Float64Array of N*K standard normals (K = simWidth(spec)).
+  function simWidth(spec){ return spec.teams.length*(1 + spec.rounds) + 2*spec.games.length; }
+  function simRun(spec, Z, N, shift){
+    const T = spec.teams.length, G = spec.games.length, Rd = spec.rounds, K = simWidth(spec), base = T + 2*G;
+    const mu = spec.mu.map((m,i)=>m + (shift && shift[i] ? shift[i] : 0));
+    const champ = new Float64Array(T), poff = new Float64Array(T), seedSum = new Float64Array(T);
+    const theta = new Float64Array(T), wins = new Float64Array(T), gp = new Float64Array(T), pf = new Float64Array(T);
+    const tr = spec.track; let trWin = 0, trWinChamp = 0, trLossChamp = 0;
+    for (let s=0;s<N;s++){
+      const o = s*K;
+      for (let i=0;i<T;i++){ theta[i] = mu[i] + spec.muSd[i]*Z[o+i]; wins[i] = spec.w0[i]; gp[i] = spec.g0[i]; pf[i] = spec.pf0[i]; }
+      let myWon = null;
+      for (let g=0;g<G;g++){
+        const a = spec.games[g][0], b = spec.games[g][1];
+        const sa = theta[a] + spec.sigma[a]*Z[o+T+2*g], sb = theta[b] + spec.sigma[b]*Z[o+T+2*g+1];
+        pf[a] += sa; pf[b] += sb; gp[a]++; gp[b]++;
+        if (sa>sb) wins[a]++; else if (sb>sa) wins[b]++; else { wins[a] += .5; wins[b] += .5; }
+        if (tr && g===tr.game) myWon = (tr.team===a) ? sa>sb : sb>sa;
+      }
+      const order = simSeedOrder(T, wins, gp, pf);
+      for (let k=0;k<T;k++) seedSum[order[k]] += k+1;
+      const seeds = order.slice(0, Math.min(spec.playoffTeams, T));
+      seeds.forEach(t=>{ poff[t]++; });
+      const c = simPlayoffs(seeds, Rd, spec.reseed, (t,r)=>{ const L = spec.roundLengths[r]||1; return L*theta[t] + Math.sqrt(L)*spec.sigma[t]*Z[o+base+t*Rd+r]; });
+      if (c>=0) champ[c]++;
+      if (tr && myWon!=null){ if (myWon){ trWin++; if (c===tr.team) trWinChamp++; } else if (c===tr.team) trLossChamp++; }
+    }
+    const res = { N, champ: Array.from(champ, v=>v/N), playoff: Array.from(poff, v=>v/N), seed: Array.from(seedSum, v=>v/N) };
+    if (tr) res.track = { pWin: trWin/N, champIfWin: trWin ? trWinChamp/trWin : null, champIfLoss: N-trWin ? trLossChamp/(N-trWin) : null };
+    return res;
+  }
+
+  // ---- page adapter: the only part of the simulator that reads page state ----
+  // Talent → points: player-level fit of this week's projected points on ROS value (420 − rank) across every
+  // rostered, healthy, non-bye player. strength() sums the same per-player value over the starting nine,
+  // so this slope converts a team's strength into points/week without touching the game scores the
+  // posterior then blends in. No projections → null → simScoringModel fits it across teams instead.
+  function talentSlope(){
+    if (!P) return null;
+    const xs = [], ys = [];
+    Object.keys(R.teams).forEach(t=>teamOf(t).forEach(p=>{ if (p.ros!=null && p.mu!=null && !p.onBye && p.pPlay===1){ xs.push(rosVal(p)); ys.push(p.mu); } }));
+    if (xs.length < 20) return null;
+    const mx = xs.reduce((a,b)=>a+b,0)/xs.length, my = ys.reduce((a,b)=>a+b,0)/ys.length;
+    let sxy = 0, sxx = 0; xs.forEach((x,i)=>{ sxy += (x-mx)*(ys[i]-my); sxx += (x-mx)*(x-mx); });
+    const b = sxx>0 ? sxy/sxx : null;
+    return b!=null && b>0 ? b : null;
+  }
+  let SIMC = null; // cache: { key, out }
+  function simKey(){
+    if (!HIST || !SETTINGS || !R) return null;
+    // Everything strength()/the schedule depend on, without recomputing strength (called per trade candidate).
+    return JSON.stringify([R.me, R.teams, S && S.generated, S && S.week, P ? [P.generated, P.generatedMs] : null, X && (X.players||[]).length, HIST.currentWeek, HIST.schedule.map(r=>[r.w,r.home,r.away,r.hp,r.ap,r.winner]), SETTINGS]);
+  }
+  // → null when the sim can't run honestly (no settings, no schedule, <2 scores for any team), else
+  // { model, spec, Z, base, byTeam: {team: {champ, playoff, seed, mu, sigma, ...}}, leverage, why }.
+  function leagueSim(){
+    const key = simKey();
+    if (!key) return null;
+    if (SIMC && SIMC.key===key) return SIMC.out;
+    const out = buildLeagueSim();
+    SIMC = { key, out };
+    return out;
+  }
+  function buildLeagueSim(){
+    const st = SETTINGS, teams = Object.keys(R.teams);
+    const reg = st.regularSeasonWeeks, P0 = st.playoffTeamCount;
+    if (!reg || !P0) return null;
+    const talent = {}; teams.forEach(t=>{ talent[t] = strength(teamOf(t)); });
+    const AS = allScores(), obs = {}; teams.forEach(t=>{ obs[t] = []; });
+    Object.keys(AS).map(Number).sort((a,b)=>a-b).forEach(w=>{ if (w>reg) return; Object.keys(AS[w]).forEach(t=>{ if (obs[t]) obs[t].push(AS[w][t]); }); });
+    const model = simScoringModel(obs, talent, talentSlope());
+    if (!model) return null;
+    const ix = {}; teams.forEach((t,i)=>{ ix[t] = i; });
+    const w0 = teams.map(()=>0), g0 = teams.map(()=>0), pf0 = teams.map(()=>0), games = [];
+    let track = null;
+    HIST.schedule.forEach(r=>{
+      if (r.w>reg || r.home==null || r.away==null || ix[r.home]==null || ix[r.away]==null) return; // sat weeks: no W/L, no points-for
+      const a = ix[r.home], b = ix[r.away];
+      if (weekDone(r)){
+        g0[a]++; g0[b]++; pf0[a] += r.hp||0; pf0[b] += r.ap||0;
+        if (r.winner==="HOME") w0[a]++; else if (r.winner==="AWAY") w0[b]++; else if (r.winner==="TIE"){ w0[a] += .5; w0[b] += .5; }
+        else if (r.hp>r.ap) w0[a]++; else if (r.ap>r.hp) w0[b]++; else { w0[a] += .5; w0[b] += .5; }
+      } else {
+        if (HIST.currentWeek!=null && r.w===HIST.currentWeek && (r.home===R.me || r.away===R.me)) track = { team: ix[R.me], game: games.length };
+        games.push([a, b, r.w]);
+      }
+    });
+    const rounds = st.playoffRounds!=null ? st.playoffRounds : Math.ceil(Math.log2(P0));
+    const spec = { teams, mu: teams.map(t=>model.teams[t].mu), muSd: teams.map(t=>model.teams[t].muSd), sigma: teams.map(t=>model.teams[t].sigma),
+      w0, g0, pf0, games, playoffTeams: P0, rounds, roundLengths: st.playoffRoundLengths || [], reseed: !!st.playoffReseed, track };
+    const Z = simNormals(SIM_SEED, SIM_N*simWidth(spec));
+    const base = simRun(spec, Z, SIM_N, null);
+    const byTeam = {};
+    teams.forEach((t,i)=>{ byTeam[t] = { ...model.teams[t], talent: talent[t], champ: base.champ[i], playoff: base.playoff[i], seed: base.seed[i],
+      wins: w0[i], gamesPlayed: g0[i], pf: pf0[i], gamesLeft: games.filter(g=>g[0]===i||g[1]===i).length }; });
+    const tbKnown = !st.playoffSeedingRule || st.playoffSeedingRule==="TOTAL_POINTS_SCORED";
+    return { model, spec, Z, base, byTeam, leverage: base.track || null, tbKnown, divisionsIgnored: (st.divisions||[]).length>1 };
+  }
+  // Δ title % for MY team when team rates shift by talent changes: dS = {team: Δstrength}. Same draws as the
+  // baseline, so the difference is the move's effect, not resampling noise. A roster move changes the
+  // team's FUTURE rate by the full talent delta (slope × Δstrength) — past scores were the old roster's.
+  function simDelta(dS){
+    const L = leagueSim(); if (!L) return null;
+    const shift = L.spec.teams.map(t=> dS[t] ? L.model.slope*dS[t] : 0);
+    if (shift.every(v=>v===0)) return 0;
+    const k = shift.map(v=>v.toFixed(6)).join(",");
+    L.memo = L.memo || new Map();
+    if (L.memo.has(k)) return L.memo.get(k);
+    const me = L.spec.teams.indexOf(R.me);
+    const d = simRun(L.spec, L.Z, SIM_N, shift).champ[me] - L.base.champ[me];
+    L.memo.set(k, d);
+    return d;
+  }
+  // Fast first pass for big candidate lists (1,000+ trade combos): ∂(my title %)/∂(team rate), one forward
+  // difference per team on the same draws (+2 pts/week ≈ a typical trade's effect), cached per sim state.
+  // Only used to RANK candidates — every deal that reaches the screen is re-simulated exactly (simDelta).
+  const SIM_GRAD_H = 2;
+  function simDeltaFast(dS){
+    const L = leagueSim(); if (!L) return null;
+    if (!L.grad){
+      const me = L.spec.teams.indexOf(R.me);
+      L.grad = L.spec.teams.map((t,j)=>{ const sh = L.spec.teams.map((_,i)=>i===j?SIM_GRAD_H:0); return (simRun(L.spec, L.Z, SIM_N, sh).champ[me] - L.base.champ[me]) / SIM_GRAD_H; });
+    }
+    return L.spec.teams.reduce((a,t,j)=>a + (dS[t] ? L.grad[j]*L.model.slope*dS[t] : 0), 0);
+  }
+  // Title % swing riding on THIS week's head-to-head: P(title | win) − P(title | loss), from the baseline sim.
+  // A start/sit call that moves this week's win odds by Δp moves the title by ≈ leverage × Δp.
+  function simLeverage(){
+    const L = leagueSim(); if (!L || !L.leverage || L.leverage.champIfWin==null || L.leverage.champIfLoss==null) return null;
+    return L.leverage.champIfWin - L.leverage.champIfLoss;
+  }
+  function pct1(p){ return p==null ? "–" : (p*100 >= 99.95 ? "100" : p*100 < 0.05 && p>0 ? "<0.1" : (Math.round(p*1000)/10).toFixed(1))+"%"; }
+  function pp(d){ return d==null ? "–" : (d>=0?"+":"−")+(Math.abs(d)*100).toFixed(1)+" pp"; }
+  // Head-to-head win probability from two projected totals + variances (same normal model as the Matchup tab).
+  function simWinProb(myMu, myVar, opMu, opVar){ const s = Math.sqrt(myVar+opVar); return s>0 ? phi((myMu-opMu)/s) : (myMu>opMu?1:myMu<opMu?0:.5); }
+  // Δ title % of an add/drop: my roster talent changes by (with add, without drop) − now.
+  function waiverChamp(me, add, drop, fast){
+    if (!leagueSim()) return null;
+    const dS = strength(me.filter(p=>!drop || p.n!==drop.n).concat([add])) - strength(me);
+    return dS===0 ? 0 : (fast ? simDeltaFast({ [R.me]: dS }) : simDelta({ [R.me]: dS }));
+  }
+
   function myTeam(){ return R.teams[R.me].map(info); }
   function teamOf(name){ return R.teams[name].map(info); }
   function allRostered(){ const s = new Set(); Object.values(R.teams).forEach(t=>t.forEach(p=>s.add(norm(p.name)))); return s; }
@@ -620,16 +869,32 @@
 
   // ---------- Lineup tab ----------
   function decisions(me, slots, bench){
-    // For every bench player who could start, the starter he'd replace and the chance he outscores him.
+    // For every bench player who could start, the starter he'd replace and the chance he outscores him —
+    // plus the call in title terms: Δ this-week win odds (my lineup total vs the opponent's best) × the
+    // title-odds leverage riding on this week (P(title | win) − P(title | loss), championship simulator).
+    // Maximizing title odds this week = maximizing win odds, not points: an underdog wants variance.
+    const lev = P ? simLeverage() : null, cur = currentOpponent();
+    let ctx = null;
+    if (lev!=null && cur && cur.opp && R.teams[cur.opp]){
+      const th = optimalLineup(teamOf(cur.opp), "mu").slots;
+      const sum = (ss,f)=>ss.reduce((t,x)=>t+(x.p&&x.p.mu!=null?f(x.p):0),0);
+      ctx = { lev, myMu: sum(slots,p=>p.mu), myVar: sum(slots,p=>p.sd*p.sd), opMu: sum(th,p=>p.mu), opVar: sum(th,p=>p.sd*p.sd) };
+      ctx.pw = simWinProb(ctx.myMu, ctx.myVar, ctx.opMu, ctx.opVar);
+    }
     const out = [];
     bench.forEach(b=>{
       if (b.mu==null || b.onBye || undraftable(b) || b.locked) return; // a locked bench player can't come in anymore
       const cands = slots.filter(s=>s.p && !s.p.locked && (s.slot.replace(/\d$/,"")===b.pos || (s.slot==="FLEX" && FLEX.includes(b.pos))));
       if (!cands.length) return;
       const worst = cands.slice().sort((x,y)=>x.p.mu-y.p.mu)[0].p;
-      out.push({ bench:b, starter:worst, p: pBeats(b, worst) });
+      const d = { bench:b, starter:worst, p: pBeats(b, worst), dWin:null, dChamp:null };
+      if (ctx){
+        d.dWin = simWinProb(ctx.myMu - worst.mu + b.mu, ctx.myVar - worst.sd*worst.sd + b.sd*b.sd, ctx.opMu, ctx.opVar) - ctx.pw;
+        d.dChamp = ctx.lev * d.dWin;
+      }
+      out.push(d);
     });
-    return out.sort((a,b)=>b.p-a.p);
+    return out.sort((a,b)=> (a.dChamp!=null && b.dChamp!=null ? b.dChamp-a.dChamp : 0) || b.p-a.p);
   }
   function renderLineup(){
     const me = myTeam();
@@ -650,12 +915,17 @@
       const anyLive = slots.some(x=>x.p && x.p.actual!=null && x.p.gameState && x.p.gameState!=="pre");
       h += "<div class='muted' style='margin-top:8px'>"+(anyLive?"Total so far (actual points for started games, projections for the rest): ":"Projected total for this lineup: ")+"<b>"+total.toFixed(1)+"</b> points.</div>";
       const dec = decisions(me, slots, bench);
-      h += "<h3>Start/sit calls</h3><div class='muted' style='margin-bottom:6px'>Chance a bench player outscores the starter he would replace. Under 35% = leave it alone; 35–55% = genuine coin flip, check Sunday-morning news; over 55% = the tool already swapped him in.</div>";
+      const levNow = simLeverage();
+      h += "<h3>Start/sit calls</h3><div class='muted' style='margin-bottom:6px'>Chance a bench player outscores the starter he would replace. Under 35% = leave it alone; 35–55% = genuine coin flip, check Sunday-morning news; over 55% = the tool already swapped him in."+(levNow!=null?" <b>Title stakes this week:</b> a win is worth "+pp(levNow)+" of title odds over a loss, so each swap is also priced in title odds (via its change to your win odds — what matters is beating this opponent, not raw points).":"")+"</div>";
       if (!dec.length) h += "<div class='muted'>No bench player is close to a starter.</div>";
       else h += "<div class='tbl'><div class='gd'><div class='hrow'><span title='Chance the bench player outscores the starter'>Odds</span><span>Bench player (proj ± swing)</span><span>Starter he'd replace (proj ± swing)</span><span></span><span>Verdict</span></div>";
       dec.forEach(d=>{
         const pct = Math.round(d.p*100); const cls = pct>=45?"warn":pct>=30?"":"good";
-        const verdict = pct>=45 ? "coin flip — check news before lock" : pct>=30 ? "lean starter" : "clear: keep the starter";
+        let verdict = pct>=45 ? "coin flip — check news before lock" : pct>=30 ? "lean starter" : "clear: keep the starter";
+        if (d.dChamp!=null){
+          verdict += " · swap = title "+pp(d.dChamp)+" (win odds "+(d.dWin>=0?"+":"−")+Math.abs(d.dWin*100).toFixed(1)+")";
+          if (d.dChamp > 0) verdict = "<b>variance play — starting him raises your win odds</b> (you're the underdog; his wider range helps) · title "+pp(d.dChamp);
+        }
         h += "<div class='row grid'><span class='tag "+cls+"' style='text-align:center'>"+pct+"%</span><b class='c'>"+esc(d.bench.name)+" <span class='muted'>("+d.bench.mu.toFixed(1)+" ± "+d.bench.sd.toFixed(1)+")</span></b><span class='c'>over "+esc(d.starter.name)+" <span class='muted'>("+d.starter.mu.toFixed(1)+" ± "+d.starter.sd.toFixed(1)+")</span></span><span class='bar'><i style='width:"+pct+"%'></i></span><span class='muted'>"+verdict+(d.starter.locked?" · starter already locked":"")+"</span></div>";
       });
       if (dec.length) h += "</div></div>";
@@ -834,9 +1104,13 @@
   function waiverSuggestions(me, bench, fa){
     const board = waiverBoard(me, bench, fa.filter(f=>f.ros!=null && !["K","DST"].includes(f.pos)));
     const N = teamNeeds();
-    const toItem = b => ({ drop:b.drop, add:b.fa, gain:b.verdict.rosDelta, agree: b.verdict.seasonDelta!=null, seasonDelta: b.verdict.seasonDelta, fit: fitNote(b.fa, me), need: N.needPos.has(b.fa.pos) });
-    // Clean fits first, then adds at a position of need, then raw season-long gain.
-    const byFitThenGain = (a,b)=> ((a.fit?1:0)-(b.fit?1:0)) || ((b.need?1:0)-(a.need?1:0)) || (b.gain-a.gain);
+    const toItem = b => ({ drop:b.drop, add:b.fa, gain:b.verdict.rosDelta, agree: b.verdict.seasonDelta!=null, seasonDelta: b.verdict.seasonDelta, fit: fitNote(b.fa, me), need: N.needPos.has(b.fa.pos),
+      dChamp: ["add","marginal"].includes(b.verdict.key) ? waiverChamp(me, b.fa, b.drop, false) : null });
+    // Clean fits first, then Δ title % (the objective), then adds at a position of need, then raw season-long gain.
+    // The season-long rule stays the GATE (it values bench depth the simulator can't see — the talent score only
+    // counts the starting nine, so a pure depth add reads +0 title); title odds decide the ORDER.
+    const dc = x => x.dChamp!=null ? x.dChamp : 0;
+    const byFitThenGain = (a,b)=> ((a.fit?1:0)-(b.fit?1:0)) || (dc(b)-dc(a)) || ((b.need?1:0)-(a.need?1:0)) || (b.gain-a.gain);
     const sugg = board.filter(b=>b.verdict.key==="add").map(toItem).sort(byFitThenGain);
     const marginal = board.filter(b=>b.verdict.key==="marginal").map(toItem).sort(byFitThenGain);
     chainClaims(sugg, me, bench);
@@ -894,7 +1168,9 @@
     return { key:"pass", rosDelta, seasonDelta, text:"pass — worse than "+drop.name+" for the season ("+rosDelta+" spots)" };
   }
   function waiverBoard(me, bench, fa){
-    return fa.map(f=>{ const drop = dropCandidate(bench, me, f); return { fa:f, drop, verdict: dropVerdict(f, drop) }; });
+    return fa.map(f=>{ const drop = dropCandidate(bench, me, f); const verdict = dropVerdict(f, drop);
+      if (drop && !["K","DST"].includes(f.pos)){ const d = waiverChamp(me, f, drop, true); if (d!=null) verdict.dChamp = d; }
+      return { fa:f, drop, verdict }; });
   }
   // Weekly K/DST claims for the claim sheet. For DST and K: take your best playable one this week and the best
   // free agent, and surface a claim when (a) you have no one this week (bye/empty slot), or (b) the free agent is
@@ -922,7 +1198,7 @@
     const v = b.verdict; const cls = v.key==="add"?"good":v.key==="marginal"||v.key==="rental"?"warn":"";
     const wkly = ["K","DST"].includes(b.fa.pos);
     const drop = b.drop ? "<b>"+esc(b.drop.name)+"</b> <span class='muted'>"+b.drop.pos+" · ROS #"+(b.drop.ros!=null?b.drop.ros:"–")+(b.drop.seasonProj!=null?" · "+b.drop.seasonProj.toFixed(0)+" season pts":"")+(wkly && b.drop.mu!=null?" · "+b.drop.mu.toFixed(1)+" proj this week":"")+"</span>" : "<span class='muted'>nobody</span>";
-    return "<div class='row grid'>"+playerLine(b.fa, tag||"", "FA")+next4Detail(b.fa)+"<span class='sub'><span><span class='lbl' title='"+esc(WCOLS[0][1])+"'>"+WCOLS[0][0]+":</span> "+drop+"</span><span><span class='lbl' title='"+esc(WCOLS[1][1])+"'>"+WCOLS[1][0]+":</span> <span class='tag "+cls+"'>"+esc(v.text)+"</span></span></span></div>";
+    return "<div class='row grid'>"+playerLine(b.fa, tag||"", "FA")+next4Detail(b.fa)+"<span class='sub'><span><span class='lbl' title='"+esc(WCOLS[0][1])+"'>"+WCOLS[0][0]+":</span> "+drop+"</span><span><span class='lbl' title='"+esc(WCOLS[1][1])+"'>"+WCOLS[1][0]+":</span> <span class='tag "+cls+"'>"+esc(v.text)+"</span>"+(v.dChamp!=null?" <span class='muted' title='Change in your title odds from this add/drop (championship simulator; estimate)'>title "+pp(v.dChamp)+"</span>":"")+"</span></span></div>";
   }
   function excluded(){ const s = new Set(); (X.players||[]).forEach(p=>s.add(norm(p.name))); return s; }
   function freeAgents(){
@@ -949,7 +1225,7 @@
       const player = (p, dropSide) => "<b"+(dropSide?"":" class='hl'")+">"+esc(p.name)+"</b>, "+esc(p.team||"?")+" "+p.pos+" <span class='muted'>(ROS "+(p.ros!=null?"#"+p.ros:"unranked")+(p.seasonProj!=null?", "+p.seasonProj.toFixed(0)+" season pts":"")+(p.inj?", "+esc(p.inj.code):"")+")</span>";
       sugg.slice(0,6).forEach(s=>{
         pri++;
-        let note = "+"+s.gain+" rest-of-season spots"+(s.seasonDelta!=null?" · "+(s.seasonDelta>=0?"+":"")+s.seasonDelta+" projected season points":" · ESPN season projection missing for one of them")+" — "+(s.agree?"both sources agree":"rank only");
+        let note = (s.dChamp!=null ? "title "+pp(s.dChamp)+(s.dChamp===0?" (depth only — doesn't crack your starting nine)":"")+" · " : "")+"+"+s.gain+" rest-of-season spots"+(s.seasonDelta!=null?" · "+(s.seasonDelta>=0?"+":"")+s.seasonDelta+" projected season points":" · ESPN season projection missing for one of them")+" — "+(s.agree?"both sources agree":"rank only");
         if (s.chain && !s.chain.worth) note += " · no backup row: if "+esc(s.drop.name)+" is already gone, the next man up ("+esc(s.chain.drop.name)+" #"+s.chain.drop.ros+") isn't worth dropping for him, so this claim just fails";
         h += "<div class='suggest'><b>Priority "+pri+"</b> · ➕ Add "+player(s.add)+" &nbsp;➖ Drop "+player(s.drop,true)+(s.need?" <span class='tag good'>fills a need: "+s.add.pos+"</span>":"")+"<br><span class='muted'>"+note+"</span>"+(s.fit?"<br><span class='tag warn'>"+esc(s.fit)+"</span>":"")+"</div>";
         if (s.chain && s.chain.worth){
@@ -969,7 +1245,7 @@
         h += "<div class='suggest'><b>Priority "+pri+"</b> · ➕ Add "+wkLine(s.add)+" &nbsp;➖ Drop "+dropHtml+" <span class='tag good'>weekly "+s.pos+"</span><br><span class='muted'>"+note+"</span></div>";
       });
     }
-    marginal.slice(0,4).forEach(s=>{ h += "<div class='suggest'>⚖️ <b class='hl'>Marginal: "+esc(s.add.name)+"</b> ("+s.add.pos+", ROS #"+s.add.ros+(s.add.seasonProj!=null?", ESPN season "+s.add.seasonProj.toFixed(0)+" pts":"")+") over "+esc(s.drop.name)+" (ROS #"+s.drop.ros+(s.drop.seasonProj!=null?", "+s.drop.seasonProj.toFixed(0)+" pts":"")+")<br><span class='muted'>+"+s.gain+" rest-of-season spots"+(s.seasonDelta!=null?" · "+(s.seasonDelta>=0?"+":"")+s.seasonDelta+" projected season points":"")+" — under the "+ROS_MARGIN+"-spot bar, so not worth the churn unless you want that position's depth</span>"+(s.fit?"<br><span class='tag warn'>"+esc(s.fit)+"</span>":"")+"</div>"; });
+    marginal.slice(0,4).forEach(s=>{ h += "<div class='suggest'>⚖️ <b class='hl'>Marginal: "+esc(s.add.name)+"</b> ("+s.add.pos+", ROS #"+s.add.ros+(s.add.seasonProj!=null?", ESPN season "+s.add.seasonProj.toFixed(0)+" pts":"")+") over "+esc(s.drop.name)+" (ROS #"+s.drop.ros+(s.drop.seasonProj!=null?", "+s.drop.seasonProj.toFixed(0)+" pts":"")+")<br><span class='muted'>"+(s.dChamp!=null?"title "+pp(s.dChamp)+" · ":"")+"+"+s.gain+" rest-of-season spots"+(s.seasonDelta!=null?" · "+(s.seasonDelta>=0?"+":"")+s.seasonDelta+" projected season points":"")+" — under the "+ROS_MARGIN+"-spot bar, so not worth the churn unless you want that position's depth</span>"+(s.fit?"<br><span class='tag warn'>"+esc(s.fit)+"</span>":"")+"</div>"; });
     const dorder = dropOrder(me, bench);
     if (dorder.length){
       h += "<h3>Your drop order</h3><div class='muted' style='margin-bottom:6px'>Least season-long value first — when a claim needs a roster spot, this is the sequence. Claim 1 costs #1; land a second add and it costs #2, and so on. Your kicker and defense only ever swap for another K/DST, your QB for a QB, and starters are never drop candidates. <b>Scarcity guard:</b> your only bench player at a position never drops for a different position — depth you can't replace beats a player who'd never crack your lineup.</div>";
@@ -1004,17 +1280,31 @@
 
   // ---------- Trades tab ----------
   // Shared math for any deal shape (each side one player or a two-player package), vs CURRENT rosters.
-  function dealStats(me, them, gives, gets, myBase, theirBase){
+  // OBJECTIVE: my Δ title % (championship simulator, both rosters' talent changed). Roster talent stays as
+  // (a) the cheap prefilter and (b) the other side's view — managers judge offers on paper value, so
+  // acceptOdds() keeps reading theirGain. fast=true ranks with the gradient; refineDeal() makes it exact.
+  // No simulator (no settings / schedule yet) → falls back to the old talent EV, flagged by dChamp==null.
+  function dealStats(me, them, gives, gets, myBase, theirBase, team, fast){
     const gN = new Set(gives.map(p=>p.n)), tN = new Set(gets.map(p=>p.n));
     const myGain = strength(me.filter(p=>!gN.has(p.n)).concat(gets)) - myBase;
     const theirGain = strength(them.filter(p=>!tN.has(p.n)).concat(gives)) - theirBase;
     // People judge a package by its biggest name: best consensus rank on each side.
     const fairness = Math.min(...gives.map(p=>p.ros!=null?p.ros:ROS_MAX)) - Math.min(...gets.map(p=>p.ros!=null?p.ros:ROS_MAX));
     const odds = acceptOdds(theirGain, fairness);
+    const dS = team ? { [R.me]: myGain, [team]: theirGain } : null;
+    const dChamp = dS ? (fast ? simDeltaFast(dS) : simDelta(dS)) : null;
     return { gives, gets, give:gives[0], get:gets[0],
       giveName: gives.map(p=>p.name).join(" + "), getName: gets.map(p=>p.name).join(" + "),
-      myGain, theirGain, fairness, odds, ev: Math.round(myGain*odds.p*10)/10 };
+      myGain, theirGain, fairness, odds, dChamp, exact: dChamp!=null && !fast,
+      ev: dChamp!=null ? dChamp*odds.p : Math.round(myGain*odds.p*10)/10 };
   }
+  function refineDeal(t){
+    if (t.exact || t.dChamp==null) return t;
+    t.dChamp = simDelta({ [R.me]: t.myGain, [t.team]: t.theirGain }); t.exact = true; t.ev = t.dChamp*t.odds.p;
+    return t;
+  }
+  // Δ title % for display: "+1.2 pp title" — or the talent number when the simulator is off.
+  function champTxt(st){ return st.dChamp!=null ? "title "+pp(st.dChamp)+(st.exact?"":" (est.)") : "your gain +"+st.myGain; }
   // Numbers for one specific deal against the CURRENT rosters (used for open proposals and the log).
   // give/get accept a single name or an "A + B" package string on either side.
   function tradeStats(team, giveName, getName){
@@ -1023,7 +1313,7 @@
     const gives = parseDeal(giveName).map(x=>me.find(p=>p.n===norm(x)));
     const gets = parseDeal(getName).map(x=>them.find(p=>p.n===norm(x)));
     if (!gives.length || !gets.length || gives.some(x=>!x) || gets.some(x=>!x)) return null;
-    return dealStats(me, them, gives, gets, strength(me), strength(them));
+    return dealStats(me, them, gives, gets, strength(me), strength(them), team, false);
   }
   // 1-for-1 swaps AND 2-for-2 packages, one list. Keep only trades where my ROS starting
   // strength goes up AND theirs doesn't go down by more than a sliver (so it's acceptable).
@@ -1040,7 +1330,7 @@
         const gN = new Set(gives.map(p=>p.n));
         const myGain = strength(me.filter(p=>!gN.has(p.n)).concat(gets)) - myBase;
         if (myGain <= 0) return; // cheap half first: most combos don't help me
-        const st = dealStats(me, them, gives, gets, myBase, theirBase);
+        const st = dealStats(me, them, gives, gets, myBase, theirBase, t, true);
         if (st.theirGain < -12) return; // no realistic pitch
         const prior = logEntry(t, st.giveName, st.getName);
         if (prior && prior.status!=="withdrawn") return; // already proposed / declined / accepted — shown in the log, not here
@@ -1051,10 +1341,30 @@
         for (let a=0;a<thC.length;a++) for (let b=a+1;b<thC.length;b++)
           consider([myC[i],myC[j]],[thC[a],thC[b]]);
     });
-    // One list: expected value = what I gain × how likely they say yes. On ties, the
+    // One list: expected value = Δ my title % × how likely they say yes. On ties, the
     // simpler deal first — a 2-for-2 must beat the 1-for-1 at its core to outrank it.
-    out.sort((a,b)=> b.ev - a.ev || b.myGain - a.myGain || (a.gives.length+a.gets.length) - (b.gives.length+b.gets.length));
-    return out;
+    const ord = (a,b)=> b.ev - a.ev || b.myGain - a.myGain || (a.gives.length+a.gets.length) - (b.gives.length+b.gets.length);
+    out.sort(ord);
+    if (!out.length || out[0].dChamp==null) return out; // simulator off: talent EV, as before
+    // Exact re-sim for everything that can reach the screen: the top of the list plus each team's top
+    // three core deals (the by-team panel). Then drop deals that don't raise my title odds — a talent
+    // upgrade that hands a contender more than it gives me is a losing trade.
+    const coreKey = t => t.team+"|"+t.gets.map(p=>p.n).sort()[0]+"|"+t.gives.map(p=>p.n).sort()[0];
+    const perTeam = {}, seenCore = new Set();
+    out.forEach((t,i)=>{
+      if (i < 40){ refineDeal(t); return; }
+      const k = coreKey(t); if (seenCore.has(k)) return; seenCore.add(k);
+      perTeam[t.team] = (perTeam[t.team]||0) + 1;
+      if (perTeam[t.team] <= 3) refineDeal(t);
+    });
+    let res = out.filter(t=>t.dChamp > 0).sort(ord);
+    for (let pass=0; pass<1000; pass++){ // exact values reorder the list; keep refining until the visible top is all exact
+      const pend = res.slice(0, 40).filter(t=>!t.exact);
+      if (!pend.length) break;
+      pend.forEach(refineDeal);
+      res = res.filter(t=>t.dChamp > 0).sort(ord);
+    }
+    return res;
   }
   // ---------- Surplus: bench players who can't help me but would start for someone else ----------
   // findTrades() only keeps deals that upgrade MY starting nine, so a bench QB with real market
@@ -1099,10 +1409,12 @@
         if (!st || st.theirGain < -3) return;
         const prior = logEntry(b.team, st.giveName, st.getName);
         if (prior && prior.status!=="withdrawn") return;
-        deals.push({ team:b.team, get:q, st, need: N.needPos.has(q.pos) });
+        deals.push({ team:b.team, get:q, st, need: N.needPos.has(q.pos), dChamp: st.dChamp });
       });
     });
-    deals.sort((a,b)=> ((b.need?1:0)-(a.need?1:0)) || rosVal(b.get)-rosVal(a.get));
+    // Within need/no-need: the sell that costs my title odds least (sell to a non-contender), then what comes back.
+    const dc = d => d.dChamp!=null ? d.dChamp : 0;
+    deals.sort((a,b)=> ((b.need?1:0)-(a.need?1:0)) || (dc(b)-dc(a)) || rosVal(b.get)-rosVal(a.get));
     return deals.slice(0,3);
   }
   // One ranked queue across every surplus player: the order to actually send the offers.
@@ -1115,7 +1427,8 @@
     const N = teamNeeds();
     let all = [];
     findSurplus().forEach(sp=> surplusDeals(sp, N).forEach(dl=> all.push({ sp, ...dl, score: Math.round(rosVal(dl.get)*dl.st.odds.p) })));
-    all.sort((a,b)=> ((b.sp.dead?1:0)-(a.sp.dead?1:0)) || ((b.need?1:0)-(a.need?1:0)) || b.score-a.score);
+    const dc = d => d.dChamp!=null ? d.dChamp : 0;
+    all.sort((a,b)=> ((b.sp.dead?1:0)-(a.sp.dead?1:0)) || ((b.need?1:0)-(a.need?1:0)) || (dc(b)-dc(a)) || b.score-a.score);
     const seen = new Set();
     return all.filter(d=>{ const k = d.team+"|"+d.get.n; if (seen.has(k)) return false; seen.add(k); return true; });
   }
@@ -1151,7 +1464,9 @@
   function statsLine(st){
     if (!st) return "<span class='muted'>stats n/a — a player in this deal is no longer on the roster I have; tell Sheldon if rosters changed</span>";
     const oddsCls = st.odds.p>=0.7?"good":st.odds.p>=0.45?"warn":"bad";
-    return "<span class='muted'>give "+st.gives.map(playerBrief).join(" + ")+" · get "+st.gets.map(playerBrief).join(" + ")+"<br>your gain +"+st.myGain+" · their side "+(st.theirGain>=0?"+":"")+st.theirGain+" <span class='tag "+oddsCls+"'>"+st.odds.label+"</span> · EV "+st.ev+"</span>";
+    const nums = st.dChamp!=null ? champTxt(st)+" · roster talent you +"+st.myGain+" / them "+(st.theirGain>=0?"+":"")+st.theirGain
+      : "your gain +"+st.myGain+" · their side "+(st.theirGain>=0?"+":"")+st.theirGain;
+    return "<span class='muted'>give "+st.gives.map(playerBrief).join(" + ")+" · get "+st.gets.map(playerBrief).join(" + ")+"<br>"+nums+" <span class='tag "+oddsCls+"'>"+st.odds.label+"</span> · EV "+(st.dChamp!=null?pp(st.ev):st.ev)+"</span>";
   }
   function daysSince(d){ if (!d) return null; const ms = Date.now() - Date.parse(d+"T12:00:00"); return Math.max(0, Math.round(ms/86400000)); }
   function renderTrades(){
@@ -1166,8 +1481,9 @@
         h += "<div class='suggest'>⏳ <b class='hl'>"+esc(e.team)+":</b> you give <b>"+esc(e.give)+"</b> for <b>"+esc(e.get)+"</b> <span class='muted'>· sent "+esc(e.date)+(ds!=null?" · waiting "+ds+"d":"")+"</span><br>"+statsLine(st)+"<br>"+tradeButtons({team:e.team,give:e.give,get:e.get,theirGain:st?st.theirGain:e.theirGain},["accepted","declined","countered","withdrawn"])+"</div>";
       });
       const sumMy = open.reduce((s,e)=>{ const st = tradeStats(e.team,e.give,e.get); return s + (st?st.myGain:0); },0);
+      const sumCh = open.reduce((s,e)=>{ const st = tradeStats(e.team,e.give,e.get); return s==null||!st||st.dChamp==null ? null : s + st.dChamp; },0);
       const expAcc = open.reduce((s,e)=>{ const st = tradeStats(e.team,e.give,e.get); return s + (st?st.odds.p:0); },0);
-      h += "<div class='muted' style='margin-top:6px'>If everything landed: +"+sumMy+" lineup strength · expected acceptances "+expAcc.toFixed(1)+" of "+open.length+"</div>";
+      h += "<div class='muted' style='margin-top:6px'>If everything landed: "+(sumCh!=null?"title "+pp(sumCh)+" (sum of each deal alone) · ":"")+"+"+sumMy+" roster talent · expected acceptances "+expAcc.toFixed(1)+" of "+open.length+"</div>";
       h += "<button class='tb tb-declined' id='declineAll'>All declined</button> <span class='muted'>marks every open proposal declined (each team's floor goes up accordingly)</span></div>";
     }
     const N = teamNeeds();
@@ -1191,12 +1507,12 @@
       const fills = dealFills(t);
       const topNeed = N.needs.length && fills.some(f=>f.up && f.slot===N.needs[0].slot);
       return "<div class='suggest'><b class='hl'>"+esc(t.team)+":</b> give "+dealSide(t.gives)+" for "+dealSide(t.gets)+" <span class='tag "+oddsCls+"'>"+t.odds.label+"</span>"+(topNeed?" <span class='tag good'>🎯 fills your biggest need</span>":"")+injRepriceTag(t.gets)+
-        "<br><span class='muted'>your gain +"+t.myGain+" · their side "+(t.theirGain>=0?"+":"")+t.theirGain+" · expected value "+t.ev+(fills.length?" · lineup: "+esc(fills.map(f=>(f.up?"↑ ":"↓ ")+f.txt).join(" · ")):"")+"</span><br>"+
+        "<br><span class='muted'>"+(t.dChamp!=null ? champTxt(t)+" · roster talent you +"+t.myGain+" / them "+(t.theirGain>=0?"+":"") : "your gain +"+t.myGain+" · their side "+(t.theirGain>=0?"+":""))+t.theirGain+" · expected value "+(t.dChamp!=null?pp(t.ev):t.ev)+(fills.length?" · lineup: "+esc(fills.map(f=>(f.up?"↑ ":"↓ ")+f.txt).join(" · ")):"")+"</span><br>"+
         tradeButtons(t, ["proposed","declined","accepted"])+"</div>";
     };
     // ---- The plan: tiered, in the order to actually try them ----
     h += "<div class='panel'><h2>The plan — deals in the order to try them</h2>"+
-      "<div class='muted' style='margin-bottom:6px'>Tier 1 is the offer to send first: the biggest gain at your biggest need. Tier 2 is the counter ladder — the same target paid for differently — for when Tier 1 comes back declined. Tier 3 is the cheapest deal that still fixes the need, the fallback when the target proves unavailable. Tier 4 helps the lineup without touching the top need. Expected value = your gain × their odds of accepting.</div>";
+      "<div class='muted' style='margin-bottom:6px'>Tier 1 is the offer to send first: the biggest gain at your biggest need. Tier 2 is the counter ladder — the same target paid for differently — for when Tier 1 comes back declined. Tier 3 is the cheapest deal that still fixes the need, the fallback when the target proves unavailable. Tier 4 helps the lineup without touching the top need. Expected value = the change in <b>your title odds</b> (championship simulator, both rosters updated) × their odds of accepting. Only deals that raise your title odds are listed — a talent upgrade that hands a contender more than it gives you is a losing trade.</div>";
     h += needsStrip(N);
     if (!deduped.length) h += "<div class='muted'>No trade that helps you found right now.</div>";
     const needSlot = N.needs.length ? N.needs[0].slot : null;
@@ -1223,13 +1539,13 @@
         "<div class='muted' style='margin-bottom:6px'>The deal lists above only show trades that upgrade your starting nine, so a valuable backup never appears in them — which can read as \"hold everyone.\" Don't. These players never crack your optimal lineup; the ones marked <b>dead weight</b> can't even cover a bye or injury because better bodies already sit ahead of them. Every week they stay, a roster spot is frozen.</div>";
       const queue = allSurplusDeals();
       h += "<h3>Sell queue — in the order to send them</h3>"+
-        "<div class='muted' style='margin-bottom:6px'>Ranked: dead-weight sells first (the frozen spot costs you more than the player), then deals returning cover at a need position, then by expected return (what comes back × odds they accept). When several of your players could buy the same piece, only the cheapest payment is shown.</div>";
+        "<div class='muted' style='margin-bottom:6px'>Ranked: dead-weight sells first (the frozen spot costs you more than the player), then deals returning cover at a need position, then by <b>title-odds cost</b> (every sell arms the buyer — sell to the team whose upgrade hurts your title odds least), then by expected return (what comes back × odds they accept). When several of your players could buy the same piece, only the cheapest payment is shown.</div>";
       if (!queue.length) h += "<div class='muted'>No clean 1-for-1 sell right now — offer the surplus straight up for a future favor, or package it onto a bigger deal above.</div>";
       queue.forEach((d,i)=>{
         const oddsCls = d.st.odds.p>=0.7?"good":d.st.odds.p>=0.45?"warn":"bad";
         h += "<div class='suggest'><b class='hl'>#"+(i+1)+" · "+esc(d.team)+":</b> give <b>"+esc(d.sp.p.name)+"</b> ("+d.sp.p.pos+" ROS #"+d.sp.p.ros+")"+injBadge(d.sp.p)+" for <b>"+esc(d.get.name)+"</b> ("+d.get.pos+" ROS #"+d.get.ros+")"+injBadge(d.get)+" "+
           (d.sp.dead?"<span class='tag bad'>dead weight — can never start for you</span> ":"")+(d.need?"<span class='tag good'>🎯 cover at a need position</span> ":"")+"<span class='tag "+oddsCls+"'>"+d.st.odds.label+"</span>"+injRepriceTag([d.get])+
-          "<br><span class='muted'>their side "+(d.st.theirGain>=0?"+":"")+d.st.theirGain+" (he starts for them) · expected return "+d.score+"</span><br>"+
+          "<br><span class='muted'>"+(d.dChamp!=null?"title "+pp(d.dChamp)+" (arming "+esc(d.team)+" costs you this much) · ":"")+"their side "+(d.st.theirGain>=0?"+":"")+d.st.theirGain+" (he starts for them) · expected return "+d.score+"</span><br>"+
           tradeButtons({team:d.team, give:d.sp.p.name, get:d.get.name, theirGain:d.st.theirGain}, ["proposed","declined","accepted"])+"</div>";
       });
       h += "<h3>Status board</h3>";
@@ -1256,8 +1572,8 @@
     const hist = TL.filter(e=>e.status!=="proposed").sort((a,b)=> (b.date||"").localeCompare(a.date||""));
     h += "<div class='panel'><h2>Trade log</h2><div class='muted' style='margin-bottom:6px'>Declines teach the model: a team that said no needs a better deal next time. Accepted trades update the rosters on this page right away — also tell Sheldon so the weekly runs use the new rosters.</div>";
     if (!hist.length && !open.length) h += "<div class='muted'>No proposals logged yet. Use the buttons above as you send offers.</div>";
-    if (hist.length) h += "<div class='tbl'><div class='gt'><div class='hrow'><span>Outcome</span><span>Deal (team: you give → you get)</span><span>Date</span><span title='Your gain / their side in rest-of-season lineup strength, and how likely they accept'>Your gain / their side (odds)</span><span></span></div>";
-    hist.forEach(e=>{ const cls = e.status==="accepted"?"good":e.status==="declined"?"bad":"warn"; const st = e.status==="accepted" ? null : tradeStats(e.team,e.give,e.get); h += "<div class='row grid'><span class='tag "+cls+"'>"+esc(e.status)+"</span><b class='c'>"+esc(e.team)+": "+esc(e.give)+" → "+esc(e.get)+"</b><span class='c muted'>"+esc(e.date||"")+(e.local?"":" · Sheldon")+"</span><span class='c muted'>"+(st?"+"+st.myGain+" / "+(st.theirGain>=0?"+":"")+st.theirGain+" ("+st.odds.label+")":"")+"</span><span>"+(e.local?"<button class='tb tb-undo' data-key='"+esc(e.key)+"'>undo</button>":"")+"</span></div>"; });
+    if (hist.length) h += "<div class='tbl'><div class='gt'><div class='hrow'><span>Outcome</span><span>Deal (team: you give → you get)</span><span>Date</span>"+(leagueSim()?"<span title='Change in your title odds, then roster talent your side / their side, and how likely they accept'>Title Δ · talent you / them (odds)</span>":"<span title='Your gain / their side in rest-of-season lineup strength, and how likely they accept'>Your gain / their side (odds)</span>")+"<span></span></div>";
+    hist.forEach(e=>{ const cls = e.status==="accepted"?"good":e.status==="declined"?"bad":"warn"; const st = e.status==="accepted" ? null : tradeStats(e.team,e.give,e.get); h += "<div class='row grid'><span class='tag "+cls+"'>"+esc(e.status)+"</span><b class='c'>"+esc(e.team)+": "+esc(e.give)+" → "+esc(e.get)+"</b><span class='c muted'>"+esc(e.date||"")+(e.local?"":" · Sheldon")+"</span><span class='c muted'>"+(st?(st.dChamp!=null?pp(st.dChamp)+" title · ":"")+"+"+st.myGain+" / "+(st.theirGain>=0?"+":"")+st.theirGain+" ("+st.odds.label+")":"")+"</span><span>"+(e.local?"<button class='tb tb-undo' data-key='"+esc(e.key)+"'>undo</button>":"")+"</span></div>"; });
     if (hist.length) h += "</div></div>";
     h += "<div style='margin-top:8px'><button class='tb' id='copyLog'>Copy log for Sheldon</button> <span class='muted' id='copyMsg'></span></div></div>";
     document.getElementById("tab-trades").innerHTML = h;
@@ -1340,14 +1656,15 @@
     const overall = {}; teamNames.forEach(t=>{ overall[t]=strength(teamOf(t)); });
     const oSorted = teamNames.slice().sort((a,b)=>overall[b]-overall[a]);
     oSorted.forEach((t,i)=>{ rankOf[t].OVR=i+1; });
-    h += "<div class='panel'><h2>League rank by position — and overall</h2>"+
-      "<div class='muted' style='margin-bottom:6px'>Rest-of-season value over the same slots for every team — best QB, top two RBs, top two WRs, best TE — so positions compare apples-to-apples (FLEX and bench count toward Overall and show as depth below). 1 = strongest. Green = top 3, red = bottom 3.</div>";
-    const rGrid = "display:grid;grid-template-columns:minmax(110px,1.5fr) repeat(5,minmax(32px,1fr));gap:4px;align-items:center";
+    const SL = leagueSim();
+    h += "<div class='panel'><h2>League rank by position — and roster talent</h2>"+
+      "<div class='muted' style='margin-bottom:6px'>Rest-of-season value over the same slots for every team — best QB, top two RBs, top two WRs, best TE — so positions compare apples-to-apples (FLEX and bench count toward Roster talent and show as depth below). 1 = strongest. Green = top 3, red = bottom 3. <b>Roster talent is paper strength, not a ranking</b>"+(SL?" — the last column is each team's actual title odds (League tab), which also weigh record and real scoring.":".")+"</div>";
+    const rGrid = "display:grid;grid-template-columns:minmax(110px,1.5fr) repeat(5,minmax(32px,1fr))"+(SL?" minmax(52px,1fr)":"")+";gap:4px;align-items:center";
     const rCell = v => "<span class='tag "+(v<=3?"good":v>=teamNames.length-2?"bad":"")+"' style='text-align:center"+(v===1?";font-weight:700":"")+"'>"+v+"</span>";
-    h += "<div style='"+rGrid+";margin-bottom:10px'><span class='muted'>League rank (1 = strongest)</span><span class='muted' style='text-align:center'>QB</span><span class='muted' style='text-align:center'>RB</span><span class='muted' style='text-align:center'>WR</span><span class='muted' style='text-align:center'>TE</span><span class='muted' style='text-align:center'><b>Overall</b></span>"+
+    h += "<div style='"+rGrid+";margin-bottom:10px'><span class='muted'>League rank (1 = strongest)</span><span class='muted' style='text-align:center'>QB</span><span class='muted' style='text-align:center'>RB</span><span class='muted' style='text-align:center'>WR</span><span class='muted' style='text-align:center'>TE</span><span class='muted' style='text-align:center' title='Sum over the 9 best starters of (420 − rest-of-season rank) — paper strength'><b>Roster talent (ROS)</b></span>"+(SL?"<span class='muted' style='text-align:center' title='Championship odds from the season simulator'>Title %</span>":"")+
       oSorted.map(t=>{
         const mine = t===R.me, rk = rankOf[t];
-        return "<span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>"+(mine?"<b class='hl'>":"")+esc(t)+(mine?"</b>":"")+"</span>"+rCell(rk.QB)+rCell(rk.RB)+rCell(rk.WR)+rCell(rk.TE)+rCell(rk.OVR);
+        return "<span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>"+(mine?"<b class='hl'>":"")+esc(t)+(mine?"</b>":"")+"</span>"+rCell(rk.QB)+rCell(rk.RB)+rCell(rk.WR)+rCell(rk.TE)+rCell(rk.OVR)+(SL?"<span class='num' style='text-align:center'>"+pct1(SL.byTeam[t].champ)+"</span>":"");
       }).join("")+"</div></div>";
     // Timeseries: weekly and cumulative points from the real schedule.
     const scores = allScores();
@@ -1361,7 +1678,7 @@
         return { name:t, color:color(t), pts };
       }).filter(s=>s.pts.length);
       h += "<div class='panel'><h2>Scoring over time</h2>";
-      h += lineChart("Points per week", "Real scores from the schedule, every completed week. Gold = you, blue = the strongest other roster ("+esc(rival)+").", mkSeries(false), wks);
+      h += lineChart("Points per week", "Real scores from the schedule, every completed week. Gold = you, blue = the best other roster on paper ("+esc(rival)+").", mkSeries(false), wks);
       h += lineChart("Cumulative points", "Season total as it builds — the gap is the season story.", mkSeries(true), wks);
       // table view of the same data (accessibility + exact numbers)
       const totals = {}; teamNames.forEach(t=>{ totals[t] = wks.reduce((s,w)=>s+(scores[w][t]||0),0); });
@@ -1409,10 +1726,38 @@
 
   // ---------- League tab ----------
   function renderLeague(){
-    const rows = Object.keys(R.teams).map(t=>{ const tm = teamOf(t); const wk = P ? optimalLineup(tm,"mu").slots.reduce((s,x)=>s+(x.p&&x.p.mu!=null?x.p.mu:0),0) : null; return { team:t, s: strength(tm), wk }; }).sort((a,b)=>b.s-a.s);
-    let h = "<div class='panel'><h2>Power ranking (rest-of-season starters)</h2><div class='tbl'><div class='gl'><div class='hrow'><span>Rank</span><span>Team</span><span title='Projected points this week with the best lineup'>This week (proj)</span><span title='Sum over the 9 best starters of (420 − rest-of-season rank)'>Strength (ROS)</span></div>";
-    rows.forEach((r,i)=>{ h += "<div class='row grid"+(r.team===R.me?" start":"")+"'><span class='slot'>"+(i+1)+"</span><b class='c'>"+esc(r.team)+(r.team===R.me?" 🐑":"")+"</b><span class='c num'>"+(r.wk!=null?r.wk.toFixed(1):"")+"</span><span class='c num'>"+r.s+"</span></div>"; });
-    h += "</div></div></div>";
+    const L = leagueSim();
+    const wkProj = tm => P ? optimalLineup(tm,"mu").slots.reduce((s,x)=>s+(x.p&&x.p.mu!=null?x.p.mu:0),0) : null;
+    const rows = Object.keys(R.teams).map(t=>{ const tm = teamOf(t); return { team:t, s: strength(tm), wk: wkProj(tm), sim: L ? L.byTeam[t] : null }; });
+    let h = "";
+    if (L){
+      rows.sort((a,b)=> b.sim.champ-a.sim.champ || b.sim.playoff-a.sim.playoff || a.sim.seed-b.sim.seed);
+      const talentRank = {}; rows.slice().sort((a,b)=>b.s-a.s).forEach((r,i)=>{ talentRank[r.team] = i+1; });
+      const M0 = L.model, st = SETTINGS;
+      h += "<div class='panel'><h2>Title odds — who wins the league</h2><div class='muted' style='margin-bottom:6px'>"+SIM_N.toLocaleString()+" simulated seasons: every remaining regular-season matchup on the real schedule, then the "+st.playoffTeamCount+"-team, "+L.spec.rounds+"-round bracket ("+(st.playoffReseed?"reseeded each round":"fixed bracket, no reseeding")+"; seeds by win % then "+(L.tbKnown?"total points scored":esc(String(st.playoffSeedingRule))+" — <b>approximated by points scored</b>")+"). Ranked by <b>title %</b>, then playoff %. Roster talent is shown but no longer ranks anyone.</div>";
+      h += "<div class='tbl'><div class='gl'><div class='hrow'><span>Rank</span><span>Team</span><span title='Share of simulated seasons this team wins the championship'>Title %</span><span title='Share of simulated seasons this team makes the playoffs'>Playoff %</span><span title='Average final regular-season standing across all simulations (1 = top seed)'>Proj seed</span><span title='Actual record so far'>Record</span><span title='Estimated points per week going forward: blend of actual average and the talent prior (weight on actual shown)'>Scoring rate</span><span title='Projected points this week with the best lineup'>This week</span><span title='Sum over the 9 best starters of (420 − rest-of-season rank). Paper strength only — an input to the scoring rate, not a ranking.'>Roster talent (ROS)</span></div>";
+      rows.forEach((r,i)=>{
+        const x = r.sim, rec = (x.wins%1 ? x.wins.toFixed(1) : x.wins)+"-"+(x.gamesPlayed-x.wins);
+        h += "<div class='row grid"+(r.team===R.me?" start":"")+"'><span class='slot'>"+(i+1)+"</span><b class='c'>"+esc(r.team)+(r.team===R.me?" 🐑":"")+"</b>"+
+          "<span class='c num'><b>"+pct1(x.champ)+"</b></span><span class='c num'>"+pct1(x.playoff)+"</span><span class='c num'>"+x.seed.toFixed(1)+"</span>"+
+          "<span class='c num'>"+rec+"</span><span class='c num' title='actual avg "+(x.obsMean!=null?x.obsMean.toFixed(1):"–")+" over "+x.n+" wk · talent prior "+x.prior.toFixed(1)+" · weight on actual "+Math.round(x.w*100)+"% · weekly swing ±"+x.sigma.toFixed(1)+"'>"+x.mu.toFixed(1)+" <small class='muted'>("+Math.round(x.w*100)+"% actual)</small></span>"+
+          "<span class='c num'>"+(r.wk!=null?r.wk.toFixed(1):"")+"</span><span class='c num muted'>"+r.s+" <small>(#"+talentRank[r.team]+")</small></span></div>";
+      });
+      h += "</div></div>";
+      h += "<details class='panel'><summary>How the title odds work (tap to open)</summary><div class='muted'>"+
+        "<b>1) Scoring rate per team.</b> Start from the league's real weekly scores. Each team gets a <b>talent prior</b>: league average ("+M0.lgMean.toFixed(1)+") plus "+M0.slope.toFixed(3)+" pts/week per point of roster talent above the league's average roster ("+(M0.slopeSrc==="projections"?"that conversion is fitted from this week's player projections vs their ROS value — not from the game scores":"no projections loaded, so the conversion is fitted across teams from the game scores")+"). "+
+        "The rate is a blend of the team's actual average and that prior. The weight is measured, not chosen: true scoring rates currently sit ±"+Math.sqrt(M0.tau2).toFixed(1)+" pts/week off the talent line, while a single week swings ±"+M0.sigmaPool.toFixed(1)+" (league-pooled), so after n weeks the actual average gets weight τ²/(τ² + σ²/n). Few games → mostly talent; more games → mostly results. "+
+        "<b>2) Weekly swing.</b> Each team's own week-to-week SD, never below the league-pooled "+M0.sigmaPool.toFixed(1)+" so a short steady streak can't make a team look like a lock. "+
+        "<b>3) The season.</b> Each simulation first draws every team's true rate (we don't know it exactly — that uncertainty is what keeps long shots alive), then plays every remaining matchup, seeds the standings by win % (teams in a 9-team league play different numbers of games) then the tiebreaker, and plays the bracket. "+
+        "<b>4) Decisions.</b> Trades and waiver moves are scored as the change in <i>your</i> title % when both rosters' talent changes — re-simulated on the same random draws so the difference is the move, not noise. "+
+        (L.divisionsIgnored?"<b class='bad'>This league has divisions — division-winner seeding is not modeled.</b> ":"")+
+        "Format from ESPN league settings ("+esc(st.generated||"")+").</div></details>";
+    } else {
+      rows.sort((a,b)=>b.s-a.s);
+      h += "<div class='panel'><h2>Title odds unavailable — roster talent only</h2><div class='suggest'>⚠️ The championship simulator needs "+(!SETTINGS?"the league settings (data/settings.json — run tools/sync_league.py)":!HIST?"the league schedule and scores":"at least two weeks of real scores")+". Until then this is <b>paper talent, not a ranking</b> — it ignores record and actual scoring.</div><div class='tbl'><div class='gl gl-fallback'><div class='hrow'><span>Rank</span><span>Team</span><span title='Projected points this week with the best lineup'>This week (proj)</span><span title='Sum over the 9 best starters of (420 − rest-of-season rank)'>Roster talent (ROS)</span></div>";
+      rows.forEach((r,i)=>{ h += "<div class='row grid"+(r.team===R.me?" start":"")+"'><span class='slot'>"+(i+1)+"</span><b class='c'>"+esc(r.team)+(r.team===R.me?" 🐑":"")+"</b><span class='c num'>"+(r.wk!=null?r.wk.toFixed(1):"")+"</span><span class='c num'>"+r.s+"</span></div>"; });
+      h += "</div></div></div>";
+    }
     document.getElementById("tab-league").innerHTML = h;
   }
 
@@ -1457,10 +1802,11 @@
   }
   async function load(){
     try {
-      const [s, r, x, tl, lg, pool, mu, hist] = await Promise.all([fetch("data/season.json?v="+Date.now()).then(x=>x.json()), fetch("data/rosters.json?v="+Date.now()).then(x=>x.json()), fetch("data/exclusions.json?v="+Date.now()).then(x=>x.json()).catch(()=>({players:[]})), fetch("data/trades.json?v="+Date.now()).then(x=>x.json()).catch(()=>({entries:[]})),
+      const [s, r, x, tl, lg, pool, mu, hist, settings] = await Promise.all([fetch("data/season.json?v="+Date.now()).then(x=>x.json()), fetch("data/rosters.json?v="+Date.now()).then(x=>x.json()), fetch("data/exclusions.json?v="+Date.now()).then(x=>x.json()).catch(()=>({players:[]})), fetch("data/trades.json?v="+Date.now()).then(x=>x.json()).catch(()=>({entries:[]})),
         fetch("data/league.json?v="+Date.now()).then(x=>x.json()).catch(()=>null), fetch("data/espn_pool.json?v="+Date.now()).then(x=>x.json()).catch(()=>null),
-        fetch("data/matchups.json?v="+Date.now()).then(x=>x.json()).catch(()=>null), fetch("data/league_history.json?v="+Date.now()).then(x=>x.json()).catch(()=>null)]);
-      S = s; R = r; X = x || {players:[]}; LG = lg; POOL = pool; MU = mu; HIST = hist; mergeLog((tl||{}).entries);
+        fetch("data/matchups.json?v="+Date.now()).then(x=>x.json()).catch(()=>null), fetch("data/league_history.json?v="+Date.now()).then(x=>x.json()).catch(()=>null),
+        fetch("data/settings.json?v="+Date.now()).then(x=>x.json()).catch(()=>null)]);
+      S = s; R = r; X = x || {players:[]}; LG = lg; POOL = pool; MU = mu; HIST = hist; SETTINGS = settings; mergeLog((tl||{}).entries);
       applyTeamParam();
       PSTAMP = { text:"fetching live…", cls:"" }; RSTAMP = { text:(R.updated||"–")+" (checking ESPN…)", cls:"" };
       buildIndex(); renderAll();
@@ -1473,7 +1819,8 @@
   }
   document.getElementById("refreshLive").addEventListener("click", async ()=>{ if (!S) return; PSTAMP = { text:"fetching live…", cls:"" }; renderAll(); await loadProjections(); buildIndex(); renderAll(); });
   window.__seasonTest = { inject:(s,r,x,tl,pj,pool,mu,hist)=>{ S=s; R=JSON.parse(JSON.stringify(r)); X=x||{players:[]}; P=pj||null; POOL=pool||null; MU=mu||null; HIST=hist||null; LG=null; PSTAMP = pj ? {text:"snapshot "+pj.generated, cls:"stale"} : {text:"none", cls:""}; RSTAMP = {text:R.updated||"–", cls:""}; mergeLog((tl||{}).entries); applyAcceptedTrades(); buildIndex(); renderAll(); },
-    setHistory:(h)=>{ HIST=h||null; renderMatchup(); }, historyFromLeague, teamSeason, currentOpponent, allScores, scoringRank,
+    setHistory:(h)=>{ HIST=h||null; renderMatchup(); },
+    setSettings:(st)=>{ SETTINGS=st||null; SIMC=null; }, leagueSim, simDelta, simDeltaFast, simWinProb, waiverChamp, simLeverage, simScoringModel, simRun, simPlayoffs, simSeedOrder, simBracketOrder, simNormals, simWidth, talentSlope, SIM_N, SIM_SEED, historyFromLeague, teamSeason, currentOpponent, allScores, scoringRank,
     rostersFromLeague, setRosters:(r)=>{ R = JSON.parse(JSON.stringify(r)); buildIndex(); renderAll(); },
     logTrade, teamFloor, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, lockAwareLineup, strength, findTrades, findSurplus, surplusDeals, allSurplusDeals, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M, teamNeeds,
     waiverSuggestions:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,

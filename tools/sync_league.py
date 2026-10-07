@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Pull every roster in the ESPN league and write data/rosters.json + data/espn_pool.json.
+"""Pull every roster in the ESPN league and write data/rosters.json + data/espn_pool.json
+(+ data/league_history.json schedule/scores and data/settings.json season format for the title simulator).
 
 No more hand-tracking: rosters come straight from ESPN (trades, waiver claims, drops by anyone in the
 league). Run before every refresh (both weekly crons do) or any time by hand.
@@ -11,7 +12,7 @@ public (then the page can also read rosters live in the browser), or put the two
 
 Usage: python3 tools/sync_league.py [leagueId] [--dry-run]
 """
-import json, os, re, sys, datetime, unicodedata, urllib.request
+import json, math, os, re, sys, datetime, unicodedata, urllib.request
 from pathlib import Path
 HERE = Path(__file__).resolve().parent.parent
 ESPN_TEAM = {1:"ATL",2:"BUF",3:"CHI",4:"CIN",5:"CLE",6:"DAL",7:"DEN",8:"DET",9:"GB",10:"TEN",11:"IND",12:"KC",13:"LV",14:"LAR",15:"MIA",16:"MIN",17:"NE",18:"NO",19:"NYG",20:"NYJ",21:"PHI",22:"ARI",23:"PIT",24:"LAC",25:"SF",26:"SEA",27:"TB",28:"WAS",29:"CAR",30:"JAX",33:"BAL",34:"HOU"}
@@ -96,6 +97,37 @@ def parse_standings(d):
         out[team_name_of(t)] = {"wins": rec.get("wins"), "losses": rec.get("losses"), "waiverRank": t.get("waiverRank")}
     return out
 
+def parse_settings(d):
+    """mSettings -> the season-structure facts the championship simulator needs (data/settings.json).
+    Everything comes from ESPN's scheduleSettings; nothing is assumed. Returns None if ESPN omitted the
+    two load-bearing fields (regular-season length, playoff team count) so the page shows "no sim" instead
+    of simulating a guessed format."""
+    s = d.get("settings") or {}; sc = s.get("scheduleSettings") or {}
+    reg, pt = sc.get("matchupPeriodCount"), sc.get("playoffTeamCount")
+    if not reg or not pt: return None
+    periods = {int(k): v for k, v in (sc.get("matchupPeriods") or {}).items()}
+    playoff_periods = [periods[k] for k in sorted(periods) if k > reg]
+    rounds = math.ceil(math.log2(pt)) if pt > 1 else 0
+    base = sc.get("playoffMatchupPeriodLength") or 1
+    by_round = sc.get("playoffMatchupPeriodLengthByRound") or {}
+    variable = bool(sc.get("variablePlayoffMatchupPeriodLength"))
+    lengths = [int(by_round.get(str(r + 1), base)) if variable else int(base) for r in range(rounds)]
+    return {"name": s.get("name"), "size": s.get("size"), "regularSeasonWeeks": reg, "playoffTeamCount": pt,
+            "playoffRounds": rounds, "playoffRoundLengths": lengths, "playoffScoringPeriods": playoff_periods,
+            "playoffReseed": bool(sc.get("playoffReseed")), "playoffSeedingRule": sc.get("playoffSeedingRule"),
+            "playoffSeedingRuleBy": sc.get("playoffSeedingRuleBy"),
+            "divisions": [{"id": v.get("id"), "name": v.get("name"), "size": v.get("size")} for v in (sc.get("divisions") or [])]}
+
+def write_settings(d, league, season, now):
+    st = parse_settings(d)
+    if st is None:
+        print("settings: ESPN mSettings missing matchupPeriodCount/playoffTeamCount — data/settings.json NOT written"); return None
+    st = {"note": "ESPN league settings (view=mSettings) for the championship simulator. Written by tools/sync_league.py — do not hand-edit.",
+          "generated": now.strftime("%Y-%m-%d %I:%M %p %Z"), "leagueId": league, "season": season, **st}
+    (HERE / "data" / "settings.json").write_text(json.dumps(st, indent=1))
+    print(f"settings: {st['regularSeasonWeeks']}-week regular season, {st['playoffTeamCount']} playoff teams over {st['playoffRounds']} rounds {st['playoffRoundLengths']}, seeding tiebreak {st['playoffSeedingRule']}, reseed {st['playoffReseed']}")
+    return st
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]; dry = "--dry-run" in sys.argv
     cfgp = HERE / "data" / "league.json"
@@ -145,7 +177,8 @@ def main():
     (HERE / "data" / "espn_pool.json").write_text(json.dumps({"note": "Players in ESPN's pool for this league (rostered, free agent or waivers). The page only treats FantasyPros-ranked players as free agents if they are in here and on no roster.",
         "leagueId": league, "updated": rosters["updated"], "players": sorted(pool)}, separators=(",", ":")))
     (HERE / "data" / "league_history.json").write_text(json.dumps(hist, separators=(",", ":")))
-    print("wrote data/rosters.json + data/espn_pool.json + data/league_history.json")
+    write_settings(d, league, season, now)
+    print("wrote data/rosters.json + data/espn_pool.json + data/league_history.json + data/settings.json")
 
 if __name__ == "__main__":
     main()
