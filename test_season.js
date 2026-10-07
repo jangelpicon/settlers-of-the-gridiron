@@ -743,6 +743,36 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     assert(T.allSurplusDeals().every(d => !d.st.strips.length), "surplus sell queue never asks for a team's only startable player at a position");
   }
 
+  console.log("== Realism guard, my side: never suggest gutting my own lineup ==");
+  { // Ruling 2026-10-07: a suggested deal that leaves ME with no startable player at a required position gets the
+    // same "won't happen" treatment. Data-driven: every position where I have exactly one startable body.
+    const lab = st => st.odds.label.split(/, | — /)[0];
+    const okInj = p => !/^(O|IR|SUSP)$/.test(p.injLive || "");
+    const meAll = rosters.teams[rosters.me].map(T.info);
+    const mine = [];
+    ["QB","TE","RB","WR"].forEach(pos => { const only = meAll.filter(p => p.pos === pos && p.ros != null && okInj(p)); if (only.length === 1) mine.push({ pos, p: only[0] }); });
+    // No natural single-starter position on my roster → synthetic: keep only my best QB (others dropped).
+    let synth = false, rs = rosters;
+    if (!mine.length){
+      const qbs = meAll.filter(p => p.pos === "QB" && p.ros != null && okInj(p)).sort((a, b) => a.ros - b.ros);
+      const drop = new Set(qbs.slice(1).map(p => p.n));
+      rs = JSON.parse(JSON.stringify(rosters)); rs.teams[rs.me] = rs.teams[rs.me].filter(p => !drop.has(T.norm(p.name)));
+      T.setRosters(rs); synth = true; mine.push({ pos: "QB", p: qbs[0] });
+    }
+    const strip = [];
+    mine.forEach(({ pos, p }) => Object.keys(rs.teams).filter(t => t !== rs.me).forEach(t => {
+      rs.teams[t].map(T.info).filter(q => q.pos !== pos && q.ros != null && okInj(q) && !["K","DST"].includes(q.pos)).forEach(q => {
+        const st = T.tradeStats(t, p.name, q.name); if (st) strip.push({ t, pos, p, q, st });
+      });
+    }));
+    assert(strip.length > 0, "fixture: " + strip.length + " deals give away my only startable " + mine.map(m => m.pos + " (" + m.p.name + ")").join(", ") + (synth ? " [synthetic]" : ""));
+    assert(strip.every(x => lab(x.st) !== "easy yes" && x.st.myStrips.includes(x.pos) && /won't happen — strips .*your only startable/.test(x.st.odds.label) && x.st.odds.p <= 0.05), "every deal that strips MY only startable starter is labeled won't-happen, never 'easy yes' (" + strip.length + " deals, e.g. " + strip[0].p.name + " → " + strip[0].q.name + ": " + strip[0].st.odds.label + ")");
+    const sugg = T.findTrades();
+    assert(sugg.every(d => !d.myStrips.length && !T.strippedPositions(rs.teams[rs.me].map(T.info), d.gives, d.gets).length), "findTrades() never suggests a deal that leaves me with no startable player at a position (" + sugg.length + " suggestions checked)");
+    assert(T.allSurplusDeals().every(d => !d.st.myStrips.length), "surplus sell queue never sells my only startable player at a position");
+    if (synth) T.setRosters(rosters);
+  }
+
   console.log("== Surplus list + FA replacement pool use the bye fence (rest-of-season lens) ==");
   { // Follow-up 2026-10-07: bye players count as present for the surplus/bench list and the replacement FA pool.
     const meP = rosters.teams[rosters.me].map(T.info);

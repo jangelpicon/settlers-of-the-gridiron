@@ -1333,6 +1333,7 @@
   // required lineup position (you take their only startable QB/TE/...) is never a real offer — nobody guts
   // their own starting lineup, however the replacement-level math scores it. Startable = not OUT/IR/SUSP;
   // a bye this week still counts as present (same fence as tradeTalent). Returns the stripped positions.
+  // Symmetric: strippedPositions(me, gives, gets) is the same check on my side (no gutting my own lineup).
   function strippedPositions(them, gets, gives){
     const tN = new Set(gets.map(p=>p.n));
     const after = them.filter(p=>!tN.has(p.n)).concat(gives);
@@ -1346,13 +1347,16 @@
     // People judge a package by its biggest name: best consensus rank on each side.
     const fairness = Math.min(...gives.map(p=>p.ros!=null?p.ros:ROS_MAX)) - Math.min(...gets.map(p=>p.ros!=null?p.ros:ROS_MAX));
     const strips = strippedPositions(them, gets, gives);
+    // My side too (ruling 2026-10-07): a deal that leaves ME with no startable player at a required position.
+    const myStrips = strippedPositions(me, gives, gets);
     // Hard penalty, not just a relabel: p≈0 also sinks its EV, so it can't top any queue.
-    const odds = strips.length ? { label:"won't happen — strips their only startable "+strips.join("/"), p:0.02 } : acceptOdds(theirGain, fairness);
+    const stripTxt = [strips.length ? "their only startable "+strips.join("/") : null, myStrips.length ? "your only startable "+myStrips.join("/") : null].filter(Boolean).join(" and ");
+    const odds = stripTxt ? { label:"won't happen — strips "+stripTxt, p:0.02 } : acceptOdds(theirGain, fairness);
     const dS = team ? { [R.me]: myGain, [team]: theirGain } : null;
     const dChamp = dS ? (fast ? simDeltaFast(dS) : simDelta(dS)) : null;
     return { gives, gets, give:gives[0], get:gets[0],
       giveName: gives.map(p=>p.name).join(" + "), getName: gets.map(p=>p.name).join(" + "),
-      myGain, theirGain, fairness, odds, strips, dChamp, exact: dChamp!=null && !fast,
+      myGain, theirGain, fairness, odds, strips, myStrips, dChamp, exact: dChamp!=null && !fast,
       ev: dChamp!=null ? dChamp*odds.p : Math.round(myGain*odds.p*10)/10 };
   }
   function refineDeal(t){
@@ -1388,6 +1392,7 @@
         const myGain = tradeTalent(me.filter(p=>!gN.has(p.n)).concat(gets)) - myBase;
         if (myGain <= 0) return; // cheap half first: most combos don't help me
         if (strippedPositions(them, gets, gives).length) return; // realism guard: never suggest gutting their lineup
+        if (strippedPositions(me, gives, gets).length) return; // ...or mine
         const st = dealStats(me, them, gives, gets, myBase, theirBase, t, true);
         if (st.theirGain < -12) return; // no realistic pitch
         const prior = logEntry(t, st.giveName, st.getName);
@@ -1464,7 +1469,7 @@
       const theirL = tradeLineup(teamOf(b.team)); // bye players present: their bench, rest-of-season lens
       theirL.bench.filter(q=>!["K","DST"].includes(q.pos) && q.ros!=null && !undraftable(q) && q.pos!==sp.p.pos && !wouldBeDead(q)).forEach(q=>{
         const st = tradeStats(b.team, sp.p.name, q.name);
-        if (!st || st.theirGain < -3 || st.strips.length) return; // realism guard: their only startable body at a position
+        if (!st || st.theirGain < -3 || st.strips.length || st.myStrips.length) return; // realism guard: either side's only startable body at a position
         const prior = logEntry(b.team, st.giveName, st.getName);
         if (prior && prior.status!=="withdrawn") return;
         deals.push({ team:b.team, get:q, st, need: N.needPos.has(q.pos), dChamp: st.dChamp });
