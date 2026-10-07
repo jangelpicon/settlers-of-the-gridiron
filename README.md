@@ -174,9 +174,9 @@ If ESPN doesn't have a player that FantasyPros ranks (it happens), add him to
 Keep rosters current after every move (the page is only as right as this file):
 
 ```bash
-python3 tools/update_roster.py add  "I'll be white!!" "Player Name" RB NFL
-python3 tools/update_roster.py drop "I'll be white!!" "Player Name"
-python3 tools/update_roster.py trade "I'll be white!!" "Garrett Wilson" "BlitzAndGiggles" "Ashton Jeanty"
+python3 tools/update_roster.py add  "ur done" "Player Name" RB NFL
+python3 tools/update_roster.py drop "ur done" "Player Name"
+python3 tools/update_roster.py trade "ur done" "Garrett Wilson" "BlitzAndGiggles" "Ashton Jeanty"
 ```
 
 `tools/league_analysis.py <draft csv> --me "<team>"` grades the draft itself.

@@ -479,9 +479,12 @@
   function undraftable(p){ const code = (P && p.injLive) ? p.injLive : (p.inj ? p.inj.code : null); return ["IR","O","SUSP"].includes(code) || (P && p.pPlay===0 && !p.onBye); }
 
   // Optimal lineup by a scoring fn: "mu" (predicted points, higher is better), "wkRank"/"ros" (ranks, lower is better).
-  function optimalLineup(players, key){
+  // opts.byePresent: count a player on bye THIS week as rostered and present (trade math only — a bye is one
+  // week, a trade is rest-of-season). Default (strength(), lineups) is unchanged: bye = not startable.
+  function optimalLineup(players, key, opts){
     const desc = key==="mu";
-    const usable = players.filter(p=>!p.onBye && !undraftable(p) && p[key]!=null);
+    const byeOk = !!(opts && opts.byePresent);
+    const usable = players.filter(p=>(byeOk || !p.onBye) && !undraftable(p) && p[key]!=null);
     const sortBy = (arr)=>arr.slice().sort((a,b)=> desc ? b[key]-a[key] : a[key]-b[key]);
     const by = {}; ["QB","RB","WR","TE","DST","K"].forEach(pos=>{ by[pos] = sortBy(usable.filter(p=>p.pos===pos)); });
     const slots = [];
@@ -529,6 +532,47 @@
     return slots.reduce((s,x)=> s + (x.p ? rosVal(x.p) : 0), 0);
   }
   function lineupKey(){ return P ? "mu" : "wkRank"; }
+  // ---- Trade talent: strength() with empty slots valued at REPLACEMENT level, not 0 ----
+  // strength() scores an empty starting slot (no usable player there: bye, OUT/IR, or a thin position) as 0.
+  // In a trade that turns "fill the hole with anyone" into a +250..+330 swing and a false "easy yes" — but a
+  // real manager with a hole just plugs in the best free agent. So for trade math (both sides' gains, which
+  // drive acceptOdds and the title-odds delta) each empty slot is filled with the next-best available FA at
+  // that position (FLEX: best remaining RB/WR/TE). No FA at the position (pool not synced / exhausted) →
+  // league-wide waiver baseline: the first ROS-ranked player at that position past the league's starters
+  // (teams × starting slots). strength() itself is untouched — it stays the "Roster talent (ROS)" number.
+  let REPLC = null;
+  function replLevels(){
+    if (REPLC && REPLC.S===S && REPLC.R===R && REPLC.X===X && REPLC.P===P && REPLC.POOL===POOL) return REPLC.out;
+    const pos = ["QB","RB","WR","TE","DST","K"];
+    const fa = freeAgents().filter(p=>!p.onBye && !undraftable(p) && p.ros!=null).sort((a,b)=>a.ros-b.ros);
+    const nTeams = Object.keys(R.teams).length, base = {};
+    pos.forEach(ps=>{
+      const ranked = S.ros.filter(p=>p.pos===ps && p.rank!=null).sort((a,b)=>a.rank-b.rank);
+      const r = ranked[nTeams*LINEUP[ps]];
+      base[ps] = r ? ROS_MAX - r.rank : 0;
+    });
+    base.FLEX = Math.min(base.RB, base.WR, base.TE);
+    const out = { fa, base };
+    REPLC = { S, R, X, P, POOL, out };
+    return out;
+  }
+  function replFill(slots){ // [{slot, v, src}] for each empty slot, FA consumed at most once per lineup
+    const L = replLevels(), used = new Set();
+    return slots.filter(x=>!x.p).map(x=>{
+      const b = x.slot==="FLEX" ? "FLEX" : x.slot.replace(/\d+$/, "");
+      const c = L.fa.find(p=>!used.has(p.n) && (b==="FLEX" ? FLEX.includes(p.pos) : p.pos===b));
+      if (c){ used.add(c.n); return { slot:x.slot, v:rosVal(c), src:c.name, pos:c.pos }; }
+      return { slot:x.slot, v:L.base[b]||0, src:"waiver baseline", pos:null };
+    });
+  }
+  // Bye fence (ruling 2026-10-07): a player on bye this week is rostered and present for trade math — he is
+  // not an empty slot, and he keeps his ROS value to his own team. Otherwise Mahomes-on-bye reads as a
+  // permanent empty-QB team valuing Mahomes at ~0 and fabricates "easy yes" deals. strength() is untouched.
+  function tradeLineup(players){ return optimalLineup(players, "ros", { byePresent:true }); }
+  function tradeTalent(players){
+    const { slots } = tradeLineup(players);
+    return slots.reduce((s,x)=> s + (x.p ? rosVal(x.p) : 0), 0) + replFill(slots).reduce((s,r)=>s+r.v, 0);
+  }
 
   // ================= Championship simulator =================
   // The headline number: probability of winning the league. Self-contained block — the pure functions
@@ -1284,18 +1328,30 @@
   // (a) the cheap prefilter and (b) the other side's view — managers judge offers on paper value, so
   // acceptOdds() keeps reading theirGain. fast=true ranks with the gradient; refineDeal() makes it exact.
   // No simulator (no settings / schedule yet) → falls back to the old talent EV, flagged by dChamp==null.
+  // Realism guard (ruling 2026-10-07): a deal that leaves the other side with NO startable player at a
+  // required lineup position (you take their only startable QB/TE/...) is never a real offer — nobody guts
+  // their own starting lineup, however the replacement-level math scores it. Startable = not OUT/IR/SUSP;
+  // a bye this week still counts as present (same fence as tradeTalent). Returns the stripped positions.
+  function strippedPositions(them, gets, gives){
+    const tN = new Set(gets.map(p=>p.n));
+    const after = them.filter(p=>!tN.has(p.n)).concat(gives);
+    const startable = (ps, pos)=> ps.some(p=>p.pos===pos && p.ros!=null && !undraftable(p));
+    return ["QB","RB","WR","TE","DST","K"].filter(pos=> LINEUP[pos]>0 && startable(them, pos) && !startable(after, pos));
+  }
   function dealStats(me, them, gives, gets, myBase, theirBase, team, fast){
     const gN = new Set(gives.map(p=>p.n)), tN = new Set(gets.map(p=>p.n));
-    const myGain = strength(me.filter(p=>!gN.has(p.n)).concat(gets)) - myBase;
-    const theirGain = strength(them.filter(p=>!tN.has(p.n)).concat(gives)) - theirBase;
+    const myGain = tradeTalent(me.filter(p=>!gN.has(p.n)).concat(gets)) - myBase;
+    const theirGain = tradeTalent(them.filter(p=>!tN.has(p.n)).concat(gives)) - theirBase;
     // People judge a package by its biggest name: best consensus rank on each side.
     const fairness = Math.min(...gives.map(p=>p.ros!=null?p.ros:ROS_MAX)) - Math.min(...gets.map(p=>p.ros!=null?p.ros:ROS_MAX));
-    const odds = acceptOdds(theirGain, fairness);
+    const strips = strippedPositions(them, gets, gives);
+    // Hard penalty, not just a relabel: p≈0 also sinks its EV, so it can't top any queue.
+    const odds = strips.length ? { label:"won't happen — strips their only startable "+strips.join("/"), p:0.02 } : acceptOdds(theirGain, fairness);
     const dS = team ? { [R.me]: myGain, [team]: theirGain } : null;
     const dChamp = dS ? (fast ? simDeltaFast(dS) : simDelta(dS)) : null;
     return { gives, gets, give:gives[0], get:gets[0],
       giveName: gives.map(p=>p.name).join(" + "), getName: gets.map(p=>p.name).join(" + "),
-      myGain, theirGain, fairness, odds, dChamp, exact: dChamp!=null && !fast,
+      myGain, theirGain, fairness, odds, strips, dChamp, exact: dChamp!=null && !fast,
       ev: dChamp!=null ? dChamp*odds.p : Math.round(myGain*odds.p*10)/10 };
   }
   function refineDeal(t){
@@ -1313,23 +1369,24 @@
     const gives = parseDeal(giveName).map(x=>me.find(p=>p.n===norm(x)));
     const gets = parseDeal(getName).map(x=>them.find(p=>p.n===norm(x)));
     if (!gives.length || !gets.length || gives.some(x=>!x) || gets.some(x=>!x)) return null;
-    return dealStats(me, them, gives, gets, strength(me), strength(them), team, false);
+    return dealStats(me, them, gives, gets, tradeTalent(me), tradeTalent(them), team, false);
   }
   // 1-for-1 swaps AND 2-for-2 packages, one list. Keep only trades where my ROS starting
   // strength goes up AND theirs doesn't go down by more than a sliver (so it's acceptable).
   function findTrades(){
     const me = myTeam();
-    const myBase = strength(me);
+    const myBase = tradeTalent(me);
     const out = [];
     Object.keys(R.teams).filter(t=>t!==R.me).forEach(t=>{
       const them = teamOf(t);
-      const theirBase = strength(them);
+      const theirBase = tradeTalent(them);
       const tradeable = p=>!undraftable(p) && !["K","DST"].includes(p.pos) && p.ros!=null;
       const myC = me.filter(tradeable), thC = them.filter(tradeable);
       const consider = (gives, gets)=>{
         const gN = new Set(gives.map(p=>p.n));
-        const myGain = strength(me.filter(p=>!gN.has(p.n)).concat(gets)) - myBase;
+        const myGain = tradeTalent(me.filter(p=>!gN.has(p.n)).concat(gets)) - myBase;
         if (myGain <= 0) return; // cheap half first: most combos don't help me
+        if (strippedPositions(them, gets, gives).length) return; // realism guard: never suggest gutting their lineup
         const st = dealStats(me, them, gives, gets, myBase, theirBase, t, true);
         if (st.theirGain < -12) return; // no realistic pitch
         const prior = logEntry(t, st.giveName, st.getName);
@@ -1384,7 +1441,7 @@
       const buyers = [];
       Object.keys(R.teams).filter(t=>t!==R.me).forEach(t=>{
         const them = teamOf(t);
-        const gain = Math.round(strength(them.concat([p])) - strength(them));
+        const gain = Math.round(tradeTalent(them.concat([p])) - tradeTalent(them)); // empty slot = replacement, not 0
         if (gain > 0) buyers.push({ team:t, gain });
       });
       buyers.sort((a,b)=>b.gain-a.gain);
@@ -1406,7 +1463,7 @@
       const theirL = optimalLineup(teamOf(b.team), "ros");
       theirL.bench.filter(q=>!["K","DST"].includes(q.pos) && q.ros!=null && !undraftable(q) && q.pos!==sp.p.pos && !wouldBeDead(q)).forEach(q=>{
         const st = tradeStats(b.team, sp.p.name, q.name);
-        if (!st || st.theirGain < -3) return;
+        if (!st || st.theirGain < -3 || st.strips.length) return; // realism guard: their only startable body at a position
         const prior = logEntry(b.team, st.giveName, st.getName);
         if (prior && prior.status!=="withdrawn") return;
         deals.push({ team:b.team, get:q, st, need: N.needPos.has(q.pos), dChamp: st.dChamp });
@@ -1822,7 +1879,7 @@
     setHistory:(h)=>{ HIST=h||null; renderMatchup(); },
     setSettings:(st)=>{ SETTINGS=st||null; SIMC=null; }, leagueSim, simDelta, simDeltaFast, simWinProb, waiverChamp, simLeverage, simScoringModel, simRun, simPlayoffs, simSeedOrder, simBracketOrder, simNormals, simWidth, talentSlope, SIM_N, SIM_SEED, historyFromLeague, teamSeason, currentOpponent, allScores, scoringRank,
     rostersFromLeague, setRosters:(r)=>{ R = JSON.parse(JSON.stringify(r)); buildIndex(); renderAll(); },
-    logTrade, teamFloor, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, lockAwareLineup, strength, findTrades, findSurplus, surplusDeals, allSurplusDeals, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M, teamNeeds,
+    logTrade, teamFloor, tradeTalent, tradeLineup, strippedPositions, replFill, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, lockAwareLineup, strength, findTrades, findSurplus, surplusDeals, allSurplusDeals, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M, teamNeeds,
     waiverSuggestions:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,
     weeklyStreamClaims:()=>{ const me = myTeam(); return weeklyStreamClaims(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
     dropOrder:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return dropOrder(me, bench); }, fitNote, scarcityPool,

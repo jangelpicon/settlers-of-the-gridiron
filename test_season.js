@@ -656,6 +656,93 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   T.setSettings(settings); T.inject(season, rosters, exclusions, tradeLog, projections, null, matchups, histReal);
   }
 
+  console.log("== Empty roster slot = replacement level, not 0 ==");
+  { // Ruling 2026-10-07: Brady Bunch Love→JSN showed +266 "easy yes" because an empty RB slot scored 0.
+    // Fixture: strip every QB from one opponent so they have exactly ONE empty positional slot, then pitch them
+    // my QBs for each of their players. Old math (strength(), hole = 0) vs trade math (hole = best FA).
+    const lab = st => st.odds.label.split(/, | — /)[0];
+    // Trade math counts a bye-week player as present (bye ruling below); strength() doesn't. For the old-vs-new
+    // comparison, "old math" = strength() on the same present roster, so the only difference is the hole = 0.
+    const present = ps => ps.map(p => p.onBye ? { ...p, onBye: false, pPlay: 1 } : p);
+    const myQBs = rosters.teams[rosters.me].map(T.info).filter(p => p.pos === "QB" && !/^(O|IR|SUSP)$/.test(p.injLive || "") && !p.onBye && p.ros != null);
+    let fx = null;
+    for (const t of Object.keys(rosters.teams).filter(t => t !== rosters.me)){
+      // Stripped QBs go to another opponent's bench (not the waiver wire) so the replacement is a real FA, not his own QB.
+      const r2 = JSON.parse(JSON.stringify(rosters)), park = Object.keys(r2.teams).find(x => x !== rosters.me && x !== t);
+      r2.teams[park] = r2.teams[park].concat(r2.teams[t].filter(p => p.pos === "QB")); r2.teams[t] = r2.teams[t].filter(p => p.pos !== "QB");
+      // Any OTHER hole this week (a K/DST on bye, an OUT starter) gets plugged with its replacement FA first, so the
+      // fixture always isolates exactly one empty slot regardless of the weekly bye/injury calendar.
+      T.setRosters(r2);
+      T.replFill(T.tradeLineup(T.getRosters().teams[t].map(T.info)).slots).filter(h => h.slot !== "QB" && h.pos).forEach(h => r2.teams[t].push({ name: h.src, pos: h.pos, team: "" }));
+      T.setRosters(r2);
+      const holes = T.replFill(T.tradeLineup(T.getRosters().teams[t].map(T.info)).slots);
+      if (holes.length === 1 && holes[0].slot === "QB"){ fx = { t, r2, hole: holes[0] }; break; }
+    }
+    assert(fx && myQBs.length, "fixture: an opponent with exactly one empty positional slot (QB stripped" + (fx ? " from " + fx.t + ", replacement " + fx.hole.src + " = " + fx.hole.v : "") + ")");
+    if (fx && myQBs.length){
+      const them = T.getRosters().teams[fx.t].map(T.info), me = T.getRosters().teams[rosters.me].map(T.info);
+      assert(T.tradeTalent(them) === T.strength(present(them)) + fx.hole.v, "trade talent = strength() + the replacement FA's value for the hole; strength() itself still scores the hole 0");
+      const repl = T.info({ name: fx.hole.src, pos: "QB", team: "" });
+      const pure = [];
+      myQBs.forEach(q => them.filter(p => p.ros != null && !["K","DST"].includes(p.pos)).forEach(g => {
+        const st = T.tradeStats(fx.t, q.name, g.name); if (!st) return;
+        const oldGain = T.strength(present(them.filter(p => p.n !== g.n).concat([q]))) - T.strength(present(them));
+        const noHoleGain = T.strength(present(them.concat([repl]).filter(p => p.n !== g.n).concat([q]))) - T.strength(present(them.concat([repl])));
+        if (oldGain >= 0 && noHoleGain < 0) pure.push({ q: q.name, g: g.name, oldGain, st });
+      }));
+      assert(pure.length > 0, "fixture exercises the defect: " + pure.length + " deals were 'easy yes' under hole = 0 but lose value once the hole is filled at replacement (e.g. " + (pure[0] ? pure[0].q + " → " + pure[0].g + " old +" + pure[0].oldGain + ", now " + pure[0].st.theirGain : "-") + ")");
+      assert(pure.every(x => lab(x.st) !== "easy yes" && x.st.theirGain < 0), "a team with one empty slot is never labeled 'easy yes' purely on that slot (" + pure.length + " deals: " + [...new Set(pure.map(x => lab(x.st)))].join("/") + ")");
+      const big = Math.max(...pure.map(x => x.oldGain)), bigNew = Math.max(...pure.map(x => x.st.theirGain));
+      assert(bigNew < 0 && big > 0, "the hole raises need modestly, it doesn't zero the slot (worst old swing +" + big + " → now " + bigNew + ")");
+    }
+    T.setRosters(rosters);
+    assert(Object.keys(rosters.teams).every(t => { const ps = rosters.teams[t].map(T.info); return T.tradeTalent(ps) === T.strength(present(ps)) + T.replFill(T.tradeLineup(ps).slots).reduce((a, r) => a + r.v, 0); }), "live rosters: every team's trade talent = strength() (bye players present) + replacement value of its empty slots");
+  }
+
+  console.log("== Bye week: player on bye is rostered and present for trade math ==");
+  { // Ruling 2026-10-07: Mahomes on bye made The Brady Bunch read as a permanent empty-QB team and valued him ~0
+    // to them, fabricating "easy yes" deals (Maye + Irving → Saquon + Mahomes, +7). Data-driven: every team whose
+    // QB is on bye this week; if the calendar has none, a synthetic bye on a real starting QB.
+    const byeKey = rosters.teams; let cases = [];
+    Object.keys(byeKey).forEach(t => { const ps = byeKey[t].map(T.info); ps.filter(p => p.pos === "QB" && p.onBye && p.ros != null && !/^(O|IR|SUSP)$/.test(p.injLive || "")).forEach(qb => cases.push({ t, ps, qb, synthetic: false })); });
+    if (!cases.length){ const t = Object.keys(byeKey).find(x => x !== rosters.me), ps = byeKey[t].map(T.info), qb = T.optimalLineup(ps, "ros").slots.find(s => s.slot === "QB").p;
+      cases.push({ t, ps: ps.map(p => p.n === qb.n ? { ...p, onBye: true, pPlay: 0 } : p), qb: { ...qb, onBye: true, pPlay: 0 }, synthetic: true }); }
+    assert(cases.length > 0, "fixture: QB(s) on bye this week — " + cases.map(c => c.qb.name + " (" + c.t + (c.synthetic ? ", synthetic" : "") + ")").join(", "));
+    cases.forEach(({ t, ps, qb }) => {
+      const qbSlot = T.tradeLineup(ps).slots.find(s => s.slot === "QB");
+      assert(qbSlot.p && T.replFill(T.tradeLineup(ps).slots).every(h => h.slot !== "QB"), t + ": not flagged as an empty QB slot (" + (qbSlot.p ? qbSlot.p.name : "EMPTY") + " starts in trade math)");
+      if (qbSlot.p && qbSlot.p.n === qb.n){ // he's their starter: his value to them = his ROS value over what replaces him
+        const without = ps.filter(p => p.n !== qb.n), own = T.tradeTalent(ps) - T.tradeTalent(without), full = 420 - qb.ros;
+        const after = T.tradeLineup(without).slots.find(s => s.slot === "QB"), hole = T.replFill(T.tradeLineup(without).slots).find(h => h.slot === "QB");
+        const repl = after.p ? 420 - after.p.ros : hole.v, oldOwn = T.strength(ps) - T.strength(without);
+        assert(own > 0 && own === full - repl && oldOwn === 0, t + ": " + qb.name + " is not valued near 0 to his own team — worth +" + own + " (ROS " + full + " − replacement " + (after.p ? after.p.name : hole.src) + " " + repl + "); bye-skipping math had him at " + oldOwn);
+      } else assert(qbSlot.p && qbSlot.p.ros < qb.ros, t + ": " + qb.name + " is a backup (" + qbSlot.p.name + " starts), so his ~0 marginal value to them is correct, not the bye bug");
+      assert(T.strength(ps) === T.strength(ps.filter(p => p.n !== qb.n)) || !qb.onBye, t + ": strength() fence intact — still skips the bye-week QB this week (Roster talent column unchanged)");
+    });
+  }
+
+  console.log("== Realism guard: never 'easy yes' for stripping a team's only starter at a position ==");
+  { // Ruling 2026-10-07: replacement-level fill made deals that take a team's ONLY startable QB/TE look fine for them.
+    const lab = st => st.odds.label.split(/, | — /)[0];
+    const meP = rosters.teams[rosters.me].map(T.info).filter(p => p.ros != null && !["K","DST"].includes(p.pos) && !/^(O|IR|SUSP)$/.test(p.injLive || ""));
+    const strip = [];
+    Object.keys(rosters.teams).filter(t => t !== rosters.me).forEach(t => {
+      const them = rosters.teams[t].map(T.info);
+      ["QB","TE","RB","WR"].forEach(pos => {
+        const only = them.filter(p => p.pos === pos && p.ros != null && !/^(O|IR|SUSP)$/.test(p.injLive || ""));
+        if (only.length !== 1) return;
+        meP.filter(q => q.pos !== pos).forEach(q => { const st = T.tradeStats(t, q.name, only[0].name); if (st) strip.push({ t, pos, q, g: only[0], st }); });
+      });
+    });
+    const tempting = strip.filter(x => x.st.theirGain >= 0);
+    assert(tempting.length > 0, "fixture exercises the defect: " + tempting.length + "/" + strip.length + " strip deals score theirGain ≥ 0 (would have been 'easy yes'; e.g. " + (tempting[0] ? tempting[0].q.name + " → " + tempting[0].g.name + " [" + tempting[0].t + "'s only " + tempting[0].pos + "] +" + tempting[0].st.theirGain : "-") + ")");
+    assert(strip.length > 0 && strip.every(x => lab(x.st) !== "easy yes" && x.st.strips.includes(x.pos) && x.st.odds.p <= 0.05), "every deal that strips a team's only startable starter is labeled won't-happen, never 'easy yes' (" + strip.length + " deals)");
+    const stripKeys = new Set(strip.map(x => x.t + "|" + x.g.n));
+    const sugg = T.findTrades();
+    assert(sugg.every(d => !d.gets.some(g => stripKeys.has(d.team + "|" + g.n)) || d.gives.some(g => g.pos === d.gets.find(x => stripKeys.has(d.team + "|" + x.n)).pos)) && sugg.every(d => !d.strips.length), "findTrades() never suggests a deal that leaves the other side with no startable player at a position (" + sugg.length + " suggestions checked)");
+    assert(T.allSurplusDeals().every(d => !d.st.strips.length), "surplus sell queue never asks for a team's only startable player at a position");
+  }
+
   console.log("\n--- POWER ---");
   [...d.querySelectorAll("#tab-league .row")].forEach(r => console.log(" ", r.textContent.replace(/\s+/g, " ").trim()));
   console.log(failures ? failures + " FAILED" : "ALL SEASON TESTS PASSED"); process.exit(failures ? 1 : 0);
