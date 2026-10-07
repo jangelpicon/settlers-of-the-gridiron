@@ -544,7 +544,8 @@
   function replLevels(){
     if (REPLC && REPLC.S===S && REPLC.R===R && REPLC.X===X && REPLC.P===P && REPLC.POOL===POOL) return REPLC.out;
     const pos = ["QB","RB","WR","TE","DST","K"];
-    const fa = freeAgents().filter(p=>!p.onBye && !undraftable(p) && p.ros!=null).sort((a,b)=>a.ros-b.ros);
+    // Rest-of-season lens (same fence as tradeLineup): a free agent on bye this week is still a valid replacement.
+    const fa = freeAgents().filter(p=>!undraftable(p) && p.ros!=null).sort((a,b)=>a.ros-b.ros);
     const nTeams = Object.keys(R.teams).length, base = {};
     pos.forEach(ps=>{
       const ranked = S.ros.filter(p=>p.pos===ps && p.rank!=null).sort((a,b)=>a.rank-b.rank);
@@ -1432,7 +1433,7 @@
   // position converts a frozen roster spot into usable depth even though the starting nine doesn't move.
   function findSurplus(){
     const me = myTeam();
-    const L = optimalLineup(me, "ros");
+    const L = tradeLineup(me); // bye players present (rest-of-season lens), same fence as trade math
     const out = [];
     L.bench.filter(p=>!["K","DST"].includes(p.pos) && p.ros!=null && !undraftable(p)).forEach(p=>{
       const better = me.filter(q=>q.pos===p.pos && q.ros!=null && q.ros < p.ros).length;
@@ -1460,7 +1461,7 @@
     const wouldBeDead = q => mine.filter(x=>x.n!==sp.p.n && x.pos===q.pos && x.ros!=null && x.ros < q.ros).length
       >= (LINEUP[q.pos]||0) + (FLEX.includes(q.pos) ? LINEUP.FLEX : 0) + 1;
     sp.buyers.forEach(b=>{
-      const theirL = optimalLineup(teamOf(b.team), "ros");
+      const theirL = tradeLineup(teamOf(b.team)); // bye players present: their bench, rest-of-season lens
       theirL.bench.filter(q=>!["K","DST"].includes(q.pos) && q.ros!=null && !undraftable(q) && q.pos!==sp.p.pos && !wouldBeDead(q)).forEach(q=>{
         const st = tradeStats(b.team, sp.p.name, q.name);
         if (!st || st.theirGain < -3 || st.strips.length) return; // realism guard: their only startable body at a position

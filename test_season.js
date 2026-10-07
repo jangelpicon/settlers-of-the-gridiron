@@ -743,6 +743,26 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     assert(T.allSurplusDeals().every(d => !d.st.strips.length), "surplus sell queue never asks for a team's only startable player at a position");
   }
 
+  console.log("== Surplus list + FA replacement pool use the bye fence (rest-of-season lens) ==");
+  { // Follow-up 2026-10-07: bye players count as present for the surplus/bench list and the replacement FA pool.
+    const meP = rosters.teams[rosters.me].map(T.info);
+    const benchN = new Set(T.tradeLineup(meP).bench.map(p => p.n));
+    assert(T.findSurplus().every(s => benchN.has(s.p.n)), "surplus candidates come from my bye-present (trade) lineup bench, not the this-week lineup");
+    const okFA = p => p.ros != null && !/^(O|IR|SUSP)$/.test(p.injLive || "");
+    const fas = T.freeAgents().filter(okFA).sort((a, b) => a.ros - b.ros);
+    const pos = ["QB","RB","WR","TE","DST","K"].filter(ps => fas.find(p => p.pos === ps));
+    const byeTop = pos.filter(ps => fas.find(p => p.pos === ps).onBye);
+    pos.forEach(ps => { const top = fas.find(p => p.pos === ps), h = T.replFill([{ slot: ps, p: null }])[0];
+      assert(h.src === top.name, ps + " hole fills with the best FA at the position, bye or not (" + top.name + " #" + top.ros + (top.onBye ? ", on bye" : "") + ")"); });
+    const byeFA = fas.find(p => p.onBye);
+    assert(!!byeFA, "fixture: free agents on bye this week exist (" + fas.filter(p => p.onBye).length + ", best " + (byeFA ? byeFA.pos + " " + byeFA.name + " #" + byeFA.ros : "-") + ")");
+    if (byeFA){ // open exactly enough holes at his position to reach him in rank order: he must be used, not skipped for the bye
+      const k = fas.filter(p => p.pos === byeFA.pos && p.ros < byeFA.ros).length + 1;
+      const fill = T.replFill(Array.from({ length: k }, () => ({ slot: byeFA.pos, p: null })));
+      assert(fill.some(h => h.src === byeFA.name), "a free agent on bye stays in the replacement pool (" + k + " " + byeFA.pos + " holes → " + fill.map(h => h.src).join(", ") + ")");
+    }
+  }
+
   console.log("\n--- POWER ---");
   [...d.querySelectorAll("#tab-league .row")].forEach(r => console.log(" ", r.textContent.replace(/\s+/g, " ").trim()));
   console.log(failures ? failures + " FAILED" : "ALL SEASON TESTS PASSED"); process.exit(failures ? 1 : 0);
