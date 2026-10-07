@@ -30,7 +30,9 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   console.log("== Lineup (rank fallback) ==");
   let starters = [...d.querySelectorAll("#tab-lineup .row.start")];
   assert(starters.length === 9, "9 starting slots rendered (QB,RB1,RB2,WR1,WR2,TE,DST,K,FLEX)");
-  assert(starters.some(s => /WR1|WR2/.test(txt(s)) && /Ja'Marr Chase/.test(txt(s))), "Chase starts at WR");
+  // Data-driven, not a hardcoded star: names rot with real injuries (Chase went Q/concussion in Wk 5 and is correctly benched).
+  const bestWkWR = rosters.teams[rosters.me].map(T.info).filter(p => p.pos === "WR" && !p.onBye && p.wkRank != null && !(p.inj && /^(O|IR|SUSP)$/.test(p.inj.code))).sort((a, b) => a.wkRank - b.wkRank)[0];
+  assert(bestWkWR && starters.some(s => /WR1|WR2/.test(slotOf(s)) && rx(bestWkWR.name).test(txt(s))), "my best-ranked available WR this week starts at WR (" + (bestWkWR && bestWkWR.name) + ", wk #" + (bestWkWR && bestWkWR.wkRank) + ")");
   const myQBs = rosters.teams[rosters.me].filter(p => p.pos === "QB").map(p => p.name);
   assert(starters.some(s => slotOf(s) === "QB" && myQBs.some(n => rx(n).test(txt(s)))), "QB slot filled from roster (" + myQBs.join("/") + ")");
   const myDst = rosters.teams[rosters.me].filter(p => p.pos === "DST").map(p => p.name), myK = rosters.teams[rosters.me].filter(p => p.pos === "K").map(p => p.name);
@@ -70,7 +72,8 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const L = T.optimalLineup(me, "mu");
   const startersByEligibility = b => L.slots.filter(s => s.p && (s.slot.replace(/\d$/, "") === b.pos || (s.slot === "FLEX" && ["RB","WR","TE"].includes(b.pos)))).map(s => s.p.mu);
   assert(L.bench.filter(b => b.mu != null && b.pPlay > 0).every(b => Math.min(...startersByEligibility(b)) >= b.mu - 1e-9), "no usable bench player out-projects a starter he could replace (lineup is optimal by predicted points)");
-  assert(starters.some(s => /WR1|WR2/.test(txt(s)) && /Ja'Marr Chase/.test(txt(s))), "Chase still starts at WR by predicted points");
+  const bestMuWR = me.filter(p => p.pos === "WR" && p.mu != null && p.pPlay > 0).sort((a, b) => b.mu - a.mu)[0];
+  assert(bestMuWR && starters.some(s => /WR1|WR2/.test(slotOf(s)) && rx(bestMuWR.name).test(txt(s))), "my top-projected WR starts at WR by predicted points (" + (bestMuWR && bestMuWR.name) + ", " + (bestMuWR && bestMuWR.mu) + ")");
   assert(/Start\/sit calls/.test(d.getElementById("tab-lineup").textContent), "start/sit calls panel rendered");
   const calls = [...d.querySelectorAll("#tab-lineup .row")].filter(r => /%/.test(r.textContent) && /over/.test(r.textContent));
   assert(calls.length >= 1, "at least one bench-vs-starter call with a percentage (" + calls.length + ")");
@@ -287,7 +290,12 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
 
   console.log("== Trade tracking ==");
   const before = trades.length;
-  d.querySelector("#tab-trades .tbtns button[data-status='declined']").click();   // decline the #1 offer
+  // Click the button for the EXACT deal under test. The tab renders a tiered plan (Tier 1 = biggest need)
+  // above the EV-sorted list, so "first button on the page" is not trades[0].
+  const btnFor = (t, status) => { const w = [...d.querySelectorAll("#tab-trades .tbtns")].find(x => x.dataset.team === t.team && x.dataset.give === t.giveName && x.dataset.get === t.getName); return w && w.querySelector("button[data-status='" + status + "']"); };
+  const second = trades.slice(1).find(t => !(t.team === top.team && t.giveName === top.giveName && t.getName === top.getName) && btnFor(t, "proposed"));
+  assert(btnFor(top, "declined") && second, "the #1 deal and a #2 deal both render with tracking buttons");
+  btnFor(top, "declined").click();   // decline the #1 offer
   let after = T.findTrades();
   assert(!after.some(x => x.team === top.team && x.getName === top.getName && x.giveName === top.giveName), "a declined offer disappears from the list");
   assert(T.teamFloor(top.team) === top.theirGain + 3, "declining teaches the model: that team's floor rises to (declined their-side + 3)");
@@ -297,8 +305,8 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   d.querySelector("#tab-trades .tb-undo").click();                                 // undo it
   assert(T.findTrades().length === before, "undo restores the list");
   // propose the #1 and #2 offers -> open proposals with stats
-  d.querySelectorAll("#tab-trades .tbtns button[data-status='proposed']")[0].click();
-  d.querySelectorAll("#tab-trades .tbtns button[data-status='proposed']")[0].click();
+  btnFor(top, "proposed").click();
+  btnFor(second, "proposed").click();
   const openTxt = () => d.getElementById("tab-trades").textContent;
   assert(/Open proposals/.test(openTxt()) && T.getLog().filter(e => e.status === "proposed").length === 2, "proposed offers move to the Open proposals section (2 open)");
   assert(new RegExp("your gain \\+" + top.myGain + " · their side").test(openTxt()) && /EV /.test(openTxt()) && /wk proj/.test(openTxt()), "open proposal shows gain, their side, acceptance odds, EV and this-week projections");
@@ -319,7 +327,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(!T.findTrades().some(x => x.team === top.team && x.getName === top.getName && x.giveName === top.giveName), "repo-logged declined offer is not re-suggested");
   T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
   // accept the #1 offer -> rosters swap locally and everything recomputes
-  d.querySelector("#tab-trades .tbtns button[data-status='accepted']").click();
+  btnFor(top, "accepted").click();
   const RR = T.getRosters();
   assert(top.gets.every(g => RR.teams[RR.me].some(p => T.norm(p.name) === g.n)) && top.gives.every(g => !RR.teams[RR.me].some(p => T.norm(p.name) === g.n)), "accepted: I now have the players I got and no longer have the ones I gave");
   assert(top.gives.every(g => RR.teams[top.team].some(p => T.norm(p.name) === g.n)), "accepted: the other team now has my players");
