@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-10-08",
- "source": "ESPN league 882823976 sync 2026-10-08 16:00 CDT",
+ "updated": "2026-10-09",
+ "source": "ESPN league 882823976 sync 2026-10-09 13:06 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -159,12 +159,6 @@
     "slot": "FLEX"
    },
    {
-    "name": "Bo Nix",
-    "pos": "QB",
-    "team": "DEN",
-    "slot": "BN"
-   },
-   {
     "name": "DK Metcalf",
     "pos": "WR",
     "team": "PIT",
@@ -180,6 +174,12 @@
     "name": "Emeka Egbuka",
     "pos": "WR",
     "team": "TB",
+    "slot": "BN"
+   },
+   {
+    "name": "Jayden Daniels",
+    "pos": "QB",
+    "team": "WAS",
     "slot": "BN"
    }
   ],
@@ -201,13 +201,13 @@
     "name": "Omarion Hampton",
     "pos": "RB",
     "team": "LAC",
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Tee Higgins",
     "pos": "WR",
     "team": "CIN",
-    "slot": "FLEX"
+    "slot": "BN"
    },
    {
     "name": "Davante Adams",
@@ -449,9 +449,9 @@
     "slot": "K"
    },
    {
-    "name": "Keaton Mitchell",
+    "name": "Braelon Allen",
     "pos": "RB",
-    "team": "LAC",
+    "team": "NYJ",
     "slot": "RB"
    }
   ],
@@ -460,7 +460,7 @@
     "name": "Justin Jefferson",
     "pos": "WR",
     "team": "MIN",
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Chase Brown",
@@ -538,7 +538,7 @@
     "name": "Denzel Boston",
     "pos": "WR",
     "team": "CLE",
-    "slot": "WR"
+    "slot": "BN"
    }
   ],
   "Knight Moves Ore Else": [
@@ -639,7 +639,7 @@
     "name": "Ja'Marr Chase",
     "pos": "WR",
     "team": "CIN",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Drake London",
@@ -663,7 +663,7 @@
     "name": "D'Andre Swift",
     "pos": "RB",
     "team": "CHI",
-    "slot": "FLEX"
+    "slot": "RB"
    },
    {
     "name": "Bucky Irving",
@@ -675,13 +675,13 @@
     "name": "Luther Burden III",
     "pos": "WR",
     "team": "CHI",
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Parker Washington",
     "pos": "WR",
     "team": "JAX",
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Jared Goff",
@@ -693,7 +693,7 @@
     "name": "Jeremiyah Love",
     "pos": "RB",
     "team": "ARI",
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "Rome Odunze",
@@ -743,7 +743,7 @@
     "name": "Zay Flowers",
     "pos": "WR",
     "team": "BAL",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Lamar Jackson",
@@ -761,7 +761,7 @@
     "name": "Christian Watson",
     "pos": "WR",
     "team": "GB",
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "David Montgomery",
