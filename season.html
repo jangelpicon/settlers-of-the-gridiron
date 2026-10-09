@@ -1087,10 +1087,14 @@
         const pw = sd>0 ? phi((myTot-opTot)/sd) : (myTot>opTot?1:myTot<opTot?0:.5);
         const pct = Math.round(pw*100);
         const anyLive = mine.slots.concat(theirs.slots).some(x=>played(x.p));
-        h += "<div class='suggest'><b class='hl'>"+esc(R.me)+" "+myTot.toFixed(1)+"</b> "+(anyLive?"live+proj":"projected")+" vs <b>"+opTot.toFixed(1)+"</b> "+esc(cur.opp)
-          + " · win odds <b class='"+(pct>=55?"good":pct<=45?"bad":"warn")+"'>"+pct+"%</b>"
-          + "<div class='row' style='border:0;padding:4px 0 0'><span class='bar' style='max-width:260px'><i style='width:"+pct+"%'></i></span></div>"
-          + "<span class='muted'>"+(anyLive?"Actual points for games already started, projections for the rest — the uncertainty shrinks as games finish.":"From both lineups' predicted totals and every player's usual week-to-week swing. Swing is big in fantasy — "+(pct>=60?"a clear edge, not a lock.":pct<=40?"an uphill week, not a lost one.":"a genuine coin flip."))+"</span></div>";
+        const edge = myTot - opTot, ecls = edge>=0?"good":"bad", lab = "font-size:.66rem;text-transform:uppercase;letter-spacing:.3px";
+        h += "<div class='suggest'><div style='display:flex;gap:24px;align-items:baseline;flex-wrap:wrap;margin-bottom:5px'>"
+          + "<span><div class='muted' style='"+lab+"'>Overall "+(anyLive?"live ":"")+"edge</div><b class='"+ecls+"' style='font-size:1.6rem'>"+(edge>=0?"+":"−")+Math.abs(edge).toFixed(1)+"</b></span>"
+          + "<span><div class='muted' style='"+lab+"'>Win probability</div><b class='"+(pct>=55?"good":pct<=45?"bad":"warn")+"' style='font-size:1.6rem'>"+pct+"%</b></span>"
+          + "<span><div class='muted' style='"+lab+"'>"+(anyLive?"Score — live + proj":"Projected score")+"</div><b style='font-size:1.1rem'>"+myTot.toFixed(1)+"</b> <span class='muted'>"+esc(R.me)+"</span> <span class='muted'>–</span> <b style='font-size:1.1rem'>"+opTot.toFixed(1)+"</b> <span class='muted'>"+esc(cur.opp)+"</span></span>"
+          + "</div>"
+          + "<div class='row' style='border:0;padding:2px 0 0'><span class='bar' style='max-width:300px'><i style='width:"+pct+"%'></i></span></div>"
+          + "<span class='muted'>"+(anyLive?"Actual points for games already started, projections for the rest — the edge and odds tighten as games finish.":"From both lineups' predicted totals and every player's usual week-to-week swing. Swing is big in fantasy — "+(pct>=60?"a clear edge, not a lock.":pct<=40?"an uphill week, not a lost one.":"a genuine coin flip."))+"</span></div>";
         const myPlayers = myTeam();
         const eligibleFor = slot => { const base = slot.replace(/\d$/,""); return myPlayers.filter(p=>!p.locked && !undraftable(p) && !p.onBye && (base==="FLEX"?FLEX.includes(p.pos):p.pos===base)).sort((a,b)=>(b.mu||0)-(a.mu||0)); };
         h += "<div class='muted' style='margin:8px 0 2px'>Swap any of <b>your</b> slots to test a different starter — the edge, win odds and chart update instantly. Started/finished games are locked."+(custom?" <button class='tb' id='resetLineup' style='margin-left:6px'>reset to optimal</button>":"")+"</div>";
@@ -1113,6 +1117,8 @@
         });
         h += "</div></div><div class='muted' style='margin-top:6px'>Players whose games have started are locked to their real lineup and show actual points; every unstarted slot shows their <b>best possible</b> option. Edge = chance your player outscores theirs at that slot.</div>";
         h += slotEdgeChart(mine, theirs);
+        const wps = winProbSeries(mine, theirs);
+        if (wps.length >= 2) h += winProbChart(wps);
       } else {
         h += "<div class='muted'>Live projections unavailable — win odds need them. Rosters below by this week's consensus rank.</div>";
         h += "<div class='tbl'><div class='gm'><div class='hrow'><span>Slot</span><span>You</span><span class='num'>Wk rank</span><span>Them</span><span class='num'>Wk rank</span><span></span></div>";
@@ -1821,6 +1827,38 @@
     });
     const nm = net>=0?"ahead by":"behind by", basis = anyLive ? "Live: actual points for games that have started, projections for the rest" : "On projections";
     return "<h3>"+(anyLive?"Live":"Projected")+" edge by slot</h3><div class='muted' style='margin-bottom:4px'>Your points minus theirs at each starting slot — <span style='color:"+CH.me+"'>gold = your edge</span>, <span style='color:"+CH.rival+"'>blue = theirs</span>. "+basis+", you're <b>"+nm+" "+Math.abs(net).toFixed(1)+"</b>.</div><svg class='lc' viewBox='0 0 "+W+" "+H+"' role='img' aria-label='Projected edge by slot'>"+g+"</svg>";
+  }
+  // Win probability as a function of which games are already in the books. At a given cutoff time, a player
+  // whose game kicked by then counts at his actual score with no uncertainty; everyone else is still a
+  // projection with his usual swing. Walking the cutoff from pre-kickoff to now traces how the matchup swung.
+  function winProbAt(mine, theirs, cutoff){
+    let my=0, op=0, v=0;
+    const add = (x, side)=>{ if(!x.p) return; const res = played(x.p) && x.p.game && x.p.game.kick && Date.parse(x.p.game.kick) <= cutoff;
+      const pts = res ? x.p.actual : (x.p.mu!=null?x.p.mu:0), sd = res ? 0 : (x.p.sd!=null?x.p.sd:0);
+      if (side) my+=pts; else op+=pts; v += sd*sd; };
+    mine.slots.forEach(x=>add(x,true)); theirs.slots.forEach(x=>add(x,false));
+    const s = Math.sqrt(v); return s>0 ? phi((my-op)/s) : (my>op?1:my<op?0:.5);
+  }
+  function gameLabel(k){ const d=new Date(k); return d.toLocaleString("en-US",{timeZone:"America/Chicago",weekday:"short"})+" "+d.toLocaleString("en-US",{timeZone:"America/Chicago",hour:"numeric"}).replace(/\s/g,""); }
+  function winProbSeries(mine, theirs){
+    const kicks = [...new Set(mine.slots.concat(theirs.slots).map(x=>x.p).filter(p=>p && played(p) && p.game && p.game.kick).map(p=>Date.parse(p.game.kick)))].sort((a,b)=>a-b);
+    const cps = [{ label:"Pre", t:0 }].concat(kicks.map(k=>({ label:gameLabel(k), t:k })));
+    return cps.map(c=>({ label:c.label, p: winProbAt(mine, theirs, c.t) }));
+  }
+  // Single gold line, 0–100%, with a 50% coin-flip guide; the end point is the current live win probability.
+  function winProbChart(series){
+    const W=760, H=208, L=40, Rm=56, T=12, B=28, pw=W-L-Rm, ph=H-T-B, n=series.length;
+    const X = i => n>1 ? L+i/(n-1)*pw : L+pw/2, Y = p => T+(1-p)*ph;
+    let g = "";
+    [0,0.25,0.5,0.75,1].forEach(v=>{ const yy=Y(v); g += "<line x1='"+L+"' y1='"+yy.toFixed(1)+"' x2='"+(W-Rm)+"' y2='"+yy.toFixed(1)+"' stroke='"+(v===0.5?"#4a5560":CH.grid)+"' stroke-width='1'"+(v===0.5?" stroke-dasharray='4 3'":"")+"/><text x='"+(L-6)+"' y='"+(yy+3).toFixed(1)+"' text-anchor='end' font-size='10' fill='var(--muted)'>"+Math.round(v*100)+"%</text>"; });
+    const path = series.map((d,i)=>(i?"L":"M")+X(i).toFixed(1)+" "+Y(d.p).toFixed(1)).join(" ");
+    g += "<path d='"+path+" L"+X(n-1).toFixed(1)+" "+Y(0).toFixed(1)+" L"+X(0).toFixed(1)+" "+Y(0).toFixed(1)+" Z' fill='"+CH.me+"' opacity='0.08'/>";
+    g += "<path d='"+path+"' fill='none' stroke='"+CH.me+"' stroke-width='2.6' stroke-linejoin='round' stroke-linecap='round'/>";
+    series.forEach((d,i)=>{ const last=i===n-1; g += "<circle cx='"+X(i).toFixed(1)+"' cy='"+Y(d.p).toFixed(1)+"' r='"+(last?4.6:3.2)+"' fill='"+(d.p>=0.5?CH.me:CH.rival)+"' stroke='var(--panel)' stroke-width='1.5'><title>"+esc(d.label)+" · "+Math.round(d.p*100)+"%</title></circle>";
+      g += "<text x='"+X(i).toFixed(1)+"' y='"+(H-10)+"' text-anchor='middle' font-size='9' fill='var(--muted)'>"+esc(d.label)+"</text>"; });
+    const cur = series[n-1];
+    g += "<text x='"+(W-Rm+6)+"' y='"+(Y(cur.p)+4).toFixed(1)+"' font-size='13' font-weight='700' fill='"+(cur.p>=0.5?CH.me:CH.rival)+"'>"+Math.round(cur.p*100)+"%</text>";
+    return "<h3>Live win probability</h3><div class='muted' style='margin-bottom:4px'>Your chance to win this matchup, re-figured as each game goes final. 50% is a coin flip; above the dashed line you're favored.</div><svg class='lc' viewBox='0 0 "+W+" "+H+"' role='img' aria-label='Live win probability'>"+g+"</svg>";
   }
   function renderStrength(){
     let h = "";

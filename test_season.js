@@ -539,6 +539,10 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     const ts = [...mu.querySelectorAll("svg.lc")].filter(s => s.querySelectorAll("g.pkg").length > 0);
     assert(ts.length === 2 && ts.every(s => s.querySelectorAll("path.hero").length === 2 && s.querySelectorAll("g.pkg").length === 7), "matchup tab frames you + this week's opponent (" + coReal2.opp + ") as the two hero lines, the other 7 as the pack");
     assert(mu.querySelector("svg.lc[aria-label='Projected edge by slot']") && /(Projected|Live) edge by slot/.test(mu.textContent), "matchup tab renders the slot-by-slot edge chart");
+    assert(/Overall (live )?edge/.test(mu.textContent) && /Win probability/.test(mu.textContent), "matchup headline shows an overall edge + win probability");
+    // win-probability line appears once at least one game has gone final (Pre + >=1 checkpoint)
+    const wpSvg = mu.querySelector("svg.lc[aria-label='Live win probability']");
+    assert(!wpSvg || wpSvg.querySelectorAll("circle").length >= 2, "live win-probability line renders a point per game checkpoint");
     // interactive what-if editor: every unlocked slot is a dropdown of your eligible starters
     const picks = [...mu.querySelectorAll("select.pick")];
     assert(picks.length >= 1 && picks.every(s => s.dataset.slot && s.options.length >= 1), "matchup offers a lineup dropdown for each unstarted slot (" + picks.length + ")");
