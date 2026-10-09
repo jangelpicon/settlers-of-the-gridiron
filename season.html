@@ -55,6 +55,16 @@
   .legend{font-size:.8rem;color:var(--muted);} .legend dl{display:grid;grid-template-columns:max-content 1fr;gap:3px 12px;margin:6px 0 0;} .legend dt{color:var(--text);font-weight:700;} .legend dd{margin:0;}
   details summary{cursor:pointer;color:var(--wheat);font-weight:600;}
   @media (max-width:700px){ .row b{min-width:100px;} .detail{padding-left:0;} .row.grid .detail,.row.grid .sub{padding-left:0;} }
+  /* Scoring-over-time charts */
+  .lc{width:100%;height:auto;display:block;overflow:visible;}
+  .lc .pkl{fill:none;stroke:#55606b;stroke-width:1.4;opacity:.3;transition:stroke .15s,opacity .15s,stroke-width .15s;}
+  .lc .pkt{opacity:0;fill:#cdd6df;font-size:10px;font-weight:600;dominant-baseline:middle;pointer-events:none;transition:opacity .15s;}
+  .lc .pkg{cursor:pointer;}
+  .lc .pkg:hover .pkl{stroke:#aeb8c2;opacity:1;stroke-width:2.4;}
+  .lc .pkg:hover .pkt{opacity:1;}
+  .lc .hero{stroke-dasharray:1600;stroke-dashoffset:1600;animation:lcDraw .9s ease-out forwards;}
+  @keyframes lcDraw{to{stroke-dashoffset:0;}}
+  @media (prefers-reduced-motion:reduce){ .lc .hero{animation:none;stroke-dashoffset:0;} }
 </style>
 </head>
 <body>
@@ -1060,6 +1070,7 @@
             + "<span class='c' style='text-align:center'>"+(ep===""?"":"<span class='tag "+cls+"'>"+ep+"%</span>")+"</span></div>";
         });
         h += "</div></div><div class='muted' style='margin-top:6px'>Both sides shown with their <b>best possible</b> lineup — if they start someone worse, your odds only improve. Edge = chance your player outscores theirs at that slot.</div>";
+        h += slotEdgeChart(mine, theirs);
       } else {
         h += "<div class='muted'>Live projections unavailable — win odds need them. Rosters below by this week's consensus rank.</div>";
         h += "<div class='tbl'><div class='gm'><div class='hrow'><span>Slot</span><span>You</span><span class='num'>Wk rank</span><span>Them</span><span class='num'>Wk rank</span><span></span></div>";
@@ -1068,6 +1079,14 @@
         h += "</div></div>";
       }
       h += "</div>";
+      // Scoring trend framed around this week's opponent: you gold, them blue, the pack behind.
+      const mWks = Object.keys(allScores()).map(Number);
+      if (mWks.length >= 2){
+        h += "<div class='panel'><h2>Scoring trend — you vs "+esc(cur.opp)+"</h2>";
+        h += lineChart("Points per week", "Real weekly scores. Gold = you, blue = "+esc(cur.opp)+", the pack = the rest of the league — hover any line to name it.", scoreSeries(cur.opp, false), mWks.sort((a,b)=>a-b));
+        h += lineChart("Cumulative points", "Season total as it builds — where you and "+esc(cur.opp)+" stack up against the field.", scoreSeries(cur.opp, true), mWks.sort((a,b)=>a-b));
+        h += "</div>";
+      }
     } else if (cur && !cur.opp){
       h += "<div class='panel'><h2>Week "+cur.week+"</h2><div class='muted'>You're the odd team out this fantasy week (9 teams, one sits) — no head-to-head. Your score still counts toward season stats.</div></div>";
     } else {
@@ -1666,30 +1685,87 @@
   // validator — gold = my team, blue = the league leader, gray = everyone else (context,
   // identity carried by hover tooltips, end labels and the table, never color alone).
   const CH = { me:"#c98500", rival:"#3987e5", other:"#55606b", grid:"#2a323b" };
-  // One SVG line chart: series = [{name, color, w, pts:[{x,y}]}], xs = tick values.
+  // Round a data range to friendly axis ticks (1/2/2.5/5 × 10ⁿ) instead of raw min/max.
+  function niceScale(min, max, count){
+    const span = (max-min) || 1, raw = span/count;
+    const mag = Math.pow(10, Math.floor(Math.log10(raw))), n = raw/mag;
+    const step = (n>=5?10:n>=2.5?5:n>=2?2.5:n>=1?2:1)*mag;
+    const lo = Math.floor(min/step)*step, hi = Math.ceil(max/step)*step, ticks=[];
+    for (let v=lo; v<=hi+step*0.5; v+=step) ticks.push(Math.round(v*1000)/1000);
+    return { lo, hi, ticks };
+  }
+  // One interactive SVG line chart. series = [{name, color, pts:[{x,y}]}], xs = week ticks.
+  // The pack (color===CH.other) collapses into a shaded min–max band plus faint lines that
+  // light up and name themselves on hover; you + the top rival ride on top as hero lines with
+  // markers, end labels, an area fill under your line, and a draw-in animation.
   function lineChart(title, note, series, xs, yFmt){
-    const W=720, H=250, L=46, Rm=14, T=12, B=26, pw=W-L-Rm, ph=H-T-B;
+    const W=760, H=262, L=44, Rm=96, T=14, B=28, pw=W-L-Rm, ph=H-T-B;
+    const uid = "lc"+Math.random().toString(36).slice(2,7);
     const ys = series.flatMap(s=>s.pts.map(p=>p.y));
-    let y0=Math.min(...ys), y1=Math.max(...ys); const pad=(y1-y0)*0.08||1; y0-=pad; y1+=pad;
+    const sc = niceScale(Math.min(...ys), Math.max(...ys), 4), y0=sc.lo, y1=sc.hi;
     const X = x => L + (xs.length>1 ? (x-xs[0])/(xs[xs.length-1]-xs[0]) : 0.5)*pw;
     const Y = y => T + (1-(y-y0)/(y1-y0))*ph;
     const f = yFmt || (v=>Math.round(v));
-    let g = "";
-    // recessive grid: 4 horizontal lines + y labels, week ticks on x
-    for (let i=0;i<=3;i++){ const yv=y0+(y1-y0)*i/3, yy=Y(yv);
-      g += "<line x1='"+L+"' y1='"+yy+"' x2='"+(W-Rm)+"' y2='"+yy+"' stroke='"+CH.grid+"' stroke-width='1'/><text x='"+(L-6)+"' y='"+(yy+3)+"' text-anchor='end' font-size='10' fill='var(--muted)'>"+f(yv)+"</text>"; }
-    xs.forEach(x=>{ g += "<text x='"+X(x)+"' y='"+(H-8)+"' text-anchor='middle' font-size='10' fill='var(--muted)'>Wk "+x+"</text>"; });
-    // gray context first, highlighted on top; 2px lines, markers + end labels on highlights only
-    const draw = s => {
-      const d = s.pts.map((p,i)=>(i?"L":"M")+X(p.x).toFixed(1)+" "+Y(p.y).toFixed(1)).join(" ");
-      let out = "<path d='"+d+"' fill='none' stroke='"+s.color+"' stroke-width='2' stroke-linejoin='round' stroke-linecap='round'"+(s.color===CH.other?" opacity='0.65'":"")+"/>";
-      s.pts.forEach(p=>{ out += "<circle cx='"+X(p.x)+"' cy='"+Y(p.y)+"' r='"+(s.color===CH.other?0:3.5)+"' fill='"+s.color+"'/><circle cx='"+X(p.x)+"' cy='"+Y(p.y)+"' r='12' fill='transparent'><title>"+esc(s.name)+" · Wk "+p.x+" · "+f(p.y)+"</title></circle>"; });
-      return out;
-    };
-    series.filter(s=>s.color===CH.other).forEach(s=>{ g += draw(s); });
-    series.filter(s=>s.color!==CH.other).forEach(s=>{ g += draw(s); });
-    const legend = "<div class='muted' style='display:flex;gap:14px;flex-wrap:wrap;margin:4px 0 8px'>"+series.filter(s=>s.color!==CH.other).map(s=>"<span><span style='display:inline-block;width:10px;height:10px;border-radius:2px;background:"+s.color+";margin-right:5px'></span>"+esc(s.name)+"</span>").join("")+"<span><span style='display:inline-block;width:10px;height:10px;border-radius:2px;background:"+CH.other+";margin-right:5px'></span>everyone else (hover a line for the name)</span></div>";
-    return "<h3>"+esc(title)+"</h3><div class='muted' style='margin-bottom:4px'>"+note+"</div>"+legend+"<svg viewBox='0 0 "+W+" "+H+"' style='width:100%;height:auto;display:block' role='img' aria-label='"+esc(title)+"'>"+g+"</svg>";
+    const tr = s => s.length>16 ? s.slice(0,15)+"…" : s;
+    const path = pts => pts.map((p,i)=>(i?"L":"M")+X(p.x).toFixed(1)+" "+Y(p.y).toFixed(1)).join(" ");
+    let g = "<defs><linearGradient id='"+uid+"' x1='0' x2='0' y1='0' y2='1'><stop offset='0' stop-color='"+CH.me+"' stop-opacity='0.22'/><stop offset='1' stop-color='"+CH.me+"' stop-opacity='0'/></linearGradient></defs>";
+    // nice-number grid + y labels, week ticks on x
+    sc.ticks.forEach(v=>{ const yy=Y(v); g += "<line x1='"+L+"' y1='"+yy.toFixed(1)+"' x2='"+(W-Rm)+"' y2='"+yy.toFixed(1)+"' stroke='"+CH.grid+"' stroke-width='1'/><text x='"+(L-7)+"' y='"+(yy+3).toFixed(1)+"' text-anchor='end' font-size='10' fill='var(--muted)'>"+f(v)+"</text>"; });
+    xs.forEach(x=>{ g += "<text x='"+X(x).toFixed(1)+"' y='"+(H-9)+"' text-anchor='middle' font-size='10' fill='var(--muted)'>Wk "+x+"</text>"; });
+    const pack = series.filter(s=>s.color===CH.other), heroes = series.filter(s=>s.color!==CH.other);
+    // pack envelope: shaded band between the weekly min and max of everyone else
+    const hi=[], lo=[];
+    xs.forEach(x=>{ const vs=pack.map(s=>{const p=s.pts.find(q=>q.x===x);return p?p.y:null;}).filter(v=>v!=null);
+      if (vs.length){ hi.push({x,y:Math.max(...vs)}); lo.push({x,y:Math.min(...vs)}); } });
+    if (hi.length>1){ g += "<path d='"+path(hi)+" "+lo.slice().reverse().map(p=>"L"+X(p.x).toFixed(1)+" "+Y(p.y).toFixed(1)).join(" ")+" Z' fill='#55606b' opacity='0.1'/>"; }
+    // faint pack lines, each grouped with a fat invisible hit-path, per-point tooltips, and a hover label
+    pack.forEach(s=>{ const d=path(s.pts), last=s.pts[s.pts.length-1];
+      let dots=""; s.pts.forEach(p=>{ dots += "<circle cx='"+X(p.x).toFixed(1)+"' cy='"+Y(p.y).toFixed(1)+"' r='10' fill='transparent'><title>"+esc(s.name)+" · Wk "+p.x+" · "+f(p.y)+"</title></circle>"; });
+      g += "<g class='pkg'><path class='pkl' d='"+d+"'/><path d='"+d+"' fill='none' stroke='transparent' stroke-width='12'/>"+dots+"<text class='pkt' x='"+(X(last.x)+6).toFixed(1)+"' y='"+Y(last.y).toFixed(1)+"'>"+esc(tr(s.name))+"</text></g>"; });
+    // area fill under my line
+    const me = heroes.find(s=>s.color===CH.me);
+    if (me && me.pts.length>1){ const base=Y(y0).toFixed(1);
+      g += "<path d='"+path(me.pts)+" L"+X(me.pts[me.pts.length-1].x).toFixed(1)+" "+base+" L"+X(me.pts[0].x).toFixed(1)+" "+base+" Z' fill='url(#"+uid+")'/>"; }
+    // hero lines + markers + hover tooltips
+    heroes.forEach(s=>{ g += "<path class='hero' d='"+path(s.pts)+"' fill='none' stroke='"+s.color+"' stroke-width='2.6' stroke-linejoin='round' stroke-linecap='round'/>";
+      s.pts.forEach(p=>{ g += "<circle class='hdot' cx='"+X(p.x).toFixed(1)+"' cy='"+Y(p.y).toFixed(1)+"' r='3.6' fill='"+s.color+"' stroke='var(--panel)' stroke-width='1.5'/><circle cx='"+X(p.x).toFixed(1)+"' cy='"+Y(p.y).toFixed(1)+"' r='12' fill='transparent'><title>"+esc(s.name)+" · Wk "+p.x+" · "+f(p.y)+"</title></circle>"; }); });
+    // hero end labels, nudged apart if they collide
+    const labs = heroes.map(s=>{ const lp=s.pts[s.pts.length-1]; return { x:X(lp.x), y:Y(lp.y), color:s.color, text:s.color===CH.me?"You":tr(s.name) }; }).sort((a,b)=>a.y-b.y);
+    for (let i=1;i<labs.length;i++){ if (labs[i].y-labs[i-1].y<12) labs[i].y=labs[i-1].y+12; }
+    labs.forEach(l=>{ g += "<text class='hlab' x='"+(l.x+8).toFixed(1)+"' y='"+(l.y+3).toFixed(1)+"' font-size='11' font-weight='700' fill='"+l.color+"'>"+esc(l.text)+"</text>"; });
+    const legend = "<div class='muted' style='display:flex;gap:14px;flex-wrap:wrap;margin:4px 0 8px'>"+heroes.map(s=>"<span><span style='display:inline-block;width:10px;height:10px;border-radius:2px;background:"+s.color+";margin-right:5px'></span>"+(s.color===CH.me?"You":esc(s.name))+"</span>").join("")+"<span><span style='display:inline-block;width:10px;height:10px;border-radius:2px;background:"+CH.other+";margin-right:5px'></span>the pack — hover any line to name it</span></div>";
+    return "<h3>"+esc(title)+"</h3><div class='muted' style='margin-bottom:4px'>"+note+"</div>"+legend+"<svg class='lc' viewBox='0 0 "+W+" "+H+"' role='img' aria-label='"+esc(title)+"'>"+g+"</svg>";
+  }
+  // Weekly (or cumulative) real scores for all nine teams. `rival` rides the blue hero line, I get gold,
+  // everyone else is the gray pack. Shared by the Strength tab (rival = best on paper) and the Matchup tab
+  // (rival = this week's opponent) so there's one builder, not two.
+  function scoreSeries(rival, cum){
+    const scores = allScores(), wks = Object.keys(scores).map(Number).sort((a,b)=>a-b);
+    const color = t => t===R.me ? CH.me : t===rival ? CH.rival : CH.other;
+    return Object.keys(R.teams).map(t=>{ let run = 0;
+      const pts = wks.filter(w=>scores[w][t]!=null).map(w=>{ run += scores[w][t]; return { x:w, y: cum?run:scores[w][t] }; });
+      return { name:t, color:color(t), pts };
+    }).filter(s=>s.pts.length);
+  }
+  // This week's matchup as a diverging bar per lineup slot: your projected points minus theirs.
+  // Gold bar right = your edge at that slot, blue bar left = theirs; the note carries the net margin.
+  function slotEdgeChart(mine, theirs){
+    const cut = s => s && s.length>15 ? s.slice(0,14)+"…" : (s||"—");
+    const rows = mine.slots.map((s1,i)=>{ const s2 = theirs.slots[i]||{p:null};
+      const a = s1.p&&s1.p.mu!=null ? s1.p.mu : 0, b = s2.p&&s2.p.mu!=null ? s2.p.mu : 0;
+      return { slot:s1.slot, me:a, them:b, d:a-b, you:s1.p?s1.p.name:"—", them2:s2.p?s2.p.name:"—" };
+    });
+    const maxAbs = Math.max(1, ...rows.map(r=>Math.abs(r.d))), net = rows.reduce((t,r)=>t+r.d,0);
+    const W=760, rh=34, L=56, Rm=330, span=W-L-Rm, cx=L+span/2, H=rows.length*rh+12;
+    let g = "<line x1='"+cx+"' y1='6' x2='"+cx+"' y2='"+(rows.length*rh+6).toFixed(1)+"' stroke='"+CH.grid+"' stroke-width='1'/>";
+    rows.forEach((r,i)=>{ const y=i*rh+6, w=Math.abs(r.d)/maxAbs*(span/2), mine1=r.d>=0, col=mine1?CH.me:CH.rival, bx=mine1?cx:cx-w;
+      g += "<text x='"+(L-8)+"' y='"+(y+rh/2+1).toFixed(1)+"' text-anchor='end' font-size='11' font-weight='700' fill='var(--text)'>"+esc(r.slot)+"</text>";
+      g += "<rect x='"+bx.toFixed(1)+"' y='"+(y+6)+"' width='"+Math.max(w,0.6).toFixed(1)+"' height='"+(rh-12)+"' rx='2' fill='"+col+"' opacity='0.9'><title>"+esc(r.slot)+": you "+r.me.toFixed(1)+" vs "+r.them.toFixed(1)+"</title></rect>";
+      g += "<text x='"+(mine1?cx+w+6:cx-w-6).toFixed(1)+"' y='"+(y+rh/2+1).toFixed(1)+"' text-anchor='"+(mine1?"start":"end")+"' font-size='10.5' font-weight='700' fill='"+col+"'>"+(mine1?"+":"−")+Math.abs(r.d).toFixed(1)+"</text>";
+      g += "<text x='"+(W-Rm+56)+"' y='"+(y+rh/2+1).toFixed(1)+"' font-size='10' fill='var(--muted)'>"+esc(cut(r.you))+" <tspan fill='"+CH.me+"'>"+r.me.toFixed(1)+"</tspan> · "+esc(cut(r.them2))+" <tspan fill='"+CH.rival+"'>"+r.them.toFixed(1)+"</tspan></text>";
+    });
+    const nm = net>=0?"ahead by":"behind by";
+    return "<h3>Projected edge by slot</h3><div class='muted' style='margin-bottom:4px'>Your projected points minus theirs at each starting slot — <span style='color:"+CH.me+"'>gold = your edge</span>, <span style='color:"+CH.rival+"'>blue = theirs</span>. On projections you're <b>"+nm+" "+Math.abs(net).toFixed(1)+"</b>.</div><svg class='lc' viewBox='0 0 "+W+" "+H+"' role='img' aria-label='Projected edge by slot'>"+g+"</svg>";
   }
   function renderStrength(){
     let h = "";
@@ -1734,15 +1810,9 @@
     const wks = Object.keys(scores).map(Number).sort((a,b)=>a-b);
     if (wks.length >= 2){
       const rival = oSorted.find(t=>t!==R.me);
-      const color = t => t===R.me ? CH.me : t===rival ? CH.rival : CH.other;
-      const mkSeries = cum => teamNames.map(t=>{
-        let run = 0;
-        const pts = wks.filter(w=>scores[w][t]!=null).map(w=>{ run += scores[w][t]; return { x:w, y: cum?run:scores[w][t] }; });
-        return { name:t, color:color(t), pts };
-      }).filter(s=>s.pts.length);
       h += "<div class='panel'><h2>Scoring over time</h2>";
-      h += lineChart("Points per week", "Real scores from the schedule, every completed week. Gold = you, blue = the best other roster on paper ("+esc(rival)+").", mkSeries(false), wks);
-      h += lineChart("Cumulative points", "Season total as it builds — the gap is the season story.", mkSeries(true), wks);
+      h += lineChart("Points per week", "Real scores from the schedule, every completed week. Gold = you, blue = the best other roster on paper ("+esc(rival)+").", scoreSeries(rival, false), wks);
+      h += lineChart("Cumulative points", "Season total as it builds — the gap is the season story.", scoreSeries(rival, true), wks);
       // table view of the same data (accessibility + exact numbers)
       const totals = {}; teamNames.forEach(t=>{ totals[t] = wks.reduce((s,w)=>s+(scores[w][t]||0),0); });
       const tg = "display:grid;grid-template-columns:minmax(110px,1.5fr) repeat("+(wks.length+1)+",minmax(44px,1fr));gap:4px;align-items:center";

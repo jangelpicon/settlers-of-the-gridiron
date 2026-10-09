@@ -533,6 +533,13 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const coReal = T.currentOpponent();
   assert(coReal && (coReal.opp == null || rosters.teams[coReal.opp]), "real data: current opponent is a known roster (or a bye)");
   assert([...d.querySelectorAll("#tab-matchup .gh .row.grid")].length >= 4, "real data: week-by-week history rows render for both teams");
+  const coReal2 = T.currentOpponent();
+  if (coReal2 && coReal2.opp){
+    const mu = d.getElementById("tab-matchup");
+    const ts = [...mu.querySelectorAll("svg.lc")].filter(s => s.querySelectorAll("g.pkg").length > 0);
+    assert(ts.length === 2 && ts.every(s => s.querySelectorAll("path.hero").length === 2 && s.querySelectorAll("g.pkg").length === 7), "matchup tab frames you + this week's opponent (" + coReal2.opp + ") as the two hero lines, the other 7 as the pack");
+    assert(/Projected edge by slot/.test(mu.textContent) && mu.querySelector("svg.lc[aria-label='Projected edge by slot']"), "matchup tab renders the slot-by-slot projected-edge chart");
+  }
   assert(/Win odds \(matchup\)/.test(d.getElementById("legend").textContent) && /All-play/.test(d.getElementById("legend").textContent), "legend explains win odds, all-play and luck");
   console.log("\n--- MATCHUP (week " + (histReal.currentWeek || "?") + ") ---");
   console.log(d.getElementById("tab-matchup").textContent.replace(/\s+/g, " ").slice(0, 700));
@@ -543,9 +550,10 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(/League rank \(1 = strongest\)/.test(stTab.textContent), "rank grid renders (per-position + overall)");
   assert(/Position strength by team/.test(stTab.textContent) && !/Position strength by team/.test(d.getElementById("tab-trades").textContent), "position bars live on the Strength tab, not Trades");
   const stSvgs = [...stTab.querySelectorAll("svg")];
-  assert(stSvgs.length === 2 && stSvgs.every(s => s.querySelectorAll("path").length === 9), "both timeseries charts render one line per team");
+  assert(stSvgs.length === 2 && stSvgs.every(s => s.querySelectorAll("path.hero").length === 2 && s.querySelectorAll("g.pkg").length === 7), "both timeseries charts render all nine teams (2 hero lines + 7 pack lines)");
   assert(stSvgs.every(s => s.querySelectorAll("title").length >= 18), "every chart point carries a hover tooltip (team · week · points)");
-  assert(/everyone else/.test(stTab.textContent), "legend explains the gray context lines");
+  assert(stSvgs.every(s => s.querySelectorAll("g.pkg text.pkt").length === 7), "each pack line names itself on hover");
+  assert(/the pack/.test(stTab.textContent), "legend explains the pack context lines");
   assert(/Total/.test(stTab.textContent), "scores table view renders beside the charts");
 
   console.log("== Championship simulator ==");
