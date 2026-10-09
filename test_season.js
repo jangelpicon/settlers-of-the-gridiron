@@ -516,7 +516,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(/win odds/.test(mtxt) && /%/.test(mtxt), "win odds rendered from both projected totals");
   const mrows = [...d.querySelectorAll("#tab-matchup .gm .row.grid")];
   assert(mrows.length === 9, "head-to-head compares all 9 slots");
-  const edges = mrows.map(r => r.querySelector(".tag")).filter(Boolean).map(x => parseInt(x.textContent));
+  const edges = mrows.map(r => r.querySelector(".tag.edge")).filter(Boolean).map(x => parseInt(x.textContent));
   assert(edges.length >= 7 && edges.every(v => v >= 0 && v <= 100), "per-slot edge percentages are probabilities (" + edges.length + " slots with both players)");
   assert(/Season so far/.test(mtxt) && /all-play/.test(mtxt) && /1–0/.test(mtxt), "season story shows the record and all-play line");
   assert(/Head-to-head this season/.test(mtxt) && /Week 1/.test(mtxt), "past meeting with this opponent listed");
@@ -538,7 +538,23 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     const mu = d.getElementById("tab-matchup");
     const ts = [...mu.querySelectorAll("svg.lc")].filter(s => s.querySelectorAll("g.pkg").length > 0);
     assert(ts.length === 2 && ts.every(s => s.querySelectorAll("path.hero").length === 2 && s.querySelectorAll("g.pkg").length === 7), "matchup tab frames you + this week's opponent (" + coReal2.opp + ") as the two hero lines, the other 7 as the pack");
-    assert(/Projected edge by slot/.test(mu.textContent) && mu.querySelector("svg.lc[aria-label='Projected edge by slot']"), "matchup tab renders the slot-by-slot projected-edge chart");
+    assert(mu.querySelector("svg.lc[aria-label='Projected edge by slot']") && /(Projected|Live) edge by slot/.test(mu.textContent), "matchup tab renders the slot-by-slot edge chart");
+    // interactive what-if editor: every unlocked slot is a dropdown of your eligible starters
+    const picks = [...mu.querySelectorAll("select.pick")];
+    assert(picks.length >= 1 && picks.every(s => s.dataset.slot && s.options.length >= 1), "matchup offers a lineup dropdown for each unstarted slot (" + picks.length + ")");
+    // a started/locked player is shown fixed, never as an editable dropdown
+    const lockedSlots = [...mu.querySelectorAll(".gm .row.grid")].filter(r => /\blocked\b/.test(r.textContent));
+    assert(lockedSlots.every(r => !r.querySelector("select.pick")), "started games are locked — no dropdown on a kicked-off slot");
+    // swapping a starter re-renders the whole matchup (table + chart + odds) around the pick
+    const flexSel = picks.find(s => s.dataset.slot === "FLEX") || picks.find(s => s.options.length > 1);
+    if (flexSel && [...flexSel.options].some(o => !o.selected)){
+      const alt = [...flexSel.options].find(o => !o.selected);
+      flexSel.value = alt.value; flexSel.dispatchEvent(new w.Event("change"));
+      const mu2 = d.getElementById("tab-matchup");
+      assert(new RegExp(alt.value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(mu2.querySelector(".gm").textContent) && /reset to optimal/.test(mu2.textContent), "picking a different starter pins him in that slot and surfaces a reset-to-optimal control");
+      d.getElementById("resetLineup").dispatchEvent(new w.Event("click"));
+      assert(!/reset to optimal/.test(d.getElementById("tab-matchup").textContent), "reset-to-optimal clears the override back to the computed best lineup");
+    }
   }
   assert(/Win odds \(matchup\)/.test(d.getElementById("legend").textContent) && /All-play/.test(d.getElementById("legend").textContent), "legend explains win odds, all-play and luck");
   console.log("\n--- MATCHUP (week " + (histReal.currentWeek || "?") + ") ---");

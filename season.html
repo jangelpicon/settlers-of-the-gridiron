@@ -50,7 +50,8 @@
   .tbl .gl.gl-fallback .row.grid,.tbl .gl.gl-fallback .hrow{grid-template-columns:44px minmax(180px,1.5fr) 110px 130px;min-width:480px;}
   .tbl .gt .row.grid,.tbl .gt .hrow{grid-template-columns:80px minmax(220px,1.5fr) 90px minmax(200px,1fr) 60px;min-width:640px;}
   .tbl .gd .row.grid,.tbl .gd .hrow{grid-template-columns:60px minmax(180px,1fr) minmax(180px,1fr) minmax(90px,.6fr) minmax(170px,1fr);min-width:700px;} .gd .row.grid .tag{text-align:center;}
-  .tbl .gm .row.grid,.tbl .gm .hrow{grid-template-columns:44px minmax(140px,1.2fr) 52px minmax(140px,1.2fr) 52px 76px;min-width:560px;}
+  .tbl .gm .row.grid,.tbl .gm .hrow{grid-template-columns:44px minmax(124px,1.2fr) 82px minmax(124px,1.2fr) 82px 70px;min-width:600px;}
+  .tbl .gm .num small{font-size:.62rem;}
   .tbl .gh .row.grid,.tbl .gh .hrow{grid-template-columns:44px 36px 110px minmax(140px,1fr) 64px;min-width:430px;}
   .legend{font-size:.8rem;color:var(--muted);} .legend dl{display:grid;grid-template-columns:max-content 1fr;gap:3px 12px;margin:6px 0 0;} .legend dt{color:var(--text);font-weight:700;} .legend dd{margin:0;}
   details summary{cursor:pointer;color:var(--wheat);font-weight:600;}
@@ -65,6 +66,8 @@
   .lc .hero{stroke-dasharray:1600;stroke-dashoffset:1600;animation:lcDraw .9s ease-out forwards;}
   @keyframes lcDraw{to{stroke-dashoffset:0;}}
   @media (prefers-reduced-motion:reduce){ .lc .hero{animation:none;stroke-dashoffset:0;} }
+  select.pick{max-width:100%;background:var(--panel);color:var(--text);border:1px solid #38424d;border-radius:5px;padding:2px 4px;font-size:.84rem;font-family:inherit;cursor:pointer;}
+  select.pick:hover{border-color:var(--wheat);}
 </style>
 </head>
 <body>
@@ -415,6 +418,13 @@
     return phi((a.mu - b.mu)/s);
   }
   function kickText(g){ if (!g || !g.kick) return ""; const d = new Date(g.kick); return d.toLocaleString("en-US",{timeZone:"America/Chicago",weekday:"short",hour:"numeric",minute:"2-digit"}); }
+  // Once a player's game has kicked off, his ACTUAL points replace the projection and the week-to-week
+  // uncertainty collapses to zero — so a Thursday game (or any started/finished game) is counted as fact,
+  // and the matchup totals, win odds and the edge chart all converge toward the real result as games finish.
+  function played(p){ return !!(p && p.actual!=null && p.gameState && p.gameState!=="pre"); }
+  function effPts(p){ return !p ? 0 : played(p) ? p.actual : (p.mu!=null ? p.mu : 0); }
+  function effSd(p){ return !p ? 0 : played(p) ? 0 : (p.sd!=null ? p.sd : 0); }
+  function pBeatsEff(a, b){ if (!a || !b) return null; const d = effPts(a)-effPts(b), s = Math.sqrt(effSd(a)**2 + effSd(b)**2); return s>0 ? phi(d/s) : (d>0?1:d<0?0:.5); }
 
   // ---------- Trade log (repo copy + this browser's local copy; local wins) ----------
   const TL_KEY = "sotg_trades_v1";
@@ -540,6 +550,28 @@
   function strength(players){ // ROS-based starter strength
     const { slots } = optimalLineup(players, "ros");
     return slots.reduce((s,x)=> s + (x.p ? rosVal(x.p) : 0), 0);
+  }
+  // Matchup "what-if" editor: a per-slot override map ({} = the optimal/lock-aware lineup). Picking a
+  // player for a slot pins him there; every other slot auto-fills from the remaining roster by predicted
+  // points. Locked (kicked-off) players can't be moved, so they're always pinned to their real ESPN slot.
+  let myMatchupPick = {}; // slot -> player name
+  function buildMyLineup(team, key){
+    if (!Object.keys(myMatchupPick).some(s=>myMatchupPick[s])) return lockAwareLineup(team, key);
+    const slots = [];
+    ["QB","RB","WR","TE","DST","K"].forEach(pos=>{ for (let i=0;i<LINEUP[pos];i++) slots.push({slot:pos+(LINEUP[pos]>1?(i+1):""), base:pos, p:null}); });
+    for (let i=0;i<LINEUP.FLEX;i++) slots.push({slot:"FLEX", base:"FLEX", p:null});
+    const used = new Set(), byN = {}; team.forEach(p=>byN[p.n]=p);
+    // 1. locked players stay exactly where ESPN has them
+    if (P) team.filter(p=>p.locked && p.slot && p.slot!=="IR" && p.slot!=="BN").forEach(p=>{ const s = slots.find(x=>!x.p && x.base===p.slot); if (s){ s.p=p; used.add(p.n); } });
+    // 2. honor the user's explicit, movable picks
+    slots.forEach(s=>{ const nm = myMatchupPick[s.slot]; if (!s.p && nm){ const p = byN[norm(nm)]; if (p && !used.has(p.n) && !p.locked && (s.base==="FLEX"?FLEX.includes(p.pos):p.pos===s.base)){ s.p=p; used.add(p.n); } } });
+    // 3. auto-fill the rest by predicted points
+    const desc = key==="mu", sortBy = arr=>arr.slice().sort((a,b)=> desc ? b[key]-a[key] : a[key]-b[key]);
+    const open = team.filter(p=>!used.has(p.n) && !(p.locked && p.slot) && !p.onBye && !undraftable(p) && p[key]!=null);
+    slots.filter(s=>!s.p && s.base!=="FLEX").forEach(s=>{ const c = sortBy(open.filter(p=>!used.has(p.n) && p.pos===s.base))[0]; if (c){ s.p=c; used.add(c.n); } });
+    slots.filter(s=>!s.p && s.base==="FLEX").forEach(s=>{ const c = sortBy(open.filter(p=>!used.has(p.n) && FLEX.includes(p.pos)))[0]; if (c){ s.p=c; used.add(c.n); } });
+    const bench = team.filter(p=>!used.has(p.n));
+    return { slots: slots.map(s=>({slot:s.slot, p:s.p})), bench, used };
   }
   function lineupKey(){ return P ? "mu" : "wkRank"; }
   // ---- Trade talent: strength() with empty slots valued at REPLACEMENT level, not 0 ----
@@ -1045,31 +1077,40 @@
       document.getElementById("tab-matchup").innerHTML = h; return;
     }
     if (cur && cur.opp && R.teams[cur.opp]){
-      const mine = optimalLineup(myTeam(), lineupKey()), theirs = optimalLineup(teamOf(cur.opp), lineupKey());
+      const mine = buildMyLineup(myTeam(), lineupKey()), theirs = optimalLineup(teamOf(cur.opp), lineupKey());
+      const custom = Object.keys(myMatchupPick).some(s=>myMatchupPick[s]);
       h += "<div class='panel'><h2>Week "+cur.week+" — "+(cur.home?"":"at ")+esc(cur.opp)+(cur.home?" (they're at you)":"")+"</h2>";
       if (P){
-        const tot = s=>s.slots.reduce((t,x)=>t+(x.p&&x.p.mu!=null?x.p.mu:0),0);
-        const sd2 = s=>s.slots.reduce((t,x)=>t+(x.p&&x.p.sd!=null?x.p.sd*x.p.sd:0),0);
-        const myTot = tot(mine), opTot = tot(theirs);
-        const s = Math.sqrt(sd2(mine)+sd2(theirs));
-        const pw = s>0 ? phi((myTot-opTot)/s) : (myTot>opTot?1:myTot<opTot?0:.5);
+        const myTot = mine.slots.reduce((t,x)=>t+effPts(x.p),0), opTot = theirs.slots.reduce((t,x)=>t+effPts(x.p),0);
+        const sd = Math.sqrt(mine.slots.reduce((t,x)=>t+effSd(x.p)**2,0)+theirs.slots.reduce((t,x)=>t+effSd(x.p)**2,0));
+        const pw = sd>0 ? phi((myTot-opTot)/sd) : (myTot>opTot?1:myTot<opTot?0:.5);
         const pct = Math.round(pw*100);
-        h += "<div class='suggest'><b class='hl'>"+esc(R.me)+" "+myTot.toFixed(1)+"</b> projected vs <b>"+opTot.toFixed(1)+"</b> "+esc(cur.opp)
+        const anyLive = mine.slots.concat(theirs.slots).some(x=>played(x.p));
+        h += "<div class='suggest'><b class='hl'>"+esc(R.me)+" "+myTot.toFixed(1)+"</b> "+(anyLive?"live+proj":"projected")+" vs <b>"+opTot.toFixed(1)+"</b> "+esc(cur.opp)
           + " · win odds <b class='"+(pct>=55?"good":pct<=45?"bad":"warn")+"'>"+pct+"%</b>"
           + "<div class='row' style='border:0;padding:4px 0 0'><span class='bar' style='max-width:260px'><i style='width:"+pct+"%'></i></span></div>"
-          + "<span class='muted'>From both best lineups' predicted totals and every player's usual week-to-week swing. Swing is big in fantasy — "+(pct>=60?"a clear edge, not a lock.":pct<=40?"an uphill week, not a lost one.":"a genuine coin flip.")+"</span></div>";
-        h += "<div class='tbl'><div class='gm'><div class='hrow'><span>Slot</span><span>You</span><span class='num'>Proj</span><span>Them</span><span class='num'>Proj</span><span class='ctr' title='Chance your player outscores theirs at this slot'>Edge</span></div>";
+          + "<span class='muted'>"+(anyLive?"Actual points for games already started, projections for the rest — the uncertainty shrinks as games finish.":"From both lineups' predicted totals and every player's usual week-to-week swing. Swing is big in fantasy — "+(pct>=60?"a clear edge, not a lock.":pct<=40?"an uphill week, not a lost one.":"a genuine coin flip."))+"</span></div>";
+        const myPlayers = myTeam();
+        const eligibleFor = slot => { const base = slot.replace(/\d$/,""); return myPlayers.filter(p=>!p.locked && !undraftable(p) && !p.onBye && (base==="FLEX"?FLEX.includes(p.pos):p.pos===base)).sort((a,b)=>(b.mu||0)-(a.mu||0)); };
+        h += "<div class='muted' style='margin:8px 0 2px'>Swap any of <b>your</b> slots to test a different starter — the edge, win odds and chart update instantly. Started/finished games are locked."+(custom?" <button class='tb' id='resetLineup' style='margin-left:6px'>reset to optimal</button>":"")+"</div>";
+        h += "<div class='tbl'><div class='gm'><div class='hrow'><span>Slot</span><span>You</span><span class='num'>Pts</span><span>Them</span><span class='num'>Pts</span><span class='ctr' title='Chance your player outscores theirs at this slot'>Edge</span></div>";
+        const ptCell = p => !p ? "" : played(p) ? "<span class='proj'>"+p.actual.toFixed(1)+"</span> <small class='muted'>"+(p.gameState==="post"?"final":"live")+"</small>" : (p.mu!=null?p.mu.toFixed(1):"");
         mine.slots.forEach((s1,i)=>{
           const s2 = theirs.slots[i]||{p:null};
-          const pb = s1.p&&s2.p ? pBeats(s1.p,s2.p) : null;
-          const ep = pb==null ? "" : Math.round(pb*100);
+          const pb = s1.p&&s2.p ? pBeatsEff(s1.p,s2.p) : null;
+          const epct = pb==null ? "" : Math.round(pb*100);
           const cls = pb==null ? "" : pb>=0.55 ? "good" : pb<=0.45 ? "bad" : "warn";
+          let youCell;
+          if (s1.p && s1.p.locked){ youCell = "<b>"+esc(s1.p.name)+"</b> <span class='tag warn'>locked</span>"; }
+          else { const opts = eligibleFor(s1.slot), list = (!s1.p || opts.some(p=>p.n===s1.p.n)) ? opts : [s1.p].concat(opts);
+            youCell = list.length ? "<select class='pick' data-slot='"+esc(s1.slot)+"'>"+list.map(p=>"<option value='"+esc(p.name)+"'"+(s1.p&&p.n===s1.p.n?" selected":"")+">"+esc(p.name)+" · "+(p.mu!=null?p.mu.toFixed(1):"–")+(p.injLive&&p.injLive!=="ACT"?" ["+esc(p.injLive)+"]":"")+"</option>").join("")+"</select>" : "<span class='bad'>— empty —</span>";
+            if (s1.p && s1.p.injLive && s1.p.injLive!=="ACT") youCell += " <span class='bad'>"+esc(s1.p.injLive)+"</span>"; }
           h += "<div class='row grid'><span class='slot'>"+esc(s1.slot)+"</span>"
-            + "<b class='c'>"+(s1.p?esc(s1.p.name)+(s1.p.injLive&&s1.p.injLive!=="ACT"?" <span class='bad'>"+esc(s1.p.injLive)+"</span>":""):"<span class='bad'>— empty —</span>")+"</b><span class='c num'>"+(s1.p&&s1.p.mu!=null?s1.p.mu.toFixed(1):"")+"</span>"
-            + "<span class='c'>"+(s2.p?esc(s2.p.name)+(s2.p.injLive&&s2.p.injLive!=="ACT"?" <span class='bad'>"+esc(s2.p.injLive)+"</span>":""):"<span class='muted'>— empty —</span>")+"</span><span class='c num'>"+(s2.p&&s2.p.mu!=null?s2.p.mu.toFixed(1):"")+"</span>"
-            + "<span class='c' style='text-align:center'>"+(ep===""?"":"<span class='tag "+cls+"'>"+ep+"%</span>")+"</span></div>";
+            + "<span class='c'>"+youCell+"</span><span class='c num'>"+ptCell(s1.p)+"</span>"
+            + "<span class='c'>"+(s2.p?esc(s2.p.name)+(s2.p.injLive&&s2.p.injLive!=="ACT"?" <span class='bad'>"+esc(s2.p.injLive)+"</span>":""):"<span class='muted'>— empty —</span>")+"</span><span class='c num'>"+ptCell(s2.p)+"</span>"
+            + "<span class='c' style='text-align:center'>"+(epct===""?"":"<span class='tag edge "+cls+"'>"+epct+"%</span>")+"</span></div>";
         });
-        h += "</div></div><div class='muted' style='margin-top:6px'>Both sides shown with their <b>best possible</b> lineup — if they start someone worse, your odds only improve. Edge = chance your player outscores theirs at that slot.</div>";
+        h += "</div></div><div class='muted' style='margin-top:6px'>Your opponent is shown with their <b>best possible</b> lineup — if they start someone worse, your odds only improve. Edge = chance your player outscores theirs at that slot.</div>";
         h += slotEdgeChart(mine, theirs);
       } else {
         h += "<div class='muted'>Live projections unavailable — win odds need them. Rosters below by this week's consensus rank.</div>";
@@ -1103,6 +1144,16 @@
     }
     h += "</div>";
     document.getElementById("tab-matchup").innerHTML = h;
+    // Interactive lineup editor: picking a player pins him to that slot (stealing him from any other slot),
+    // then the rest auto-fill; re-render so the edge chart, win odds and table all move together.
+    document.querySelectorAll("#tab-matchup select.pick").forEach(sel=>sel.addEventListener("change", ()=>{
+      const slot = sel.dataset.slot, name = sel.value;
+      Object.keys(myMatchupPick).forEach(s=>{ if (s!==slot && myMatchupPick[s]===name) delete myMatchupPick[s]; });
+      myMatchupPick[slot] = name;
+      renderMatchup();
+    }));
+    const rl = document.getElementById("resetLineup");
+    if (rl) rl.addEventListener("click", ()=>{ myMatchupPick = {}; renderMatchup(); });
   }
 
   // ---------- Waivers tab ----------
@@ -1751,21 +1802,24 @@
   // Gold bar right = your edge at that slot, blue bar left = theirs; the note carries the net margin.
   function slotEdgeChart(mine, theirs){
     const cut = s => s && s.length>15 ? s.slice(0,14)+"…" : (s||"—");
+    const mk = s => s==="live" ? " <tspan fill='#e5b94e' font-size='8'>●live</tspan>" : s==="post" ? " <tspan fill='var(--muted)' font-size='8'>final</tspan>" : "";
     const rows = mine.slots.map((s1,i)=>{ const s2 = theirs.slots[i]||{p:null};
-      const a = s1.p&&s1.p.mu!=null ? s1.p.mu : 0, b = s2.p&&s2.p.mu!=null ? s2.p.mu : 0;
-      return { slot:s1.slot, me:a, them:b, d:a-b, you:s1.p?s1.p.name:"—", them2:s2.p?s2.p.name:"—" };
+      return { slot:s1.slot, me:effPts(s1.p), them:effPts(s2.p), d:effPts(s1.p)-effPts(s2.p),
+        you:s1.p?s1.p.name:"—", them2:s2.p?s2.p.name:"—",
+        ys:played(s1.p)?s1.p.gameState:"", ts:played(s2.p)?s2.p.gameState:"" };
     });
     const maxAbs = Math.max(1, ...rows.map(r=>Math.abs(r.d))), net = rows.reduce((t,r)=>t+r.d,0);
+    const anyLive = rows.some(r=>r.ys||r.ts);
     const W=760, rh=34, L=56, Rm=330, span=W-L-Rm, cx=L+span/2, H=rows.length*rh+12;
     let g = "<line x1='"+cx+"' y1='6' x2='"+cx+"' y2='"+(rows.length*rh+6).toFixed(1)+"' stroke='"+CH.grid+"' stroke-width='1'/>";
     rows.forEach((r,i)=>{ const y=i*rh+6, w=Math.abs(r.d)/maxAbs*(span/2), mine1=r.d>=0, col=mine1?CH.me:CH.rival, bx=mine1?cx:cx-w;
       g += "<text x='"+(L-8)+"' y='"+(y+rh/2+1).toFixed(1)+"' text-anchor='end' font-size='11' font-weight='700' fill='var(--text)'>"+esc(r.slot)+"</text>";
       g += "<rect x='"+bx.toFixed(1)+"' y='"+(y+6)+"' width='"+Math.max(w,0.6).toFixed(1)+"' height='"+(rh-12)+"' rx='2' fill='"+col+"' opacity='0.9'><title>"+esc(r.slot)+": you "+r.me.toFixed(1)+" vs "+r.them.toFixed(1)+"</title></rect>";
       g += "<text x='"+(mine1?cx+w+6:cx-w-6).toFixed(1)+"' y='"+(y+rh/2+1).toFixed(1)+"' text-anchor='"+(mine1?"start":"end")+"' font-size='10.5' font-weight='700' fill='"+col+"'>"+(mine1?"+":"−")+Math.abs(r.d).toFixed(1)+"</text>";
-      g += "<text x='"+(W-Rm+56)+"' y='"+(y+rh/2+1).toFixed(1)+"' font-size='10' fill='var(--muted)'>"+esc(cut(r.you))+" <tspan fill='"+CH.me+"'>"+r.me.toFixed(1)+"</tspan> · "+esc(cut(r.them2))+" <tspan fill='"+CH.rival+"'>"+r.them.toFixed(1)+"</tspan></text>";
+      g += "<text x='"+(W-Rm+56)+"' y='"+(y+rh/2+1).toFixed(1)+"' font-size='10' fill='var(--muted)'>"+esc(cut(r.you))+" <tspan fill='"+CH.me+"'>"+r.me.toFixed(1)+"</tspan>"+mk(r.ys)+" · "+esc(cut(r.them2))+" <tspan fill='"+CH.rival+"'>"+r.them.toFixed(1)+"</tspan>"+mk(r.ts)+"</text>";
     });
-    const nm = net>=0?"ahead by":"behind by";
-    return "<h3>Projected edge by slot</h3><div class='muted' style='margin-bottom:4px'>Your projected points minus theirs at each starting slot — <span style='color:"+CH.me+"'>gold = your edge</span>, <span style='color:"+CH.rival+"'>blue = theirs</span>. On projections you're <b>"+nm+" "+Math.abs(net).toFixed(1)+"</b>.</div><svg class='lc' viewBox='0 0 "+W+" "+H+"' role='img' aria-label='Projected edge by slot'>"+g+"</svg>";
+    const nm = net>=0?"ahead by":"behind by", basis = anyLive ? "Live: actual points for games that have started, projections for the rest" : "On projections";
+    return "<h3>"+(anyLive?"Live":"Projected")+" edge by slot</h3><div class='muted' style='margin-bottom:4px'>Your points minus theirs at each starting slot — <span style='color:"+CH.me+"'>gold = your edge</span>, <span style='color:"+CH.rival+"'>blue = theirs</span>. "+basis+", you're <b>"+nm+" "+Math.abs(net).toFixed(1)+"</b>.</div><svg class='lc' viewBox='0 0 "+W+" "+H+"' role='img' aria-label='Projected edge by slot'>"+g+"</svg>";
   }
   function renderStrength(){
     let h = "";
