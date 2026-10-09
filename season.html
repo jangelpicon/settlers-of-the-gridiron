@@ -917,6 +917,7 @@
   // the exact Proj number. Display only — predict() owns the formula. Details live in the tooltips.
   function projDetail(p){
     if (!P || p.mu==null) return "";
+    if (played(p)) return "<span class='detail'>scored <b>"+p.actual.toFixed(1)+"</b> <small class='muted'>"+(p.gameState==="post"?"final":"live — still updating")+"</small>"+(p.game?" · "+(p.game.home?"vs":"at")+" "+esc(p.game.opp):"")+"</span>";
     const g = p.game;
     const f1 = v => (Math.round(v*10)/10).toFixed(1);
     let run = p.srcs.reduce((a,s)=>a+s.v,0)/p.srcs.length;
@@ -963,9 +964,9 @@
     const lev = P ? simLeverage() : null, cur = currentOpponent();
     let ctx = null;
     if (lev!=null && cur && cur.opp && R.teams[cur.opp]){
-      const th = optimalLineup(teamOf(cur.opp), "mu").slots;
-      const sum = (ss,f)=>ss.reduce((t,x)=>t+(x.p&&x.p.mu!=null?f(x.p):0),0);
-      ctx = { lev, myMu: sum(slots,p=>p.mu), myVar: sum(slots,p=>p.sd*p.sd), opMu: sum(th,p=>p.mu), opVar: sum(th,p=>p.sd*p.sd) };
+      const th = lockAwareLineup(teamOf(cur.opp), "mu").slots;
+      const sum = (ss,f)=>ss.reduce((t,x)=>t+(x.p?f(x.p):0),0);
+      ctx = { lev, myMu: sum(slots,effPts), myVar: sum(slots,p=>effSd(p)**2), opMu: sum(th,effPts), opVar: sum(th,p=>effSd(p)**2) };
       ctx.pw = simWinProb(ctx.myMu, ctx.myVar, ctx.opMu, ctx.opVar);
     }
     const out = [];
@@ -1077,7 +1078,7 @@
       document.getElementById("tab-matchup").innerHTML = h; return;
     }
     if (cur && cur.opp && R.teams[cur.opp]){
-      const mine = buildMyLineup(myTeam(), lineupKey()), theirs = optimalLineup(teamOf(cur.opp), lineupKey());
+      const mine = buildMyLineup(myTeam(), lineupKey()), theirs = lockAwareLineup(teamOf(cur.opp), lineupKey());
       const custom = Object.keys(myMatchupPick).some(s=>myMatchupPick[s]);
       h += "<div class='panel'><h2>Week "+cur.week+" — "+(cur.home?"":"at ")+esc(cur.opp)+(cur.home?" (they're at you)":"")+"</h2>";
       if (P){
@@ -1110,7 +1111,7 @@
             + "<span class='c'>"+(s2.p?esc(s2.p.name)+(s2.p.injLive&&s2.p.injLive!=="ACT"?" <span class='bad'>"+esc(s2.p.injLive)+"</span>":""):"<span class='muted'>— empty —</span>")+"</span><span class='c num'>"+ptCell(s2.p)+"</span>"
             + "<span class='c' style='text-align:center'>"+(epct===""?"":"<span class='tag edge "+cls+"'>"+epct+"%</span>")+"</span></div>";
         });
-        h += "</div></div><div class='muted' style='margin-top:6px'>Your opponent is shown with their <b>best possible</b> lineup — if they start someone worse, your odds only improve. Edge = chance your player outscores theirs at that slot.</div>";
+        h += "</div></div><div class='muted' style='margin-top:6px'>Players whose games have started are locked to their real lineup and show actual points; every unstarted slot shows their <b>best possible</b> option. Edge = chance your player outscores theirs at that slot.</div>";
         h += slotEdgeChart(mine, theirs);
       } else {
         h += "<div class='muted'>Live projections unavailable — win odds need them. Rosters below by this week's consensus rank.</div>";
@@ -1914,7 +1915,7 @@
   // ---------- League tab ----------
   function renderLeague(){
     const L = leagueSim();
-    const wkProj = tm => P ? optimalLineup(tm,"mu").slots.reduce((s,x)=>s+(x.p&&x.p.mu!=null?x.p.mu:0),0) : null;
+    const wkProj = tm => P ? lockAwareLineup(tm,"mu").slots.reduce((s,x)=>s+effPts(x.p),0) : null;
     const rows = Object.keys(R.teams).map(t=>{ const tm = teamOf(t); return { team:t, s: strength(tm), wk: wkProj(tm), sim: L ? L.byTeam[t] : null }; });
     let h = "";
     if (L){
@@ -1922,7 +1923,7 @@
       const talentRank = {}; rows.slice().sort((a,b)=>b.s-a.s).forEach((r,i)=>{ talentRank[r.team] = i+1; });
       const M0 = L.model, st = SETTINGS;
       h += "<div class='panel'><h2>Title odds — who wins the league</h2><div class='muted' style='margin-bottom:6px'>"+SIM_N.toLocaleString()+" simulated seasons: every remaining regular-season matchup on the real schedule, then the "+st.playoffTeamCount+"-team, "+L.spec.rounds+"-round bracket ("+(st.playoffReseed?"reseeded each round":"fixed bracket, no reseeding")+"; seeds by win % then "+(L.tbKnown?"total points scored":esc(String(st.playoffSeedingRule))+" — <b>approximated by points scored</b>")+"). Ranked by <b>title %</b>, then playoff %. Roster talent is shown but no longer ranks anyone.</div>";
-      h += "<div class='tbl'><div class='gl'><div class='hrow'><span>Rank</span><span>Team</span><span title='Share of simulated seasons this team wins the championship'>Title %</span><span title='Share of simulated seasons this team makes the playoffs'>Playoff %</span><span title='Average final regular-season standing across all simulations (1 = top seed)'>Proj seed</span><span title='Actual record so far'>Record</span><span title='Estimated points per week going forward: blend of actual average and the talent prior (weight on actual shown)'>Scoring rate</span><span title='Projected points this week with the best lineup'>This week</span><span title='Sum over the 9 best starters of (420 − rest-of-season rank). Paper strength only — an input to the scoring rate, not a ranking.'>Roster talent (ROS)</span></div>";
+      h += "<div class='tbl'><div class='gl'><div class='hrow'><span>Rank</span><span>Team</span><span title='Share of simulated seasons this team wins the championship'>Title %</span><span title='Share of simulated seasons this team makes the playoffs'>Playoff %</span><span title='Average final regular-season standing across all simulations (1 = top seed)'>Proj seed</span><span title='Actual record so far'>Record</span><span title='Estimated points per week going forward: blend of actual average and the talent prior (weight on actual shown)'>Scoring rate</span><span title='This week with the best lineup: actual points for games already played, projected for the rest'>This week</span><span title='Sum over the 9 best starters of (420 − rest-of-season rank). Paper strength only — an input to the scoring rate, not a ranking.'>Roster talent (ROS)</span></div>";
       rows.forEach((r,i)=>{
         const x = r.sim, rec = (x.wins%1 ? x.wins.toFixed(1) : x.wins)+"-"+(x.gamesPlayed-x.wins);
         h += "<div class='row grid"+(r.team===R.me?" start":"")+"'><span class='slot'>"+(i+1)+"</span><b class='c'>"+esc(r.team)+(r.team===R.me?" 🐑":"")+"</b>"+
@@ -1987,6 +1988,24 @@
     if (hit) R.me = hit;
     else TEAMERR = "team '"+want+"' not found — teams: "+Object.keys(R.teams).join(" · ");
   }
+  // Live auto-refresh: while any game is in progress (or about to kick) re-pull ESPN on a timer so actual
+  // points, win odds and the charts move on their own; it falls back to a slow heartbeat once games are final.
+  let liveTimer = null;
+  function liveWindow(){
+    if (!P || !P.games) return null; let live=false, soon=false; const now=Date.now();
+    Object.values(P.games).forEach(g=>{ if (g.state==="in") live=true; else if (g.state==="pre" && g.kick){ const dt=Date.parse(g.kick)-now; if (dt>-6*3600e3 && dt<4*3600e3) soon=true; } });
+    return live ? "live" : soon ? "soon" : null;
+  }
+  async function liveRefresh(){ await Promise.all([loadProjections(), loadLiveRosters(), loadHistory()]); applyAcceptedTrades(); buildIndex(); renderAll(); }
+  function scheduleLive(){
+    if (liveTimer) clearTimeout(liveTimer);
+    const w = liveWindow(), ms = w==="live" ? 60000 : w==="soon" ? 300000 : 900000; // games 60s · about to start 5m · idle 15m
+    liveTimer = setTimeout(async ()=>{
+      const editing = document.activeElement && document.activeElement.classList && document.activeElement.classList.contains("pick");
+      if (document.visibilityState==="visible" && !editing){ try { await liveRefresh(); } catch(e){} }
+      scheduleLive();
+    }, ms);
+  }
   async function load(){
     try {
       const [s, r, x, tl, lg, pool, mu, hist, settings] = await Promise.all([fetch("data/season.json?v="+Date.now()).then(x=>x.json()), fetch("data/rosters.json?v="+Date.now()).then(x=>x.json()), fetch("data/exclusions.json?v="+Date.now()).then(x=>x.json()).catch(()=>({players:[]})), fetch("data/trades.json?v="+Date.now()).then(x=>x.json()).catch(()=>({entries:[]})),
@@ -2000,11 +2019,12 @@
       await Promise.all([loadProjections(), loadLiveRosters(), loadHistory()]);
       applyAcceptedTrades();
       buildIndex(); renderAll();
+      scheduleLive();
     } catch(e){
       document.getElementById("stamp").textContent = "failed to load data ("+e.message+")";
     }
   }
-  document.getElementById("refreshLive").addEventListener("click", async ()=>{ if (!S) return; PSTAMP = { text:"fetching live…", cls:"" }; renderAll(); await loadProjections(); buildIndex(); renderAll(); });
+  document.getElementById("refreshLive").addEventListener("click", async ()=>{ if (!S) return; PSTAMP = { text:"fetching live…", cls:"" }; renderAll(); await liveRefresh(); scheduleLive(); });
   window.__seasonTest = { inject:(s,r,x,tl,pj,pool,mu,hist)=>{ S=s; R=JSON.parse(JSON.stringify(r)); X=x||{players:[]}; P=pj||null; POOL=pool||null; MU=mu||null; HIST=hist||null; LG=null; PSTAMP = pj ? {text:"snapshot "+pj.generated, cls:"stale"} : {text:"none", cls:""}; RSTAMP = {text:R.updated||"–", cls:""}; mergeLog((tl||{}).entries); applyAcceptedTrades(); buildIndex(); renderAll(); },
     setHistory:(h)=>{ HIST=h||null; renderMatchup(); },
     setSettings:(st)=>{ SETTINGS=st||null; SIMC=null; }, leagueSim, simDelta, simDeltaFast, simWinProb, waiverChamp, simLeverage, simScoringModel, simRun, simPlayoffs, simSeedOrder, simBracketOrder, simNormals, simWidth, talentSlope, SIM_N, SIM_SEED, historyFromLeague, teamSeason, currentOpponent, allScores, scoringRank,
