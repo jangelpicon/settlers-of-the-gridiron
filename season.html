@@ -1096,7 +1096,10 @@
           + "<div class='row' style='border:0;padding:2px 0 0'><span class='bar' style='max-width:300px'><i style='width:"+pct+"%'></i></span></div>"
           + "<span class='muted'>"+(anyLive?"Actual points for games already started, projections for the rest — the edge and odds tighten as games finish.":"From both lineups' predicted totals and every player's usual week-to-week swing. Swing is big in fantasy — "+(pct>=60?"a clear edge, not a lock.":pct<=40?"an uphill week, not a lost one.":"a genuine coin flip."))+"</span></div>";
         const myPlayers = myTeam();
-        const eligibleFor = slot => { const base = slot.replace(/\d$/,""); return myPlayers.filter(p=>!p.locked && !undraftable(p) && !p.onBye && (base==="FLEX"?FLEX.includes(p.pos):p.pos===base)).sort((a,b)=>(b.mu||0)-(a.mu||0)); };
+        // Dropdown options = this slot's current starter + eligible players NOT already starting elsewhere
+        // (so a player in the lineup can't be picked into a second slot, e.g. a WR starter showing up in FLEX).
+        const starterNs = new Set(mine.slots.map(x=>x.p&&x.p.n).filter(Boolean));
+        const eligibleFor = (slot, cur) => { const base = slot.replace(/\d$/,""); return myPlayers.filter(p=>!p.locked && !undraftable(p) && !p.onBye && (base==="FLEX"?FLEX.includes(p.pos):p.pos===base) && (!starterNs.has(p.n) || (cur && p.n===cur.n))).sort((a,b)=>(b.mu||0)-(a.mu||0)); };
         h += "<div class='muted' style='margin:8px 0 2px'>Swap any of <b>your</b> slots to test a different starter — the edge, win odds and chart update instantly. Started/finished games are locked."+(custom?" <button class='tb' id='resetLineup' style='margin-left:6px'>reset to optimal</button>":"")+"</div>";
         h += "<div class='tbl'><div class='gm'><div class='hrow'><span>Slot</span><span>You</span><span class='num'>Pts</span><span>Them</span><span class='num'>Pts</span><span class='ctr' title='Chance your player outscores theirs at this slot'>Edge</span></div>";
         const ptCell = p => !p ? "" : played(p) ? "<span class='proj'>"+p.actual.toFixed(1)+"</span> <small class='muted'>"+(p.gameState==="post"?"final":"live")+"</small>" : (p.mu!=null?p.mu.toFixed(1):"");
@@ -1107,7 +1110,7 @@
           const cls = pb==null ? "" : pb>=0.55 ? "good" : pb<=0.45 ? "bad" : "warn";
           let youCell;
           if (s1.p && s1.p.locked){ youCell = "<b>"+esc(s1.p.name)+"</b> <span class='tag warn'>locked</span>"; }
-          else { const opts = eligibleFor(s1.slot), list = (!s1.p || opts.some(p=>p.n===s1.p.n)) ? opts : [s1.p].concat(opts);
+          else { const opts = eligibleFor(s1.slot, s1.p), list = (!s1.p || opts.some(p=>p.n===s1.p.n)) ? opts : [s1.p].concat(opts);
             youCell = list.length ? "<select class='pick' data-slot='"+esc(s1.slot)+"'>"+list.map(p=>"<option value='"+esc(p.name)+"'"+(s1.p&&p.n===s1.p.n?" selected":"")+">"+esc(p.name)+" · "+(p.mu!=null?p.mu.toFixed(1):"–")+(p.injLive&&p.injLive!=="ACT"?" ["+esc(p.injLive)+"]":"")+"</option>").join("")+"</select>" : "<span class='bad'>— empty —</span>";
             if (s1.p && s1.p.injLive && s1.p.injLive!=="ACT") youCell += " <span class='bad'>"+esc(s1.p.injLive)+"</span>"; }
           h += "<div class='row grid'><span class='slot'>"+esc(s1.slot)+"</span>"

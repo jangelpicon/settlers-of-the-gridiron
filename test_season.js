@@ -546,6 +546,10 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     // interactive what-if editor: every unlocked slot is a dropdown of your eligible starters
     const picks = [...mu.querySelectorAll("select.pick")];
     assert(picks.length >= 1 && picks.every(s => s.dataset.slot && s.options.length >= 1), "matchup offers a lineup dropdown for each unstarted slot (" + picks.length + ")");
+    // no dropdown may offer a player who is already starting in another slot (locked or picked elsewhere)
+    const startingElsewhere = self => [...mu.querySelectorAll(".gm select.pick")].filter(s => s !== self).map(s => s.value)
+      .concat([...mu.querySelectorAll(".gm .row.grid")].filter(r => !r.querySelector("select.pick") && /\blocked\b/.test(r.textContent)).map(r => { const b = r.querySelector("b"); return b ? b.textContent.trim() : ""; }));
+    assert(picks.every(sel => { const others = startingElsewhere(sel); return [...sel.options].map(o => o.value).filter(v => v !== sel.value).every(v => !others.includes(v)); }), "no slot dropdown (FLEX included) offers a player already starting in another slot");
     // a started/locked player is shown fixed, never as an editable dropdown
     const lockedSlots = [...mu.querySelectorAll(".gm .row.grid")].filter(r => /\blocked\b/.test(r.textContent));
     assert(lockedSlots.every(r => !r.querySelector("select.pick")), "started games are locked — no dropdown on a kicked-off slot");
