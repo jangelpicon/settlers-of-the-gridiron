@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-10-09",
- "source": "ESPN league 882823976 sync 2026-10-09 13:06 CDT",
+ "updated": "2026-10-10",
+ "source": "ESPN league 882823976 sync 2026-10-10 02:00 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -639,7 +639,7 @@
     "name": "Ja'Marr Chase",
     "pos": "WR",
     "team": "CIN",
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Drake London",
@@ -675,13 +675,13 @@
     "name": "Luther Burden III",
     "pos": "WR",
     "team": "CHI",
-    "slot": "FLEX"
+    "slot": "BN"
    },
    {
     "name": "Parker Washington",
     "pos": "WR",
     "team": "JAX",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Jared Goff",
@@ -693,7 +693,7 @@
     "name": "Jeremiyah Love",
     "pos": "RB",
     "team": "ARI",
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Rome Odunze",
