@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-10-10",
- "source": "ESPN league 882823976 sync 2026-10-10 02:00 CDT",
+ "updated": "2026-10-11",
+ "source": "ESPN league 882823976 sync 2026-10-11 02:00 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -755,7 +755,7 @@
     "name": "Cam Skattebo",
     "pos": "RB",
     "team": "NYG",
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Christian Watson",
@@ -767,7 +767,7 @@
     "name": "David Montgomery",
     "pos": "RB",
     "team": "HOU",
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "Dalton Kincaid",
