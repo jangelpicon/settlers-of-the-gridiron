@@ -1,7 +1,7 @@
 {
  "me": "ur done",
  "updated": "2026-10-11",
- "source": "ESPN league 882823976 sync 2026-10-11 08:00 CDT",
+ "source": "ESPN league 882823976 sync 2026-10-11 20:12 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -138,7 +138,7 @@
     "name": "Carnell Tate",
     "pos": "WR",
     "team": "TEN",
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Jaylen Warren",
@@ -156,7 +156,7 @@
     "name": "Josh Downs",
     "pos": "WR",
     "team": "IND",
-    "slot": "FLEX"
+    "slot": "BN"
    },
    {
     "name": "DK Metcalf",
@@ -379,7 +379,7 @@
     "name": "Mike Evans",
     "pos": "WR",
     "team": "SF",
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Patrick Mahomes",
@@ -397,7 +397,7 @@
     "name": "Stefon Diggs",
     "pos": "WR",
     "team": "WAS",
-    "slot": "FLEX"
+    "slot": "BN"
    },
    {
     "name": "Caleb Williams",
@@ -645,7 +645,7 @@
     "name": "Drake London",
     "pos": "WR",
     "team": "ATL",
-    "slot": "WR"
+    "slot": "FLEX"
    },
    {
     "name": "Trey McBride",
@@ -681,7 +681,7 @@
     "name": "Parker Washington",
     "pos": "WR",
     "team": "JAX",
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Jared Goff",
@@ -693,7 +693,7 @@
     "name": "Jeremiyah Love",
     "pos": "RB",
     "team": "ARI",
-    "slot": "FLEX"
+    "slot": "BN"
    },
    {
     "name": "Rome Odunze",
