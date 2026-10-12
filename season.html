@@ -145,12 +145,13 @@
       const c = e.competitions[0]; const odds = (c.odds||[{}])[0] || {};
       const ou = odds.overUnder!=null ? Number(odds.overUnder) : null; const det = odds.details || "";
       const m = /^([A-Z]{2,4})\s*([-+]?\d+(?:\.\d+)?)/.exec(det); const fav = m ? teamCode(m[1]) : null, line = m ? Math.abs(Number(m[2])) : null;
-      const st = (c.status||{}).type || {}; const w = c.weather || {};
+      const stat = c.status || {}; const st = stat.type || {}; const w = c.weather || {};
       c.competitors.forEach(t=>{
         const code = teamCode(t.team.abbreviation), other = c.competitors.find(x=>x!==t);
         const spread = line==null ? null : (code===fav ? -line : line);
         games[code] = { opp: teamCode(other.team.abbreviation), home: t.homeAway==="home", kick: e.date, ou, spread,
           implied: (ou==null||spread==null) ? null : Math.round((ou - spread)/2*100)/100, state: st.state, status: st.shortDetail || st.name,
+          period: stat.period!=null ? stat.period : null, clock: typeof stat.clock==="number" ? stat.clock : null,
           score: /^\d+$/.test(String(t.score)) ? Number(t.score) : null, weather: (w.displayValue||"") + (w.temperature!=null ? " "+w.temperature+"°" : "") };
       });
     });
@@ -422,8 +423,27 @@
   // uncertainty collapses to zero — so a Thursday game (or any started/finished game) is counted as fact,
   // and the matchup totals, win odds and the edge chart all converge toward the real result as games finish.
   function played(p){ return !!(p && p.actual!=null && p.gameState && p.gameState!=="pre"); }
-  function effPts(p){ return !p ? 0 : played(p) ? p.actual : (p.mu!=null ? p.mu : 0); }
-  function effSd(p){ return !p ? 0 : played(p) ? 0 : (p.sd!=null ? p.sd : 0); }
+  // How far a player's game has run: 0 before kickoff, 1 once final, in between while it's live. A regulation
+  // game is 4×15 min; ESPN gives the period and seconds left in it (mid-quarter if the clock is missing).
+  function gameFrac(p){
+    const g = p && p.game, st = g && g.state;
+    if (!g || !st || st==="pre") return 0;
+    if (st==="post") return 1;
+    const per = g.period || 1; if (per > 4) return 0.97; // overtime — essentially done
+    const left = typeof g.clock==="number" ? g.clock : 450; // seconds left in the quarter (mid-quarter guess)
+    return Math.max(0, Math.min(1, ((per-1)*900 + (900-left)) / 3600));
+  }
+  // Effective points = a LIVE projection: the points a player has already banked plus his projection pro-rated
+  // over the part of his game still to be played. Final games collapse to the actual score; games not yet
+  // started are the full projection; a game in progress blends the two so a 2.7-so-far stud still projects big.
+  function effPts(p){
+    if (!p) return 0; const f = gameFrac(p);
+    if (f >= 1) return p.actual!=null ? p.actual : (p.mu!=null ? p.mu : 0);
+    return (p.actual!=null ? p.actual : 0) + (p.mu!=null ? p.mu : 0) * (1 - f);
+  }
+  // Uncertainty shrinks with the clock: full swing before kickoff, none once final.
+  function effSd(p){ if (!p) return 0; const f = gameFrac(p); return f >= 1 ? 0 : (p.sd!=null ? p.sd : 0) * (1 - f); }
+  function liveState(p){ const g = p && p.game; return g && g.state==="post" ? "final" : g && g.state==="in" ? "live" : null; }
   function pBeatsEff(a, b){ if (!a || !b) return null; const d = effPts(a)-effPts(b), s = Math.sqrt(effSd(a)**2 + effSd(b)**2); return s>0 ? phi(d/s) : (d>0?1:d<0?0:.5); }
 
   // ---------- Trade log (repo copy + this browser's local copy; local wins) ----------
@@ -879,7 +899,8 @@
   function gradeTag(g){ if (!g) return ""; const cls = /^A/.test(g)?"good":/^B/.test(g)?"":/^[DF]/.test(g)?"bad":"warn"; return "<span class='tag grade "+cls+"' title='FantasyPros start/sit grade'>"+esc(g)+"</span>"; }
   function projTag(p){
     if (!P || p.mu==null) return P ? "<span class='tag bad'>no projection</span>" : "";
-    if (p.actual!=null && p.gameState && p.gameState!=="pre") return "<span class='proj'>"+p.actual.toFixed(1)+" <small>"+(p.gameState==="post"?"final":"live")+"</small></span>";
+    const ls = liveState(p);
+    if (ls) return "<span class='proj'>"+effPts(p).toFixed(1)+" <small>"+(ls==="final"?"final":"live proj")+"</small></span>";
     return "<span class='proj' title='predicted points (floor–ceiling)'>"+p.mu.toFixed(1)+" <small>"+p.floor.toFixed(0)+"–"+p.ceil.toFixed(0)+"</small></span>";
   }
   // One player = one grid row. Column order must match playerHeader().
@@ -892,9 +913,9 @@
   function playerLine(p, extra, slot, slim){
     const num = v => "<span class='c num'>"+v+"</span>";
     const proj = (!P || p.mu==null) ? num(P ? "<span class='bad'>–</span>" : "")
-      : (p.actual!=null && p.gameState && p.gameState!=="pre") ? num("<span class='proj'>"+p.actual.toFixed(1)+"</span> <small class='muted'>"+(p.gameState==="post"?"final":"live")+"</small>")
+      : liveState(p) ? num("<span class='proj'>"+effPts(p).toFixed(1)+"</span> <small class='muted'>"+(liveState(p)==="final"?"final":"live proj")+"</small>")
       : num("<span class='proj'>"+p.mu.toFixed(1)+"</span>");
-    const range = (!P || p.mu==null || (p.actual!=null && p.gameState && p.gameState!=="pre")) ? num("") : num(p.floor.toFixed(0)+"–"+p.ceil.toFixed(0));
+    const range = (!P || p.mu==null || liveState(p)) ? num("") : num(p.floor.toFixed(0)+"–"+p.ceil.toFixed(0));
     const status = (p.onBye ? "<span class='tag bad'>BYE</span>" : "")+(P && p.locked ? "<span class='tag warn'>locked</span>" : "")+injBadge(p)+(extra||"");
     const cells = {
       "Slot": "<span class='slot'>"+esc(slot||"")+"</span>",
@@ -917,7 +938,9 @@
   // the exact Proj number. Display only — predict() owns the formula. Details live in the tooltips.
   function projDetail(p){
     if (!P || p.mu==null) return "";
-    if (played(p)) return "<span class='detail'>scored <b>"+p.actual.toFixed(1)+"</b> <small class='muted'>"+(p.gameState==="post"?"final":"live — still updating")+"</small>"+(p.game?" · "+(p.game.home?"vs":"at")+" "+esc(p.game.opp):"")+"</span>";
+    const ls0 = liveState(p);
+    if (ls0==="final") return "<span class='detail'>scored <b>"+p.actual.toFixed(1)+"</b> <small class='muted'>final</small>"+(p.game?" · "+(p.game.home?"vs":"at")+" "+esc(p.game.opp):"")+"</span>";
+    if (ls0==="live") return "<span class='detail'><b>"+effPts(p).toFixed(1)+"</b> live projection <small class='muted'>("+(p.actual!=null?p.actual.toFixed(1):"0")+" so far"+(p.game&&p.game.status?", "+esc(p.game.status):"")+")</small></span>";
     const g = p.game;
     const f1 = v => (Math.round(v*10)/10).toFixed(1);
     let run = p.srcs.reduce((a,s)=>a+s.v,0)/p.srcs.length;
@@ -998,10 +1021,9 @@
     bench.forEach(p=>{ h += "<div class='row grid sit'>"+playerLine(p, "", "BN", true)+projDetail(p)+"</div>"; });
     h += "</div></div>";
     if (P){
-      const slotPts = x => !x.p ? 0 : (x.p.actual!=null && x.p.gameState && x.p.gameState!=="pre") ? x.p.actual : (x.p.mu!=null ? x.p.mu : 0);
-      const total = slots.reduce((s,x)=>s+slotPts(x),0);
-      const anyLive = slots.some(x=>x.p && x.p.actual!=null && x.p.gameState && x.p.gameState!=="pre");
-      h += "<div class='muted' style='margin-top:8px'>"+(anyLive?"Total so far (actual points for started games, projections for the rest): ":"Projected total for this lineup: ")+"<b>"+total.toFixed(1)+"</b> points.</div>";
+      const total = slots.reduce((s,x)=>s+(x.p?effPts(x.p):0),0);
+      const anyLive = slots.some(x=>liveState(x.p));
+      h += "<div class='muted' style='margin-top:8px'>"+(anyLive?"Live projected total (actual so far plus the rest of each in-progress game, projections for games not yet started): ":"Projected total for this lineup: ")+"<b>"+total.toFixed(1)+"</b> points.</div>";
       const dec = decisions(me, slots, bench);
       const levNow = simLeverage();
       h += "<h3>Start/sit calls</h3><div class='muted' style='margin-bottom:6px'>Chance a bench player outscores the starter he would replace. Under 35% = leave it alone; 35–55% = genuine coin flip, check Sunday-morning news; over 55% = the tool already swapped him in."+(levNow!=null?" <b>Title stakes this week:</b> a win is worth "+pp(levNow)+" of title odds over a loss, so each swap is also priced in title odds (via its change to your win odds — what matters is beating this opponent, not raw points).":"")+"</div>";
@@ -1102,7 +1124,9 @@
         const eligibleFor = (slot, cur) => { const base = slot.replace(/\d$/,""); return myPlayers.filter(p=>!p.locked && !undraftable(p) && !p.onBye && (base==="FLEX"?FLEX.includes(p.pos):p.pos===base) && (!starterNs.has(p.n) || (cur && p.n===cur.n))).sort((a,b)=>(b.mu||0)-(a.mu||0)); };
         h += "<div class='muted' style='margin:8px 0 2px'>Swap any of <b>your</b> slots to test a different starter — the edge, win odds and chart update instantly. Started/finished games are locked."+(custom?" <button class='tb' id='resetLineup' style='margin-left:6px'>reset to optimal</button>":"")+"</div>";
         h += "<div class='tbl'><div class='gm'><div class='hrow'><span>Slot</span><span>You</span><span class='num'>Pts</span><span>Them</span><span class='num'>Pts</span><span class='ctr' title='Chance your player outscores theirs at this slot'>Edge</span></div>";
-        const ptCell = p => !p ? "" : played(p) ? "<span class='proj'>"+p.actual.toFixed(1)+"</span> <small class='muted'>"+(p.gameState==="post"?"final":"live")+"</small>" : (p.mu!=null?p.mu.toFixed(1):"");
+        const ptCell = p => { if (!p) return ""; const ls = liveState(p); if (!ls) return p.mu!=null?p.mu.toFixed(1):"";
+          const tip = ls==="live" && p.actual!=null ? " title='"+p.actual.toFixed(1)+" so far — projected to finish "+effPts(p).toFixed(1)+"'" : "";
+          return "<span class='proj'"+tip+">"+effPts(p).toFixed(1)+"</span> <small class='muted'>"+(ls==="final"?"final":"live proj")+"</small>"; };
         mine.slots.forEach((s1,i)=>{
           const s2 = theirs.slots[i]||{p:null};
           const pb = s1.p&&s2.p ? pBeatsEff(s1.p,s2.p) : null;
@@ -1812,11 +1836,11 @@
   // Gold bar right = your edge at that slot, blue bar left = theirs; the note carries the net margin.
   function slotEdgeChart(mine, theirs){
     const cut = s => s && s.length>15 ? s.slice(0,14)+"…" : (s||"—");
-    const mk = s => s==="live" ? " <tspan fill='#e5b94e' font-size='8'>●live</tspan>" : s==="post" ? " <tspan fill='var(--muted)' font-size='8'>final</tspan>" : "";
+    const mk = s => s==="live" ? " <tspan fill='#e5b94e' font-size='8'>●live proj</tspan>" : s==="final" ? " <tspan fill='var(--muted)' font-size='8'>final</tspan>" : "";
     const rows = mine.slots.map((s1,i)=>{ const s2 = theirs.slots[i]||{p:null};
       return { slot:s1.slot, me:effPts(s1.p), them:effPts(s2.p), d:effPts(s1.p)-effPts(s2.p),
         you:s1.p?s1.p.name:"—", them2:s2.p?s2.p.name:"—",
-        ys:played(s1.p)?s1.p.gameState:"", ts:played(s2.p)?s2.p.gameState:"" };
+        ys:liveState(s1.p)||"", ts:liveState(s2.p)||"" };
     });
     const maxAbs = Math.max(1, ...rows.map(r=>Math.abs(r.d))), net = rows.reduce((t,r)=>t+r.d,0);
     const anyLive = rows.some(r=>r.ys||r.ts);
@@ -1836,8 +1860,8 @@
   // projection with his usual swing. Walking the cutoff from pre-kickoff to now traces how the matchup swung.
   function winProbAt(mine, theirs, cutoff){
     let my=0, op=0, v=0;
-    const add = (x, side)=>{ if(!x.p) return; const res = played(x.p) && x.p.game && x.p.game.kick && Date.parse(x.p.game.kick) <= cutoff;
-      const pts = res ? x.p.actual : (x.p.mu!=null?x.p.mu:0), sd = res ? 0 : (x.p.sd!=null?x.p.sd:0);
+    const add = (x, side)=>{ if(!x.p) return; const g=x.p.game, started = g && g.kick && Date.parse(g.kick) <= cutoff;
+      const pts = started ? effPts(x.p) : (x.p.mu!=null?x.p.mu:0), sd = started ? effSd(x.p) : (x.p.sd!=null?x.p.sd:0);
       if (side) my+=pts; else op+=pts; v += sd*sd; };
     mine.slots.forEach(x=>add(x,true)); theirs.slots.forEach(x=>add(x,false));
     const s = Math.sqrt(v); return s>0 ? phi((my-op)/s) : (my>op?1:my<op?0:.5);
@@ -2068,7 +2092,7 @@
   document.getElementById("refreshLive").addEventListener("click", async ()=>{ if (!S) return; PSTAMP = { text:"fetching live…", cls:"" }; renderAll(); await liveRefresh(); scheduleLive(); });
   window.__seasonTest = { inject:(s,r,x,tl,pj,pool,mu,hist)=>{ S=s; R=JSON.parse(JSON.stringify(r)); X=x||{players:[]}; P=pj||null; POOL=pool||null; MU=mu||null; HIST=hist||null; LG=null; PSTAMP = pj ? {text:"snapshot "+pj.generated, cls:"stale"} : {text:"none", cls:""}; RSTAMP = {text:R.updated||"–", cls:""}; mergeLog((tl||{}).entries); applyAcceptedTrades(); buildIndex(); renderAll(); },
     setHistory:(h)=>{ HIST=h||null; renderMatchup(); },
-    setSettings:(st)=>{ SETTINGS=st||null; SIMC=null; }, leagueSim, simDelta, simDeltaFast, simWinProb, waiverChamp, simLeverage, simScoringModel, simRun, simPlayoffs, simSeedOrder, simBracketOrder, simNormals, simWidth, talentSlope, SIM_N, SIM_SEED, historyFromLeague, teamSeason, currentOpponent, allScores, scoringRank,
+    setSettings:(st)=>{ SETTINGS=st||null; SIMC=null; }, leagueSim, simDelta, simDeltaFast, simWinProb, waiverChamp, simLeverage, simScoringModel, simRun, simPlayoffs, simSeedOrder, simBracketOrder, simNormals, simWidth, talentSlope, SIM_N, SIM_SEED, historyFromLeague, teamSeason, currentOpponent, allScores, scoringRank, effPts, effSd, gameFrac, liveState,
     rostersFromLeague, setRosters:(r)=>{ R = JSON.parse(JSON.stringify(r)); buildIndex(); renderAll(); },
     logTrade, teamFloor, tradeTalent, tradeLineup, strippedPositions, replFill, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, lockAwareLineup, strength, findTrades, findSurplus, surplusDeals, allSurplusDeals, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M, teamNeeds,
     waiverSuggestions:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,

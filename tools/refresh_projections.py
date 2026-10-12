@@ -45,7 +45,7 @@ def scoreboard(week):
         odds = (c.get("odds") or [{}])[0]
         ou = odds.get("overUnder"); det = odds.get("details") or ""
         m = re.match(r"([A-Z]{2,4})\s*([-+]?\d+(?:\.\d+)?)", det); fav, line = (team(m.group(1)), abs(float(m.group(2)))) if m else (None, None)
-        st = (c.get("status") or {}).get("type") or {}
+        stat = c.get("status") or {}; st = stat.get("type") or {}
         w = c.get("weather") or {}
         comps = c["competitors"]
         for t in comps:
@@ -54,6 +54,7 @@ def scoreboard(week):
             implied = None if (ou is None or spread is None) else round((ou - spread) / 2, 2)
             games[code] = {"opp": opp, "home": t["homeAway"] == "home", "kick": e["date"], "ou": ou, "spread": spread, "implied": implied,
                            "state": st.get("state"), "status": st.get("shortDetail") or st.get("name"),
+                           "period": stat.get("period"), "clock": stat.get("clock") if isinstance(stat.get("clock"), (int, float)) else None,
                            "score": int(t["score"]) if str(t.get("score", "")).isdigit() else None,
                            "weather": (w.get("displayValue") or "") + (f" {w['temperature']}°" if w.get("temperature") is not None else "")}
     return games, d.get("week", {}).get("number")

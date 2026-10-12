@@ -539,13 +539,20 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     const ts = [...mu.querySelectorAll("svg.lc")].filter(s => s.querySelectorAll("g.pkg").length > 0);
     assert(ts.length === 2 && ts.every(s => s.querySelectorAll("path.hero").length === 2 && s.querySelectorAll("g.pkg").length === 7), "matchup tab frames you + this week's opponent (" + coReal2.opp + ") as the two hero lines, the other 7 as the pack");
     assert(mu.querySelector("svg.lc[aria-label='Projected edge by slot']") && /(Projected|Live) edge by slot/.test(mu.textContent), "matchup tab renders the slot-by-slot edge chart");
+    // live projection: an in-progress game = points so far + the rest of the projection, not the raw partial
+    const pre = { mu: 17, sd: 7, actual: null, game: { state: "pre", kick: "2026-10-12T00:20:00Z" } };
+    const q2 = { mu: 17, sd: 7, actual: 2.7, game: { state: "in", period: 2, clock: 0, kick: "x" } }; // end of 2nd quarter = half done
+    const done = { mu: 17, sd: 7, actual: 2.7, game: { state: "post", kick: "x" } };
+    assert(T.effPts(pre) === 17 && T.effSd(pre) === 7, "a game not yet kicked uses the full projection");
+    assert(Math.abs(T.gameFrac(q2) - 0.5) < 0.01 && Math.abs(T.effPts(q2) - (2.7 + 17 * 0.5)) < 0.01 && Math.abs(T.effSd(q2) - 3.5) < 0.01, "a game at halftime projects points-so-far plus half the projection, with half the swing");
+    assert(T.effPts(done) === 2.7 && T.effSd(done) === 0 && T.liveState(done) === "final", "a final game collapses to the actual score with no uncertainty");
     assert(/Overall (live )?edge/.test(mu.textContent) && /Win probability/.test(mu.textContent), "matchup headline shows an overall edge + win probability");
     // win-probability line appears once at least one game has gone final (Pre + >=1 checkpoint)
     const wpSvg = mu.querySelector("svg.lc[aria-label='Live win probability']");
     assert(!wpSvg || wpSvg.querySelectorAll("circle").length >= 2, "live win-probability line renders a point per game checkpoint");
     // interactive what-if editor: every unlocked slot is a dropdown of your eligible starters
     const picks = [...mu.querySelectorAll("select.pick")];
-    assert(picks.length >= 1 && picks.every(s => s.dataset.slot && s.options.length >= 1), "matchup offers a lineup dropdown for each unstarted slot (" + picks.length + ")");
+    assert(picks.every(s => s.dataset.slot && s.options.length >= 1), "every unstarted-slot dropdown lists at least its current starter (" + picks.length + " editable slots; 0 is valid once every game has locked)");
     // no dropdown may offer a player who is already starting in another slot (locked or picked elsewhere)
     const startingElsewhere = self => [...mu.querySelectorAll(".gm select.pick")].filter(s => s !== self).map(s => s.value)
       .concat([...mu.querySelectorAll(".gm .row.grid")].filter(r => !r.querySelector("select.pick") && /\blocked\b/.test(r.textContent)).map(r => { const b = r.querySelector("b"); return b ? b.textContent.trim() : ""; }));
