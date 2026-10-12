@@ -687,6 +687,11 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(/title [+−]\d+\.\d pp/.test(trTxt) && /change in your title odds/.test(trTxt), "Trades tab prices deals in title-odds points");
   const lgTxt = d.getElementById("tab-league").textContent;
   assert(/Title odds — who wins the league/.test(lgTxt) && !/Power ranking/.test(lgTxt) && /Roster talent \(ROS\)/.test(lgTxt), "League headline is title odds; roster talent demoted to a labeled column");
+  // playoff-race chart: one playoff bar + one title bar per team, cut line, me highlighted
+  const raceSvg = d.querySelector("#tab-league svg.lc[aria-label='Playoff race']");
+  assert(raceSvg && /Playoff race/.test(lgTxt), "League tab renders a Playoff race chart");
+  assert(raceSvg.querySelectorAll("rect").length === 18 && raceSvg.querySelectorAll("rect title").length === 9, "playoff race draws a playoff bar + title bar for each of the 9 teams");
+  assert(/playoff cut — top \d/.test(lgTxt), "playoff race marks the playoff cut line");
   const lgR = [...d.querySelectorAll("#tab-league .gl .row")].map(r => { const v = x => { const s = x.textContent.trim(); return s.startsWith("<") ? 0.05 : parseFloat(s); }; return { c: v(r.children[2]), p: v(r.children[3]) }; });
   assert(lgR.every((r, i) => i === 0 || r.c < lgR[i - 1].c || (r.c === lgR[i - 1].c && r.p <= lgR[i - 1].p + 1e-9)), "League rows sorted by title %, then playoff %");
   assert(/Roster talent \(ROS\)/.test(d.getElementById("tab-strength").textContent) && !/<b>Overall<\/b>/.test(d.getElementById("tab-strength").innerHTML) && /Title %/.test(d.getElementById("tab-strength").textContent), "Strength tab: 'Overall' relabeled 'Roster talent (ROS)', title % beside it");

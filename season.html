@@ -1998,6 +1998,24 @@
     document.getElementById("tab-byes").innerHTML = h;
   }
 
+  // Playoff race: one horizontal bar per team = chance to make the playoffs, with title odds drawn
+  // brighter inside it. Sorted by playoff odds; a dashed line marks the playoff cut. You ride gold.
+  function playoffRaceChart(rows, st){
+    const me = R.me, data = rows.slice().sort((a,b)=> b.sim.playoff - a.sim.playoff || b.sim.champ - a.sim.champ), n = data.length;
+    const cut = st && st.playoffTeamCount ? st.playoffTeamCount : null;
+    const W=760, rh=30, L=160, Rm=72, T=8, bw=W-L-Rm, H=n*rh+T+20;
+    const X = p => L + Math.max(0,Math.min(1,p))*bw, trim = s => s.length>19 ? s.slice(0,18)+"…" : s;
+    let g = "";
+    [0,.25,.5,.75,1].forEach(v=>{ const x=X(v); g += "<line x1='"+x.toFixed(1)+"' y1='"+T+"' x2='"+x.toFixed(1)+"' y2='"+(n*rh+T).toFixed(1)+"' stroke='"+CH.grid+"' stroke-width='1'/><text x='"+x.toFixed(1)+"' y='"+(n*rh+T+14)+"' text-anchor='middle' font-size='9' fill='var(--muted)'>"+Math.round(v*100)+"%</text>"; });
+    data.forEach((r,i)=>{ const y=i*rh+T, mine=r.team===me, pf=r.sim.playoff, ch=r.sim.champ;
+      const barCol = mine?CH.me:"#3d4753", chCol = mine?"#f0c46a":CH.rival;
+      g += "<text x='"+(L-8)+"' y='"+(y+rh/2+1).toFixed(1)+"' text-anchor='end' font-size='11' font-weight='"+(mine?700:400)+"' fill='"+(mine?CH.me:"var(--text)")+"'>"+esc(trim(r.team))+(mine?" 🐑":"")+"</text>";
+      g += "<rect x='"+L+"' y='"+(y+6)+"' width='"+Math.max(0,X(pf)-L).toFixed(1)+"' height='"+(rh-12)+"' rx='2' fill='"+barCol+"'><title>"+esc(r.team)+": "+pct1(pf)+" playoffs · "+pct1(ch)+" title</title></rect>";
+      g += "<rect x='"+L+"' y='"+(y+6)+"' width='"+Math.max(0,X(ch)-L).toFixed(1)+"' height='"+(rh-12)+"' rx='2' fill='"+chCol+"'/>";
+      g += "<text x='"+(X(pf)+6).toFixed(1)+"' y='"+(y+rh/2+1).toFixed(1)+"' font-size='10.5' font-weight='700' fill='"+(mine?CH.me:"var(--muted)")+"'>"+pct1(pf)+"</text>"; });
+    if (cut && cut<n){ const yc=cut*rh+T; g += "<line x1='"+L+"' y1='"+yc.toFixed(1)+"' x2='"+(W-Rm)+"' y2='"+yc.toFixed(1)+"' stroke='#6b7683' stroke-width='1.3' stroke-dasharray='5 3'/><text x='"+(W-Rm)+"' y='"+(yc-3).toFixed(1)+"' text-anchor='end' font-size='9' fill='var(--muted)'>playoff cut — top "+cut+"</text>"; }
+    return "<div class='panel'><h2>Playoff race</h2><div class='muted' style='margin-bottom:6px'>Each team's chance to <b>make the playoffs</b> (full bar), with its <b>title odds</b> brighter inside. Sorted by playoff odds"+(cut?"; the dashed line is the "+cut+"-team cut":"")+". You're gold.</div><svg class='lc' viewBox='0 0 "+W+" "+H+"' role='img' aria-label='Playoff race'>"+g+"</svg></div>";
+  }
   // ---------- League tab ----------
   function renderLeague(){
     const L = leagueSim();
@@ -2008,6 +2026,7 @@
       rows.sort((a,b)=> b.sim.champ-a.sim.champ || b.sim.playoff-a.sim.playoff || a.sim.seed-b.sim.seed);
       const talentRank = {}; rows.slice().sort((a,b)=>b.s-a.s).forEach((r,i)=>{ talentRank[r.team] = i+1; });
       const M0 = L.model, st = SETTINGS;
+      h += playoffRaceChart(rows, st);
       h += "<div class='panel'><h2>Title odds — who wins the league</h2><div class='muted' style='margin-bottom:6px'>"+SIM_N.toLocaleString()+" simulated seasons: every remaining regular-season matchup on the real schedule, then the "+st.playoffTeamCount+"-team, "+L.spec.rounds+"-round bracket ("+(st.playoffReseed?"reseeded each round":"fixed bracket, no reseeding")+"; seeds by win % then "+(L.tbKnown?"total points scored":esc(String(st.playoffSeedingRule))+" — <b>approximated by points scored</b>")+"). Ranked by <b>title %</b>, then playoff %. Roster talent is shown but no longer ranks anyone.</div>";
       h += "<div class='tbl'><div class='gl'><div class='hrow'><span>Rank</span><span>Team</span><span title='Share of simulated seasons this team wins the championship'>Title %</span><span title='Share of simulated seasons this team makes the playoffs'>Playoff %</span><span title='Average final regular-season standing across all simulations (1 = top seed)'>Proj seed</span><span title='Actual record so far'>Record</span><span title='Estimated points per week going forward: blend of actual average and the talent prior (weight on actual shown)'>Scoring rate</span><span title='This week with the best lineup: actual points for games already played, projected for the rest'>This week</span><span title='Sum over the 9 best starters of (420 − rest-of-season rank). Paper strength only — an input to the scoring rate, not a ranking.'>Roster talent (ROS)</span></div>";
       rows.forEach((r,i)=>{
