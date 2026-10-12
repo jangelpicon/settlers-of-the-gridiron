@@ -2079,6 +2079,27 @@
     const sosTxt = rs.myRank ? "Your remaining slate projects to <b>"+rs.myAvg.toFixed(1)+"</b> pts/opponent — the <b>"+ord(rs.myRank)+"-hardest</b> of "+rs.nTeams+" ("+(diff>=0.5?"tougher than the field":diff<=-0.5?"easier than the field":"right about league-average")+")." : "";
     return "<div class='panel'><h2>Your remaining schedule</h2><div class='muted' style='margin-bottom:6px'>Each remaining week by how strong that opponent projects: <span style='color:"+HARD+"'>red = tougher</span> than the league-average team, <span style='color:"+EASY+"'>green = easier</span>. "+sosTxt+"</div><svg class='lc' viewBox='0 0 "+W+" "+H+"' role='img' aria-label='Remaining schedule'>"+g+"</svg></div>";
   }
+  // Luck = actual wins minus the wins a team's scores deserved (from its all-play record). Positive =
+  // winning more than it should (running hot → sell-high / fade); negative = losing despite good scores
+  // (unlucky → buy-low). A trade-targeting lens nobody else in the league is computing.
+  function luckRows(){
+    return Object.keys(R.teams).map(t=>{ const s = teamSeason(t); if (!s || s.expWins==null) return null;
+      return { team:t, wins:s.wins, losses:s.losses, ties:s.ties, exp:s.expWins, luck: Math.round((s.wins - s.expWins)*10)/10, ap:s.allPlay }; })
+      .filter(Boolean).sort((a,b)=> b.luck - a.luck);
+  }
+  function luckChart(rows){
+    if (rows.length < 2) return "";
+    const n=rows.length, HOT="#e0893a", COLD="#3987e5", me=R.me, trim = s => s.length>19?s.slice(0,18)+"…":s;
+    const maxAbs=Math.max(0.5, ...rows.map(r=>Math.abs(r.luck)));
+    const W=760, rh=30, L=160, Rm=210, span=W-L-Rm, cx=L+span/2, half=span/2, H=n*rh+22;
+    let g = "<line x1='"+cx+"' y1='6' x2='"+cx+"' y2='"+(n*rh+6).toFixed(1)+"' stroke='#5a6673' stroke-width='1' stroke-dasharray='4 3'/><text x='"+cx+"' y='"+(n*rh+18)+"' text-anchor='middle' font-size='9' fill='var(--muted)'>record = what the scores deserved</text>";
+    rows.forEach((r,i)=>{ const y=i*rh+6, hot=r.luck>=0, w=Math.abs(r.luck)/maxAbs*(half-42), col=hot?HOT:COLD, bx=hot?cx:cx-w, mine=r.team===me;
+      g += "<text x='"+(L-8)+"' y='"+(y+rh/2+1).toFixed(1)+"' text-anchor='end' font-size='11' font-weight='"+(mine?700:400)+"' fill='"+(mine?CH.me:"var(--text)")+"'>"+esc(trim(r.team))+(mine?" 🐑":"")+"</text>";
+      g += "<rect x='"+bx.toFixed(1)+"' y='"+(y+6)+"' width='"+Math.max(w,0.6).toFixed(1)+"' height='"+(rh-12)+"' rx='2' fill='"+col+"' opacity='0.9'><title>"+esc(r.team)+": "+r.wins+"-"+r.losses+(r.ties?"-"+r.ties:"")+", scores deserved ~"+r.exp+" wins</title></rect>";
+      g += "<text x='"+(hot?cx+w+6:cx-w-6).toFixed(1)+"' y='"+(y+rh/2+1).toFixed(1)+"' text-anchor='"+(hot?"start":"end")+"' font-size='10.5' font-weight='700' fill='"+col+"'>"+(hot?"+":"−")+Math.abs(r.luck).toFixed(1)+"</text>";
+      g += "<text x='"+(W-Rm+14)+"' y='"+(y+rh/2+1).toFixed(1)+"' font-size='10' fill='var(--muted)'>"+r.wins+"-"+r.losses+(r.ties?"-"+r.ties:"")+" · deserved ~"+r.exp+"</text>"; });
+    return "<div class='panel'><h2>Luck — record vs what the scores deserved</h2><div class='muted' style='margin-bottom:6px'>Actual wins minus the wins each team's scoring <b>deserved</b> (from its all-play record). <span style='color:"+COLD+"'>Blue = unlucky</span> (losing despite good scores — <b>buy-low</b> targets, owners may sell cheap); <span style='color:"+HOT+"'>orange = running hot</span> (winning more than they should — <b>sell-high</b>, or fade in a trade).</div><svg class='lc' viewBox='0 0 "+W+" "+H+"' role='img' aria-label='Luck'>"+g+"</svg></div>";
+  }
   // ---------- League tab ----------
   function renderLeague(){
     const L = leagueSim();
@@ -2091,6 +2112,7 @@
       const M0 = L.model, st = SETTINGS;
       h += playoffRaceChart(rows, st);
       const rs = remainingSchedule(); if (rs) h += remainingScheduleChart(rs);
+      h += luckChart(luckRows());
       h += "<div class='panel'><h2>Title odds — who wins the league</h2><div class='muted' style='margin-bottom:6px'>"+SIM_N.toLocaleString()+" simulated seasons: every remaining regular-season matchup on the real schedule, then the "+st.playoffTeamCount+"-team, "+L.spec.rounds+"-round bracket ("+(st.playoffReseed?"reseeded each round":"fixed bracket, no reseeding")+"; seeds by win % then "+(L.tbKnown?"total points scored":esc(String(st.playoffSeedingRule))+" — <b>approximated by points scored</b>")+"). Ranked by <b>title %</b>, then playoff %. Roster talent is shown but no longer ranks anyone.</div>";
       h += "<div class='tbl'><div class='gl'><div class='hrow'><span>Rank</span><span>Team</span><span title='Share of simulated seasons this team wins the championship'>Title %</span><span title='Share of simulated seasons this team makes the playoffs'>Playoff %</span><span title='Average final regular-season standing across all simulations (1 = top seed)'>Proj seed</span><span title='Actual record so far'>Record</span><span title='Estimated points per week going forward: blend of actual average and the talent prior (weight on actual shown)'>Scoring rate</span><span title='This week with the best lineup: actual points for games already played, projected for the rest'>This week</span><span title='Sum over the 9 best starters of (420 − rest-of-season rank). Paper strength only — an input to the scoring rate, not a ranking.'>Roster talent (ROS)</span></div>";
       rows.forEach((r,i)=>{
