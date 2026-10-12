@@ -1,12 +1,12 @@
 {
  "note": "ESPN league settings (view=mSettings) for the championship simulator. Written by tools/sync_league.py \u2014 do not hand-edit.",
- "generated": "2026-10-11 08:12 PM CDT",
+ "generated": "2026-10-11 09:18 PM CDT",
  "leagueId": 882823976,
  "season": 2026,
  "name": "I got sheep FF",
  "size": 9,
- "regularSeasonWeeks": 14,
- "playoffTeamCount": 5,
+ "regularSeasonWeeks": 15,
+ "playoffTeamCount": 6,
  "playoffRounds": 3,
  "playoffRoundLengths": [
   1,
@@ -15,13 +15,13 @@
  ],
  "playoffScoringPeriods": [
   [
-   15
-  ],
-  [
    16
   ],
   [
    17
+  ],
+  [
+   18
   ]
  ],
  "playoffReseed": false,
