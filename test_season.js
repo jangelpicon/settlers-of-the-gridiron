@@ -635,7 +635,8 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(LF && LF.spec.teams.every((t, i) => Math.abs(LF.spec.pf0[i] - ESPN_W4[t].pf) < 0.01), "points-for (game weeks only) matches ESPN's pointsFor for all 9 teams");
   const fxOrder = T.simSeedOrder(9, LF.spec.w0, LF.spec.g0, LF.spec.pf0).map(i => LF.spec.teams[i]);
   assert(fxOrder.every((t, k) => ESPN_W4[t].seed === k + 1), "standings → seeds reproduce ESPN's playoffSeed 1–9 exactly (win % first — 3-0 over 3-1 — then points): " + fxOrder.join(" > "));
-  assert(LF.spec.games.length === 0 && Object.entries(LF.byTeam).every(([t, x]) => x.playoff === (ESPN_W4[t].seed <= 5 ? 1 : 0)), "no games left → the top-5 seeds make the bracket with certainty, the rest never do");
+  const pcut = settings.playoffTeamCount;
+  assert(LF.spec.games.length === 0 && Object.entries(LF.byTeam).every(([t, x]) => x.playoff === (ESPN_W4[t].seed <= pcut ? 1 : 0)), "no games left → the top-" + pcut + " seeds make the bracket with certainty, the rest never do");
   T.setHistory(histReal);
   // bracket structure: 5 teams, 3 rounds, no reseed → round 1 is 4v5 only; then 1 v W(4/5), 2 v 3; final
   const calls = []; const score = (t, r) => { calls.push([t, r]); return 100 - t; }; // team index = seed-1 → better seed scores more
