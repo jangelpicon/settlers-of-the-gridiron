@@ -1155,11 +1155,12 @@
       }
       h += "</div>";
       // Scoring trend framed around this week's opponent: you gold, them blue, the pack behind.
-      const mWks = Object.keys(allScores()).map(Number);
-      if (mWks.length >= 2){
+      const mFrame = scoreFrame();
+      if (mFrame.wks.length >= 2){
+        const pn = mFrame.projWeek ? " Wk "+mFrame.projWeek+" is this week's live projection." : "";
         h += "<div class='panel'><h2>Scoring trend — you vs "+esc(cur.opp)+"</h2>";
-        h += lineChart("Points per week", "Real weekly scores. Gold = you, blue = "+esc(cur.opp)+", the pack = the rest of the league — hover any line to name it.", scoreSeries(cur.opp, false), mWks.sort((a,b)=>a-b));
-        h += lineChart("Cumulative points", "Season total as it builds — where you and "+esc(cur.opp)+" stack up against the field.", scoreSeries(cur.opp, true), mWks.sort((a,b)=>a-b));
+        h += lineChart("Points per week", "Weekly scores. Gold = you, blue = "+esc(cur.opp)+", the pack = the rest of the league — hover any line to name it."+pn, scoreSeries(cur.opp, false), mFrame.wks);
+        h += lineChart("Cumulative points", "Season total as it builds — where you and "+esc(cur.opp)+" stack up against the field."+pn, scoreSeries(cur.opp, true), mFrame.wks);
         h += "</div>";
       }
     } else if (cur && !cur.opp){
@@ -1824,8 +1825,26 @@
   // Weekly (or cumulative) real scores for all nine teams. `rival` rides the blue hero line, I get gold,
   // everyone else is the gray pack. Shared by the Strength tab (rival = best on paper) and the Matchup tab
   // (rival = this week's opponent) so there's one builder, not two.
+  // This week's projected total for every team = its best (lock-aware) lineup, actual for games already
+  // played plus live/regular projections for the rest — so the current week shows before it's final.
+  function currentWeekProj(){
+    if (!HIST || HIST.currentWeek==null || !P) return null;
+    const out = {}; Object.keys(R.teams).forEach(t=>{ out[t] = Math.round(lockAwareLineup(teamOf(t),"mu").slots.reduce((s,x)=>s+effPts(x.p),0)*10)/10; });
+    return { week: HIST.currentWeek, scores: out };
+  }
+  // Completed-week scores from the schedule, plus the current week as a live projection appended on the end.
+  function scoreFrame(){
+    const scores = Object.assign({}, allScores());
+    const wks = Object.keys(scores).map(Number).sort((a,b)=>a-b);
+    const cw = currentWeekProj();
+    if (cw && scores[cw.week]==null){ scores[cw.week] = cw.scores; wks.push(cw.week); wks.sort((a,b)=>a-b); }
+    return { scores, wks, projWeek: cw ? cw.week : null };
+  }
+  // Weekly (or cumulative) scores for all nine teams. `rival` rides the blue hero line, I get gold,
+  // everyone else is the gray pack. Shared by the Strength tab (rival = best on paper) and the Matchup tab
+  // (rival = this week's opponent) so there's one builder, not two. The final week is the live projection.
   function scoreSeries(rival, cum){
-    const scores = allScores(), wks = Object.keys(scores).map(Number).sort((a,b)=>a-b);
+    const { scores, wks } = scoreFrame();
     const color = t => t===R.me ? CH.me : t===rival ? CH.rival : CH.other;
     return Object.keys(R.teams).map(t=>{ let run = 0;
       const pts = wks.filter(w=>scores[w][t]!=null).map(w=>{ run += scores[w][t]; return { x:w, y: cum?run:scores[w][t] }; });
@@ -1925,15 +1944,17 @@
         const mine = t===R.me, rk = rankOf[t];
         return "<span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>"+(mine?"<b class='hl'>":"")+esc(t)+(mine?"</b>":"")+"</span>"+rCell(rk.QB)+rCell(rk.RB)+rCell(rk.WR)+rCell(rk.TE)+rCell(rk.OVR)+(SL?"<span class='num' style='text-align:center'>"+pct1(SL.byTeam[t].champ)+"</span>":"");
       }).join("")+"</div></div>";
-    // Timeseries: weekly and cumulative points from the real schedule.
+    // Timeseries: weekly and cumulative points from the real schedule, plus this week projected.
     const scores = allScores();
     const wks = Object.keys(scores).map(Number).sort((a,b)=>a-b);
-    if (wks.length >= 2){
+    const frame = scoreFrame();
+    if (frame.wks.length >= 2){
       const rival = oSorted.find(t=>t!==R.me);
+      const pn = frame.projWeek ? " Wk "+frame.projWeek+" is this week's live projection (actual so far + the rest projected)." : "";
       h += "<div class='panel'><h2>Scoring over time</h2>";
-      h += lineChart("Points per week", "Real scores from the schedule, every completed week. Gold = you, blue = the best other roster on paper ("+esc(rival)+").", scoreSeries(rival, false), wks);
-      h += lineChart("Cumulative points", "Season total as it builds — the gap is the season story.", scoreSeries(rival, true), wks);
-      // table view of the same data (accessibility + exact numbers)
+      h += lineChart("Points per week", "Weekly scores. Gold = you, blue = the best other roster on paper ("+esc(rival)+")."+pn, scoreSeries(rival, false), frame.wks);
+      h += lineChart("Cumulative points", "Season total as it builds — the gap is the season story."+pn, scoreSeries(rival, true), frame.wks);
+      // table view of the completed-week scores (accessibility + exact numbers)
       const totals = {}; teamNames.forEach(t=>{ totals[t] = wks.reduce((s,w)=>s+(scores[w][t]||0),0); });
       const tg = "display:grid;grid-template-columns:minmax(110px,1.5fr) repeat("+(wks.length+1)+",minmax(44px,1fr));gap:4px;align-items:center";
       h += "<div style='"+tg+";margin-top:10px'><span class='muted'>Scores</span>"+wks.map(w=>"<span class='muted' style='text-align:right'>Wk "+w+"</span>").join("")+"<span class='muted' style='text-align:right'><b>Total</b></span>"+
@@ -2092,7 +2113,7 @@
   document.getElementById("refreshLive").addEventListener("click", async ()=>{ if (!S) return; PSTAMP = { text:"fetching live…", cls:"" }; renderAll(); await liveRefresh(); scheduleLive(); });
   window.__seasonTest = { inject:(s,r,x,tl,pj,pool,mu,hist)=>{ S=s; R=JSON.parse(JSON.stringify(r)); X=x||{players:[]}; P=pj||null; POOL=pool||null; MU=mu||null; HIST=hist||null; LG=null; PSTAMP = pj ? {text:"snapshot "+pj.generated, cls:"stale"} : {text:"none", cls:""}; RSTAMP = {text:R.updated||"–", cls:""}; mergeLog((tl||{}).entries); applyAcceptedTrades(); buildIndex(); renderAll(); },
     setHistory:(h)=>{ HIST=h||null; renderMatchup(); },
-    setSettings:(st)=>{ SETTINGS=st||null; SIMC=null; }, leagueSim, simDelta, simDeltaFast, simWinProb, waiverChamp, simLeverage, simScoringModel, simRun, simPlayoffs, simSeedOrder, simBracketOrder, simNormals, simWidth, talentSlope, SIM_N, SIM_SEED, historyFromLeague, teamSeason, currentOpponent, allScores, scoringRank, effPts, effSd, gameFrac, liveState,
+    setSettings:(st)=>{ SETTINGS=st||null; SIMC=null; }, leagueSim, simDelta, simDeltaFast, simWinProb, waiverChamp, simLeverage, simScoringModel, simRun, simPlayoffs, simSeedOrder, simBracketOrder, simNormals, simWidth, talentSlope, SIM_N, SIM_SEED, historyFromLeague, teamSeason, currentOpponent, allScores, scoringRank, effPts, effSd, gameFrac, liveState, scoreFrame, currentWeekProj,
     rostersFromLeague, setRosters:(r)=>{ R = JSON.parse(JSON.stringify(r)); buildIndex(); renderAll(); },
     logTrade, teamFloor, tradeTalent, tradeLineup, strippedPositions, replFill, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, lockAwareLineup, strength, findTrades, findSurplus, surplusDeals, allSurplusDeals, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M, teamNeeds,
     waiverSuggestions:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,

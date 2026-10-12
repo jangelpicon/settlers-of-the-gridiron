@@ -550,6 +550,12 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     // win-probability line appears once at least one game has gone final (Pre + >=1 checkpoint)
     const wpSvg = mu.querySelector("svg.lc[aria-label='Live win probability']");
     assert(!wpSvg || wpSvg.querySelectorAll("circle").length >= 2, "live win-probability line renders a point per game checkpoint");
+    // scoring-trend charts append the current week as a live projection (not just completed weeks)
+    const frame = T.scoreFrame(), completedWks = Object.keys(T.allScores()).map(Number);
+    if (frame.projWeek != null){
+      assert(frame.wks.includes(frame.projWeek) && !completedWks.includes(frame.projWeek), "scoring charts append the in-progress week as a projection (wk " + frame.projWeek + ")");
+      assert(Object.keys(T.getRosters().teams).every(t => typeof frame.scores[frame.projWeek][t] === "number"), "every team has a projected total for the current week");
+    }
     // interactive what-if editor: every unlocked slot is a dropdown of your eligible starters
     const picks = [...mu.querySelectorAll("select.pick")];
     assert(picks.every(s => s.dataset.slot && s.options.length >= 1), "every unstarted-slot dropdown lists at least its current starter (" + picks.length + " editable slots; 0 is valid once every game has locked)");
