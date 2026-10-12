@@ -537,7 +537,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   if (coReal2 && coReal2.opp){
     const mu = d.getElementById("tab-matchup");
     const ts = [...mu.querySelectorAll("svg.lc")].filter(s => s.querySelectorAll("g.pkg").length > 0);
-    assert(ts.length === 2 && ts.every(s => s.querySelectorAll("path.hero").length === 2 && s.querySelectorAll("g.pkg").length === 7), "matchup tab frames you + this week's opponent (" + coReal2.opp + ") as the two hero lines, the other 7 as the pack");
+    assert(ts.length === 1 && ts.every(s => s.querySelectorAll("path.hero").length === 2 && s.querySelectorAll("g.pkg").length === 7), "matchup tab's points-per-week chart frames you + this week's opponent (" + coReal2.opp + ") as the two hero lines, the other 7 as the pack (cumulative chart retired 10/11)");
     assert(mu.querySelector("svg.lc[aria-label='Projected edge by slot']") && /(Projected|Live) edge by slot/.test(mu.textContent), "matchup tab renders the slot-by-slot edge chart");
     // live projection: an in-progress game = points so far + the rest of the projection, not the raw partial
     const pre = { mu: 17, sd: 7, actual: null, game: { state: "pre", kick: "2026-10-12T00:20:00Z" } };
@@ -587,7 +587,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(/League rank \(1 = strongest\)/.test(stTab.textContent), "rank grid renders (per-position + overall)");
   assert(/Position strength by team/.test(stTab.textContent) && !/Position strength by team/.test(d.getElementById("tab-trades").textContent), "position bars live on the Strength tab, not Trades");
   const stSvgs = [...stTab.querySelectorAll("svg")].filter(s => s.querySelectorAll("g.pkg").length > 0);
-  assert(stSvgs.length === 2 && stSvgs.every(s => s.querySelectorAll("path.hero").length === 2 && s.querySelectorAll("g.pkg").length === 7), "both timeseries charts render all nine teams (2 hero lines + 7 pack lines)");
+  assert(stSvgs.length === 1 && stSvgs.every(s => s.querySelectorAll("path.hero").length === 2 && s.querySelectorAll("g.pkg").length === 7), "the points-per-week chart renders all nine teams (2 hero lines + 7 pack lines); cumulative chart retired 10/11");
   assert(stSvgs.every(s => s.querySelectorAll("title").length >= 18), "every chart point carries a hover tooltip (team · week · points)");
   assert(stSvgs.every(s => s.querySelectorAll("g.pkg text.pkt").length === 7), "each pack line names itself on hover");
   assert(/the pack/.test(stTab.textContent), "legend explains the pack context lines");

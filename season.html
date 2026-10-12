@@ -1160,7 +1160,6 @@
         const pn = mFrame.projWeek ? " Wk "+mFrame.projWeek+" is this week's live projection." : "";
         h += "<div class='panel'><h2>Scoring trend — you vs "+esc(cur.opp)+"</h2>";
         h += lineChart("Points per week", "Weekly scores. Gold = you, blue = "+esc(cur.opp)+", the pack = the rest of the league — hover any line to name it."+pn, scoreSeries(cur.opp, false), mFrame.wks);
-        h += lineChart("Cumulative points", "Season total as it builds — where you and "+esc(cur.opp)+" stack up against the field."+pn, scoreSeries(cur.opp, true), mFrame.wks);
         h += "</div>";
       }
     } else if (cur && !cur.opp){
@@ -1976,7 +1975,7 @@
         const mine = t===R.me, rk = rankOf[t];
         return "<span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>"+(mine?"<b class='hl'>":"")+esc(t)+(mine?"</b>":"")+"</span>"+rCell(rk.QB)+rCell(rk.RB)+rCell(rk.WR)+rCell(rk.TE)+rCell(rk.OVR)+(SL?"<span class='num' style='text-align:center'>"+pct1(SL.byTeam[t].champ)+"</span>":"");
       }).join("")+"</div></div>";
-    // Timeseries: weekly and cumulative points from the real schedule, plus this week projected.
+    // Timeseries: weekly points from the real schedule, plus this week projected. (Cumulative chart dropped 10/11 — it restated the season-total table below.)
     const scores = allScores();
     const wks = Object.keys(scores).map(Number).sort((a,b)=>a-b);
     const frame = scoreFrame();
@@ -1985,7 +1984,6 @@
       const pn = frame.projWeek ? " Wk "+frame.projWeek+" is this week's live projection (actual so far + the rest projected)." : "";
       h += "<div class='panel'><h2>Scoring over time</h2>";
       h += lineChart("Points per week", "Weekly scores. Gold = you, blue = the best other roster on paper ("+esc(rival)+")."+pn, scoreSeries(rival, false), frame.wks);
-      h += lineChart("Cumulative points", "Season total as it builds — the gap is the season story."+pn, scoreSeries(rival, true), frame.wks);
       // table view of the completed-week scores (accessibility + exact numbers)
       const totals = {}; teamNames.forEach(t=>{ totals[t] = wks.reduce((s,w)=>s+(scores[w][t]||0),0); });
       const tg = "display:grid;grid-template-columns:minmax(110px,1.5fr) repeat("+(wks.length+1)+",minmax(44px,1fr));gap:4px;align-items:center";
