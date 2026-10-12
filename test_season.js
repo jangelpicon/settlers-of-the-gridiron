@@ -586,12 +586,17 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const stTab = d.getElementById("tab-strength");
   assert(/League rank \(1 = strongest\)/.test(stTab.textContent), "rank grid renders (per-position + overall)");
   assert(/Position strength by team/.test(stTab.textContent) && !/Position strength by team/.test(d.getElementById("tab-trades").textContent), "position bars live on the Strength tab, not Trades");
-  const stSvgs = [...stTab.querySelectorAll("svg")];
+  const stSvgs = [...stTab.querySelectorAll("svg")].filter(s => s.querySelectorAll("g.pkg").length > 0);
   assert(stSvgs.length === 2 && stSvgs.every(s => s.querySelectorAll("path.hero").length === 2 && s.querySelectorAll("g.pkg").length === 7), "both timeseries charts render all nine teams (2 hero lines + 7 pack lines)");
   assert(stSvgs.every(s => s.querySelectorAll("title").length >= 18), "every chart point carries a hover tooltip (team · week · points)");
   assert(stSvgs.every(s => s.querySelectorAll("g.pkg text.pkt").length === 7), "each pack line names itself on hover");
   assert(/the pack/.test(stTab.textContent), "legend explains the pack context lines");
   assert(/Total/.test(stTab.textContent), "scores table view renders beside the charts");
+  // roster-vs-league chart: one diverging bar per non-K/DST starting slot (QB,RB1,RB2,WR1,WR2,TE,FLEX)
+  const edgeSvg = stTab.querySelector("svg.lc[aria-label='Roster edges']");
+  assert(edgeSvg && /Your roster vs the league/.test(stTab.textContent), "Strength tab renders a roster-vs-league edges chart");
+  assert(edgeSvg.querySelectorAll("rect").length === 7, "roster-edges chart draws a bar for each of the 7 non-K/DST starting slots");
+  assert(/Biggest hole:|at or above the league median/.test(stTab.textContent), "roster-edges chart summarizes the biggest hole (or clean bill)");
 
   console.log("== Championship simulator ==");
   { // own scope: this section reuses short names (mk, calls) used earlier in the file

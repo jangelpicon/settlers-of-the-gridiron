@@ -1244,6 +1244,37 @@
     const needPos = new Set(needs.map(n=>n.pos)); depth.forEach(p=>needPos.add(p));
     return { needs, depth, needPos };
   }
+  // Every starting slot (not just the holes): my starter's ROS rank vs the median starter other teams
+  // run there. adv > 0 = I'm that many rank-spots better than the field; adv < 0 = a hole to fill.
+  function rosterEdge(){
+    const L = optimalLineup(myTeam(), "ros");
+    const others = Object.keys(R.teams).filter(t=>t!==R.me).map(t=>optimalLineup(teamOf(t),"ros").slots);
+    const med = a => { const s=a.filter(v=>v!=null).sort((x,y)=>x-y); return s.length ? s[Math.floor(s.length/2)] : null; };
+    const rows = [];
+    L.slots.forEach((s,i)=>{
+      if (!s.p || ["K","DST"].includes(s.p.pos)) return;
+      const lg = med(others.map(o=>o[i] && o[i].p ? o[i].p.ros : null));
+      if (lg==null || s.p.ros==null) return;
+      rows.push({ slot:s.slot, name:s.p.name, mine:s.p.ros, lg, adv: lg - s.p.ros });
+    });
+    return rows;
+  }
+  function rosterEdgeChart(rows){
+    if (!rows.length) return "";
+    const n=rows.length, GOOD="#4aa96c", BAD="#d9544d", trim = s => s.length>20?s.slice(0,19)+"…":s;
+    const maxAbs=Math.max(1, ...rows.map(r=>Math.abs(r.adv)));
+    const W=760, rh=32, L=52, Rm=250, span=W-L-Rm, cx=L+span/2, half=span/2, H=n*rh+22;
+    let g = "<line x1='"+cx+"' y1='6' x2='"+cx+"' y2='"+(n*rh+6).toFixed(1)+"' stroke='#5a6673' stroke-width='1' stroke-dasharray='4 3'/><text x='"+cx+"' y='"+(n*rh+18)+"' text-anchor='middle' font-size='9' fill='var(--muted)'>league-median starter</text>";
+    rows.forEach((r,i)=>{ const y=i*rh+6, good=r.adv>=0, w=Math.abs(r.adv)/maxAbs*(half-30), col=good?GOOD:BAD, bx=good?cx:cx-w;
+      g += "<text x='"+(L-8)+"' y='"+(y+rh/2+1).toFixed(1)+"' text-anchor='end' font-size='11' font-weight='700' fill='var(--text)'>"+esc(r.slot)+"</text>";
+      g += "<rect x='"+bx.toFixed(1)+"' y='"+(y+6)+"' width='"+Math.max(w,0.6).toFixed(1)+"' height='"+(rh-12)+"' rx='2' fill='"+col+"' opacity='0.9'><title>"+esc(r.slot)+" "+esc(r.name)+": ROS #"+r.mine+" vs league median #"+r.lg+"</title></rect>";
+      g += "<text x='"+(good?cx+w+6:cx-w-6).toFixed(1)+"' y='"+(y+rh/2+1).toFixed(1)+"' text-anchor='"+(good?"start":"end")+"' font-size='10.5' font-weight='700' fill='"+col+"'>"+(good?"+":"−")+Math.abs(r.adv)+"</text>";
+      g += "<text x='"+(W-Rm+12)+"' y='"+(y+rh/2+1).toFixed(1)+"' font-size='10' fill='var(--muted)'>"+esc(trim(r.name))+" <tspan fill='var(--text)'>#"+r.mine+"</tspan> vs #"+r.lg+"</text>"; });
+    const holes = rows.filter(r=>r.adv<0).sort((a,b)=>a.adv-b.adv), strong = rows.filter(r=>r.adv>0).sort((a,b)=>b.adv-a.adv);
+    const sum = holes.length ? "Biggest hole: <b class='bad'>"+esc(holes[0].slot)+"</b> ("+esc(holes[0].name)+", #"+holes[0].mine+" vs #"+holes[0].lg+")"+(strong.length?" · strongest: <b class='good'>"+esc(strong[0].slot)+"</b> ("+esc(strong[0].name)+")":"")+". Aim waivers and trades at the red bars."
+      : "Every starting slot is at or above the league median — trade and claim for value, not need.";
+    return "<div class='panel'><h2>Your roster vs the league</h2><div class='muted' style='margin-bottom:6px'>Each starting slot against the median team's starter there — <span style='color:"+GOOD+"'>green = you're ahead</span>, <span style='color:"+BAD+"'>red = a hole to fill</span> (rest-of-season rank). "+sum+"</div><svg class='lc' viewBox='0 0 "+W+" "+H+"' role='img' aria-label='Roster edges'>"+g+"</svg></div>";
+  }
   function needsStrip(N){
     if (!N.needs.length && !N.depth.length) return "<div class='suggest'>✅ <b class='hl'>Your needs:</b> every starting slot is at or above the league median and every position has bench cover. Trade and claim for value, not need.</div>";
     let h = "<div class='suggest'>🎯 <b class='hl'>Your needs, biggest first:</b> ";
@@ -1908,6 +1939,7 @@
   }
   function renderStrength(){
     let h = "";
+    h += rosterEdgeChart(rosterEdge());
     const PS = {};
     const teamNames = Object.keys(R.teams);
     // Same slot count for every team (best QB, top-2 RB, top-2 WR, best TE) so the
