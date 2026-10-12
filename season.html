@@ -2016,6 +2016,37 @@
     if (cut && cut<n){ const yc=cut*rh+T; g += "<line x1='"+L+"' y1='"+yc.toFixed(1)+"' x2='"+(W-Rm)+"' y2='"+yc.toFixed(1)+"' stroke='#6b7683' stroke-width='1.3' stroke-dasharray='5 3'/><text x='"+(W-Rm)+"' y='"+(yc-3).toFixed(1)+"' text-anchor='end' font-size='9' fill='var(--muted)'>playoff cut — top "+cut+"</text>"; }
     return "<div class='panel'><h2>Playoff race</h2><div class='muted' style='margin-bottom:6px'>Each team's chance to <b>make the playoffs</b> (full bar), with its <b>title odds</b> brighter inside. Sorted by playoff odds"+(cut?"; the dashed line is the "+cut+"-team cut":"")+". You're gold.</div><svg class='lc' viewBox='0 0 "+W+" "+H+"' role='img' aria-label='Playoff race'>"+g+"</svg></div>";
   }
+  // Your road ahead: for each remaining week, who you play and how strong that opponent projects
+  // (its expected points-per-week from the sim), plus where your whole remaining slate ranks for difficulty.
+  function remainingSchedule(){
+    if (!HIST || HIST.currentWeek==null || !SETTINGS || !SETTINGS.regularSeasonWeeks) return null;
+    const L = leagueSim(); if (!L) return null;
+    const reg = SETTINGS.regularSeasonWeeks, teams = Object.keys(R.teams);
+    const avg = teams.reduce((s,t)=>s+(L.byTeam[t]?L.byTeam[t].mu:0),0) / teams.length;
+    const oppOf = (t,w)=>{ const r = HIST.schedule.find(x=>x.w===w && (x.home===t||x.away===t)); if (!r) return null; const o = r.home===t?r.away:r.home; return o==null ? null : { opp:o, home:r.home===t }; };
+    const weeks = [];
+    for (let w=HIST.currentWeek; w<=reg; w++){ const m = oppOf(R.me,w); if (!m){ weeks.push({ w, bye:true }); continue; } weeks.push({ w, opp:m.opp, home:m.home, mu: L.byTeam[m.opp]?L.byTeam[m.opp].mu:null }); }
+    if (!weeks.some(x=>!x.bye)) return null;
+    const sos = {}; teams.forEach(t=>{ let sum=0,n=0; for (let w=HIST.currentWeek;w<=reg;w++){ const m=oppOf(t,w); if (!m||!L.byTeam[m.opp]) continue; sum+=L.byTeam[m.opp].mu; n++; } sos[t]= n?sum/n:null; });
+    const ranked = teams.filter(t=>sos[t]!=null).sort((a,b)=>sos[b]-sos[a]); // hardest slate first
+    return { weeks, avg, myAvg: sos[R.me], myRank: ranked.indexOf(R.me)+1, nTeams: ranked.length };
+  }
+  function remainingScheduleChart(rs){
+    const rows = rs.weeks, n = rows.length, HARD="#d9544d", EASY="#4aa96c";
+    const ord = k => k+(k%10===1&&k%100!==11?"st":k%10===2&&k%100!==12?"nd":k%10===3&&k%100!==13?"rd":"th"), trim = s => s.length>20?s.slice(0,19)+"…":s;
+    const maxAbs = Math.max(1, ...rows.filter(r=>!r.bye&&r.mu!=null).map(r=>Math.abs(r.mu-rs.avg)));
+    const W=760, rh=30, L=52, Rm=230, span=W-L-Rm, cx=L+span/2, half=span/2, H=n*rh+22;
+    let g = "<line x1='"+cx+"' y1='6' x2='"+cx+"' y2='"+(n*rh+6).toFixed(1)+"' stroke='#5a6673' stroke-width='1' stroke-dasharray='4 3'/><text x='"+cx+"' y='"+(n*rh+18)+"' text-anchor='middle' font-size='9' fill='var(--muted)'>league-average opponent</text>";
+    rows.forEach((r,i)=>{ const y=i*rh+6;
+      g += "<text x='"+(L-8)+"' y='"+(y+rh/2+1).toFixed(1)+"' text-anchor='end' font-size='11' font-weight='700' fill='var(--text)'>Wk "+r.w+"</text>";
+      if (r.bye || r.mu==null){ g += "<text x='"+(cx+6)+"' y='"+(y+rh/2+1).toFixed(1)+"' font-size='10.5' fill='var(--muted)'>bye — no game</text>"; return; }
+      const d=r.mu-rs.avg, hard=d>=0, w=Math.abs(d)/maxAbs*half, bx=hard?cx:cx-w, col=hard?HARD:EASY;
+      g += "<rect x='"+bx.toFixed(1)+"' y='"+(y+6)+"' width='"+Math.max(w,0.6).toFixed(1)+"' height='"+(rh-12)+"' rx='2' fill='"+col+"' opacity='0.9'><title>Wk "+r.w+" "+(r.home?"vs ":"at ")+esc(r.opp)+": "+r.mu.toFixed(1)+" proj/wk</title></rect>";
+      g += "<text x='"+(W-Rm+10)+"' y='"+(y+rh/2+1).toFixed(1)+"' font-size='10' fill='var(--muted)'>"+(r.home?"vs ":"at ")+esc(trim(r.opp))+" <tspan fill='"+col+"' font-weight='700'>"+r.mu.toFixed(0)+"</tspan></text>"; });
+    const diff = rs.myAvg!=null ? rs.myAvg-rs.avg : 0;
+    const sosTxt = rs.myRank ? "Your remaining slate projects to <b>"+rs.myAvg.toFixed(1)+"</b> pts/opponent — the <b>"+ord(rs.myRank)+"-hardest</b> of "+rs.nTeams+" ("+(diff>=0.5?"tougher than the field":diff<=-0.5?"easier than the field":"right about league-average")+")." : "";
+    return "<div class='panel'><h2>Your remaining schedule</h2><div class='muted' style='margin-bottom:6px'>Each remaining week by how strong that opponent projects: <span style='color:"+HARD+"'>red = tougher</span> than the league-average team, <span style='color:"+EASY+"'>green = easier</span>. "+sosTxt+"</div><svg class='lc' viewBox='0 0 "+W+" "+H+"' role='img' aria-label='Remaining schedule'>"+g+"</svg></div>";
+  }
   // ---------- League tab ----------
   function renderLeague(){
     const L = leagueSim();
@@ -2027,6 +2058,7 @@
       const talentRank = {}; rows.slice().sort((a,b)=>b.s-a.s).forEach((r,i)=>{ talentRank[r.team] = i+1; });
       const M0 = L.model, st = SETTINGS;
       h += playoffRaceChart(rows, st);
+      const rs = remainingSchedule(); if (rs) h += remainingScheduleChart(rs);
       h += "<div class='panel'><h2>Title odds — who wins the league</h2><div class='muted' style='margin-bottom:6px'>"+SIM_N.toLocaleString()+" simulated seasons: every remaining regular-season matchup on the real schedule, then the "+st.playoffTeamCount+"-team, "+L.spec.rounds+"-round bracket ("+(st.playoffReseed?"reseeded each round":"fixed bracket, no reseeding")+"; seeds by win % then "+(L.tbKnown?"total points scored":esc(String(st.playoffSeedingRule))+" — <b>approximated by points scored</b>")+"). Ranked by <b>title %</b>, then playoff %. Roster talent is shown but no longer ranks anyone.</div>";
       h += "<div class='tbl'><div class='gl'><div class='hrow'><span>Rank</span><span>Team</span><span title='Share of simulated seasons this team wins the championship'>Title %</span><span title='Share of simulated seasons this team makes the playoffs'>Playoff %</span><span title='Average final regular-season standing across all simulations (1 = top seed)'>Proj seed</span><span title='Actual record so far'>Record</span><span title='Estimated points per week going forward: blend of actual average and the talent prior (weight on actual shown)'>Scoring rate</span><span title='This week with the best lineup: actual points for games already played, projected for the rest'>This week</span><span title='Sum over the 9 best starters of (420 − rest-of-season rank). Paper strength only — an input to the scoring rate, not a ranking.'>Roster talent (ROS)</span></div>";
       rows.forEach((r,i)=>{
