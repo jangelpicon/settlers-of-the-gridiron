@@ -35,13 +35,24 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(bestWkWR && starters.some(s => /WR1|WR2/.test(slotOf(s)) && rx(bestWkWR.name).test(txt(s))), "my best-ranked available WR this week starts at WR (" + (bestWkWR && bestWkWR.name) + ", wk #" + (bestWkWR && bestWkWR.wkRank) + ")");
   const myQBs = rosters.teams[rosters.me].filter(p => p.pos === "QB").map(p => p.name);
   assert(starters.some(s => slotOf(s) === "QB" && myQBs.some(n => rx(n).test(txt(s)))), "QB slot filled from roster (" + myQBs.join("/") + ")");
-  const myDst = rosters.teams[rosters.me].filter(p => p.pos === "DST").map(p => p.name), myK = rosters.teams[rosters.me].filter(p => p.pos === "K").map(p => p.name);
-  assert(starters.some(s => slotOf(s) === "DST" && myDst.some(n => rx(n).test(txt(s)))) && starters.some(s => slotOf(s) === "K" && myK.some(n => rx(n).test(txt(s)))), "DST and K slots filled from roster (" + myDst.join("/") + ", " + myK.join("/") + ")");
-  assert(starters.every(s => !/BYE/.test(txt(s))), "no bye-week player in the starting lineup");
-  assert([...d.querySelectorAll("#tab-lineup .row.sit")].length === 5, "5 bench players");
+  // Bye-aware (Week 6 2026 lesson: Jake Bates DET on bye left the K slot legitimately empty and this gate blocked the deploy).
+  // A slot can only be filled from the roster when I have a player there who is not on bye / OUT / IR / SUSP; otherwise the page must show the streamer hint.
   const me0 = rosters.teams[rosters.me].map(T.info);
+  const emptyRx = /nobody available/;
+  const availAt = pos => me0.filter(p => p.pos === pos && !p.onBye && !(p.inj && /^(O|IR|SUSP)$/.test(p.inj.code)));
+  ["DST", "K"].forEach(pos => {
+    const row = starters.find(s => slotOf(s) === pos);
+    const names = me0.filter(p => p.pos === pos).map(p => p.name);
+    if (availAt(pos).length) assert(row && !emptyRx.test(txt(row)) && names.some(n => rx(n).test(txt(row))), pos + " slot filled from roster (" + names.join("/") + ")");
+    else assert(row && emptyRx.test(txt(row)) && /Waivers/.test(txt(row)), pos + " slot shows the streamer hint when my only " + pos + " is on bye/out (" + names.join("/") + ")");
+  });
+  assert(starters.every(s => !/BYE/.test(txt(s))), "no bye-week player in the starting lineup");
+  const filledStarters = starters.filter(s => !emptyRx.test(txt(s))).length;
+  const benchRows = [...d.querySelectorAll("#tab-lineup .row.sit")].length;
+  assert(benchRows === rosters.teams[rosters.me].length - filledStarters, "bench rows = roster minus filled starters (" + benchRows + " = " + rosters.teams[rosters.me].length + " − " + filledStarters + ")");
   assert(me0.every(p => p.ros != null), "every rostered player resolves to a rest-of-season rank");
-  assert(me0.filter(p => ["QB","RB","WR","TE"].includes(p.pos)).every(p => p.wkRank != null), "every skill player resolves to a Week " + season.week + " rank");
+  assert(me0.filter(p => ["QB","RB","WR","TE"].includes(p.pos) && !p.onBye).every(p => p.wkRank != null), "every skill player not on bye resolves to a Week " + season.week + " rank (FantasyPros omits bye-week players)");
+  assert(me0.filter(p => p.onBye).every(p => p.wkRank == null || p.pPlay === 0), "bye-week players carry no startable weekly rank (" + (me0.filter(p => p.onBye).map(p => p.name).join(", ") || "none on bye") + ")");
   assert(/consensus ranks/.test(d.getElementById("tab-lineup").textContent), "fallback mode says it is using consensus ranks");
 
   // ======================= Projection mode (the real thing) =======================
@@ -51,7 +62,8 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(projections.week === season.week, "projections and rankings are for the same week (" + projections.week + ")");
   const me = rosters.teams[rosters.me].map(T.info);
   assert(me.every(p => typeof p.mu === "number"), "every rostered player gets a predicted-points number");
-  assert(me.every(p => p.srcs.length >= 2), "every rostered player has at least two independent sources (ESPN / Sleeper / rank-implied)");
+  assert(me.filter(p => !p.onBye).every(p => p.srcs.length >= 2), "every rostered player not on bye has at least two independent sources (ESPN / Sleeper / rank-implied)");
+  assert(me.filter(p => p.onBye).every(p => p.pPlay === 0 && Math.abs(p.mu) < 0.05), "players on bye predict 0 points with 0 chance to play (" + (me.filter(p => p.onBye).map(p => p.name).join(", ") || "none on bye") + ")");
   assert(me.every(p => p.floor <= p.mu + 1e-9 && p.mu <= p.ceil + 1e-9 && p.floor >= 0), "floor ≤ predicted ≤ ceiling, floor never negative");
   assert(me.every(p => p.vegasMult >= 0.85 && p.vegasMult <= 1.15), "Vegas adjustment stays within ±15%");
   assert(me.every(p => typeof p.pPlay === "number" && p.pPlay >= 0 && p.pPlay <= 1), "chance-to-play is a probability for everyone");
@@ -68,7 +80,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   starters = [...d.querySelectorAll("#tab-lineup .row.start")];
   assert(starters.length === 9, "9 starting slots rendered in projection mode");
   assert(/predicted points/.test(d.getElementById("tab-lineup").textContent), "lineup says it is using predicted points");
-  assert(starters.every(s => s.querySelector(".proj")), "every starter shows a projection number with floor–ceiling");
+  assert(starters.filter(s => !emptyRx.test(txt(s))).every(s => s.querySelector(".proj")), "every filled starter slot shows a projection number with floor–ceiling (" + starters.filter(s => emptyRx.test(txt(s))).length + " slot(s) legitimately empty on bye)");
   const L = T.optimalLineup(me, "mu");
   const startersByEligibility = b => L.slots.filter(s => s.p && (s.slot.replace(/\d$/, "") === b.pos || (s.slot === "FLEX" && ["RB","WR","TE"].includes(b.pos)))).map(s => s.p.mu);
   assert(L.bench.filter(b => b.mu != null && b.pPlay > 0).every(b => Math.min(...startersByEligibility(b)) >= b.mu - 1e-9), "no usable bench player out-projects a starter he could replace (lineup is optimal by predicted points)");
@@ -206,8 +218,8 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   console.log("== Surplus ==");
   const sur = T.findSurplus();
   const meInfo = rosters.teams[rosters.me].map(T.info);
-  const optRos = T.optimalLineup(meInfo, "ros");
-  assert(sur.every(s => !optRos.used.has(s.p.n)), "no starter is ever listed as surplus (" + sur.map(s => s.p.name).join(", ") + ")");
+  const optRos = T.tradeLineup(meInfo); // same bye-present rest-of-season lens findSurplus uses (a this-week lens benched Chase on bye and flagged his fill-ins as surplus)
+  assert(sur.every(s => !optRos.used.has(s.p.n)), "no rest-of-season starter is ever listed as surplus (" + sur.map(s => s.p.name).join(", ") + ")");
   const myQBcount = meInfo.filter(p => p.pos === "QB").length;
   if (myQBcount >= 3) {
     assert(sur.some(s => s.p.pos === "QB" && s.dead), "with " + myQBcount + " QBs rostered, a third-string QB is flagged dead weight");
