@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-10-12",
- "source": "ESPN league 882823976 sync 2026-10-12 02:00 CDT",
+ "updated": "2026-10-13",
+ "source": "ESPN league 882823976 sync 2026-10-13 08:15 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -328,7 +328,7 @@
    {
     "name": "Marvin Harrison Jr.",
     "pos": "WR",
-    "team": "ARI",
+    "team": "HOU",
     "slot": "BN"
    },
    {
@@ -460,13 +460,13 @@
     "name": "Justin Jefferson",
     "pos": "WR",
     "team": "MIN",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Chase Brown",
     "pos": "RB",
     "team": "CIN",
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "Ashton Jeanty",
@@ -478,25 +478,25 @@
     "name": "George Pickens",
     "pos": "WR",
     "team": "DAL",
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Joe Burrow",
     "pos": "QB",
     "team": "CIN",
-    "slot": "QB"
+    "slot": "BN"
    },
    {
     "name": "Sam LaPorta",
     "pos": "TE",
     "team": "DET",
-    "slot": "FLEX"
+    "slot": "BN"
    },
    {
     "name": "Rhamondre Stevenson",
     "pos": "RB",
     "team": "NE",
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Khalil Shakir",
@@ -520,7 +520,7 @@
     "name": "Bryce Young",
     "pos": "QB",
     "team": "CAR",
-    "slot": "BN"
+    "slot": "QB"
    },
    {
     "name": "George Kittle",
@@ -538,7 +538,7 @@
     "name": "Denzel Boston",
     "pos": "WR",
     "team": "CLE",
-    "slot": "BN"
+    "slot": "FLEX"
    }
   ],
   "Knight Moves Ore Else": [
@@ -546,7 +546,7 @@
     "name": "Amon-Ra St. Brown",
     "pos": "WR",
     "team": "DET",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "CeeDee Lamb",
@@ -564,7 +564,7 @@
     "name": "Malik Nabers",
     "pos": "WR",
     "team": "NYG",
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Travis Etienne Jr.",
@@ -639,13 +639,13 @@
     "name": "Ja'Marr Chase",
     "pos": "WR",
     "team": "CIN",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Drake London",
     "pos": "WR",
     "team": "ATL",
-    "slot": "FLEX"
+    "slot": "WR"
    },
    {
     "name": "Trey McBride",
@@ -657,7 +657,7 @@
     "name": "Drake Maye",
     "pos": "QB",
     "team": "NE",
-    "slot": "BN"
+    "slot": "QB"
    },
    {
     "name": "D'Andre Swift",
@@ -675,7 +675,7 @@
     "name": "Luther Burden III",
     "pos": "WR",
     "team": "CHI",
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Parker Washington",
@@ -687,7 +687,7 @@
     "name": "Jared Goff",
     "pos": "QB",
     "team": "DET",
-    "slot": "QB"
+    "slot": "BN"
    },
    {
     "name": "Jeremiyah Love",
