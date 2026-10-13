@@ -1,7 +1,7 @@
 {
  "me": "ur done",
  "updated": "2026-10-13",
- "source": "ESPN league 882823976 sync 2026-10-13 08:15 CDT",
+ "source": "ESPN league 882823976 sync 2026-10-13 18:03 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -40,7 +40,7 @@
     "name": "Jameson Williams",
     "pos": "WR",
     "team": "DET",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Matthew Stafford",
@@ -76,7 +76,7 @@
     "name": "Dontayvion Wicks",
     "pos": "WR",
     "team": "PHI",
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Jacksonville Jaguars",
@@ -108,7 +108,7 @@
     "name": "Rashee Rice",
     "pos": "WR",
     "team": "KC",
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Breece Hall",
@@ -138,7 +138,7 @@
     "name": "Carnell Tate",
     "pos": "WR",
     "team": "TEN",
-    "slot": "FLEX"
+    "slot": "BN"
    },
    {
     "name": "Jaylen Warren",
@@ -156,13 +156,13 @@
     "name": "Josh Downs",
     "pos": "WR",
     "team": "IND",
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "DK Metcalf",
     "pos": "WR",
     "team": "PIT",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Cincinnati Bengals",
@@ -281,7 +281,7 @@
     "name": "Jahmyr Gibbs",
     "pos": "RB",
     "team": "DET",
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "Chris Olave",
@@ -299,7 +299,7 @@
     "name": "Tetairoa McMillan",
     "pos": "WR",
     "team": "CAR",
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Houston Texans",
@@ -323,7 +323,7 @@
     "name": "TreVeyon Henderson",
     "pos": "RB",
     "team": "NE",
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "Marvin Harrison Jr.",
@@ -341,19 +341,19 @@
     "name": "Deebo Samuel Sr.",
     "pos": "WR",
     "team": "SF",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "MarShawn Lloyd",
     "pos": "RB",
     "team": "GB",
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Chuba Hubbard",
     "pos": "RB",
     "team": "CAR",
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Tyler Shough",
@@ -577,7 +577,7 @@
     "name": "Jalen Hurts",
     "pos": "QB",
     "team": "PHI",
-    "slot": "BN"
+    "slot": "QB"
    },
    {
     "name": "Quinshon Judkins",
@@ -601,7 +601,7 @@
     "name": "Sam Darnold",
     "pos": "QB",
     "team": "SEA",
-    "slot": "QB"
+    "slot": "BN"
    },
    {
     "name": "Michael Wilson",
