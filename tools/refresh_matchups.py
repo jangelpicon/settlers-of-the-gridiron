@@ -201,6 +201,41 @@ def fit_weights(rows):
     return out
 
 
+SIGMA_CV_DEFAULT = {"QB": .35, "RB": .50, "WR": .55, "TE": .60, "K": .45, "DST": .70}  # the page's hand-set CV table
+SIGMA_PRIOR_N = 20  # light shrink: the old table was demonstrably miscalibrated, and every position has >=100 rows
+Z80 = 0.8416
+
+
+def fit_sigma(rows):
+    """Per position: the spread of a player's score IF HE PLAYS, as sigma(mu) = sqrt(a^2 + (cv*mu)^2).
+    Fitted by Gaussian log-likelihood on logged rows where he actually played (actual > 0), because
+    did-not-play zeros are modeled separately by pPlay. Why: through Week 5 2026 the hand-set CV table
+    put the real score inside the 20-80 band only 24-47% of the time (target 60%) — every start/sit odd,
+    win probability and title odd was overconfident. Thin fits shrink toward the old table."""
+    import math
+    out = {}
+    for pos in POSITIONS:
+        rs = [r for r in rows if r["pos"] == pos and r.get("cons") and r.get("actual") is not None and r["cons"] >= 1 and r["actual"] > 0]
+        if len(rs) < 30:
+            continue
+        def ll(a, cv):
+            s = 0.0
+            for r in rs:
+                sg = math.sqrt(a * a + (cv * r["cons"]) ** 2); e = r["actual"] - r["cons"]
+                s += -math.log(sg) - 0.5 * (e / sg) ** 2
+            return s / len(rs)
+        def cov(a, cv):
+            return sum(1 for r in rs if abs(r["actual"] - r["cons"]) <= Z80 * math.sqrt(a * a + (cv * r["cons"]) ** 2)) / len(rs)
+        grid = [(a / 2, c / 20) for a in range(0, 13) for c in range(4, 25)]   # a 0..6 by .5, cv .2..1.2 by .05
+        a, cv = max(grid, key=lambda t: ll(*t))
+        n = len(rs); cv0 = SIGMA_CV_DEFAULT[pos]
+        a_use = round(a * n / (n + SIGMA_PRIOR_N), 2)
+        cv_use = round((cv * n + cv0 * SIGMA_PRIOR_N) / (n + SIGMA_PRIOR_N), 3)
+        out[pos] = {"a": a_use, "cv": cv_use, "fitA": a, "fitCv": cv, "nRows": n,
+                    "cov60Default": round(cov(0, cv0), 3), "cov60Fit": round(cov(a_use, cv_use), 3)}
+    return out
+
+
 def main():
     wk = int(sys.argv[1]) if len(sys.argv) > 1 else current_week()
     played = list(range(1, wk))
@@ -219,6 +254,7 @@ def main():
 
     rows = backfill_log(weeks, sched, sleeper, wk)
     fitted = fit_weights(rows)
+    sigma = fit_sigma(rows)
 
     if len(def_vs_pos) < 20 or len(player_form) < 200:
         sys.exit(f"sample too small — refusing (defenses {len(def_vs_pos)}, players {len(player_form)})")
@@ -226,12 +262,14 @@ def main():
     out = {"generated": now.strftime("%Y-%m-%d %-I:%M %p CT"), "generatedMs": int(now.timestamp() * 1000),
            "season": SEASON, "currentWeek": wk, "weeksSampled": played,
            "leagueAvg": league_avg, "defVsPos": def_vs_pos, "playerForm": player_form,
-           "outlook": outlook, "fittedW": fitted}
+           "outlook": outlook, "fittedW": fitted, "sigma": sigma}
     (HERE / "data" / "matchups.json").write_text(json.dumps(out, separators=(",", ":")))
     (HERE / "data" / "predlog.json").write_text(json.dumps(
         {"generated": out["generated"], "season": SEASON, "weeksScored": list(range(2, wk)), "rows": rows},
         separators=(",", ":")))
     fw = ", ".join(f"{p}: use {v['use']} (fit {v['fit']}, n={v['nRows']}, mse {v['mseCons']}->{v['mseFit']})" for p, v in fitted.items())
+    sg = ", ".join(f"{p}: a {v['a']} cv {v['cv']} (n={v['nRows']}, 20-80 coverage {v['cov60Default']:.0%}->{v['cov60Fit']:.0%})" for p, v in sigma.items())
+    print("fitted spread:", sg or "none (insufficient rows)")
     print(f"week {wk}: sampled weeks {played}, defenses {len(def_vs_pos)}, players {len(player_form)}, "
           f"predlog rows {len(rows)} -> data/matchups.json + data/predlog.json ({out['generated']})")
     print("fitted weights:", fw or "none (insufficient rows)")

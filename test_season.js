@@ -915,6 +915,25 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     assert(r2.chain.every(c => c.name !== "No Team Guy") && r2.best && r2.best.name === "Real K", "a released player never enters the K/DST stream chain (" + r2.chain.map(c => c.name).join(" > ") + ")");
   }
 
+  console.log("== Fitted spread (variance refit) ==");
+  {
+    const mu0 = JSON.parse(JSON.stringify(matchups)); mu0.sigma = { WR: { a: 4.5, cv: 0.5 } }; // real matchup file, synthetic sigma for one position only
+    T.inject(season, rosters, exclusions, tradeLog, unlockedProjections, null, mu0);
+    const w1 = T.predict({ name: "Spread Guy", n: "spreadguy", pos: "WR", team: "CIN", wkRank: 10, inj: null });
+    const exp = Math.sqrt(4.5 * 4.5 + (0.5 * w1.ifPlays) ** 2);
+    assert(w1.sdSrc === "fitted" && Math.abs(w1.sd - exp) < 0.15, "with a fitted sigma for his position, sd = sqrt(a² + (cv·proj)²) (" + w1.sd + " vs " + exp.toFixed(1) + ")");
+    const r1 = T.predict({ name: "Spread RB", n: "spreadrb", pos: "RB", team: "CIN", wkRank: 10, inj: null });
+    assert(r1.sdSrc === "default" && Math.abs(r1.sd - 0.5 * r1.ifPlays) < 0.15, "positions without a fitted sigma keep the default proportional spread");
+    assert(w1.floor < w1.mu && w1.ceil > w1.mu && Math.abs((w1.ceil - w1.floor) / 2 - 0.8416 * exp) < 0.2, "floor/ceiling use the same fitted spread (20th/80th percentile)");
+    if (matchups && matchups.sigma){
+      T.inject(season, rosters, exclusions, tradeLog, unlockedProjections, null, matchups);
+      const live = Object.entries(matchups.sigma);
+      assert(live.length >= 4 && live.every(([pos, v]) => v.a >= 0 && v.cv > 0.15 && v.cv < 1.3 && v.nRows >= 30 && v.cov60Fit >= 0.5), "live data/matchups.json carries a sane fitted sigma per position (" + live.map(([k, v]) => k + " a" + v.a + " cv" + v.cv + " cov" + Math.round(v.cov60Fit * 100) + "%").join(", ") + ")");
+      const me2 = rosters.teams[rosters.me].map(T.info).filter(p => p.mu > 5);
+      assert(me2.every(p => p.sdSrc === "fitted"), "every projected starter on my roster now uses the fitted spread");
+    }
+    T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
+  }
   console.log("\n--- POWER ---");
   [...d.querySelectorAll("#tab-league .row")].forEach(r => console.log(" ", r.textContent.replace(/\s+/g, " ").trim()));
   console.log(failures ? failures + " FAILED" : "ALL SEASON TESTS PASSED"); process.exit(failures ? 1 : 0);

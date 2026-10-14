@@ -89,7 +89,7 @@
     <dl>
       <dt>Proj</dt><dd>Predicted fantasy points <b>this week</b>: the average of ESPN's projection, Sleeper's projection and what a player at his expert-consensus rank usually scores, blended (up to half weight) with the <b>matchup view</b> — his own per-game production scaled by how generous this week's defense really is to his position, from actual box scores — then nudged by the Vegas line and his chance of playing. The consensus is slow to reprice a broken or surging situation; the matchup view catches it.</dd>
       <dt>Next 4</dt><dd>His team's next four opponents, each with the fantasy points that defense actually gives up per game to his position. <span class="good">Green</span> = soft matchup coming, <span class="bad">red</span> = stingy. Early season this runs on few games, so treat middling numbers as noise.</dd>
-      <dt>Floor–Ceil</dt><dd>A bad week and a good week for him (20th and 80th percentile). Wide range = boom-or-bust.</dd>
+      <dt>Floor–Ceil</dt><dd>A bad week and a good week for him (20th and 80th percentile). Wide range = boom-or-bust. The width is refit every refresh from this season's logged results per position (a floor of a few points plus a share of his projection), so the band catches the real score about 60% of the time.</dd>
       <dt>Wk rank</dt><dd>FantasyPros expert consensus rank for this week. QB, K and DST are ranked within their position; RB/WR/TE are ranked together (that's the flex pool). Lower is better.</dd>
       <dt>Opp</dt><dd>This week's opponent. "vs." = home, "at" = away.</dd>
       <dt>Grade</dt><dd>FantasyPros start/sit letter grade for this week (A = start with confidence, D/F = sit).</dd>
@@ -406,7 +406,12 @@
     p.implied = implied; p.vegasMult = Math.round(mult*1000)/1000;
     const eff = p.injLive==="Q" ? 0.95 : 1;
     const m = blended*mult*eff;              // expected points IF he plays
-    const sc = (CV[p.pos]||.5)*m;            // spread if he plays
+    // spread if he plays: fitted per position from this season's logged results (data/matchups.json sigma:
+    // floor a plus a share cv of his projection), falling back to the hand-set CV table. Refit 2026-10-13:
+    // the table alone caught the real score inside the 20-80 band only 24-47% of the time.
+    const sg = (MU && MU.sigma && MU.sigma[p.pos]) || null;
+    const sc = sg ? Math.sqrt(sg.a*sg.a + (sg.cv*m)*(sg.cv*m)) : (CV[p.pos]||.5)*m;
+    p.sdSrc = sg ? "fitted" : "default";
     p.base = Math.round(base*100)/100; p.ifPlays = Math.round(m*10)/10;
     p.mu = Math.round(p.pPlay*m*10)/10;
     const v = p.pPlay*(sc*sc + m*m) - (p.pPlay*m)*(p.pPlay*m);
