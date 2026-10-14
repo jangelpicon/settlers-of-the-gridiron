@@ -160,7 +160,7 @@
     const players = {};
     (espnRaw.players||[]).forEach(x=>{
       const p = x.player; const pos = ESPN_POS[p.defaultPositionId]; if (!pos) return;
-      const tm = ESPN_TEAM[p.proTeamId]; const name = pos==="DST" ? (TEAM_NAME[tm] || p.fullName) : p.fullName;
+      const tm = p.proTeamId===0 ? "FA" : ESPN_TEAM[p.proTeamId]; const name = pos==="DST" ? (TEAM_NAME[tm] || p.fullName) : p.fullName; // proTeamId 0 = released, no NFL team (Mevis, 2026-10-13)
       let proj = null, actual = null, seasonProj = null;
       (p.stats||[]).forEach(s=>{ if (s.scoringPeriodId===week && s.statSplitTypeId===1){ if (s.statSourceId===1) proj = s.appliedTotal; else if (s.statSourceId===0) actual = s.appliedTotal; } else if (s.scoringPeriodId===0 && s.statSourceId===1) seasonProj = s.appliedTotal; });
       players[norm(name)] = { name, pos, team: tm, espn: proj==null?null:Math.round(proj*100)/100, espnSeason: seasonProj==null?null:Math.round(seasonProj*10)/10, actual: actual==null?null:Math.round(actual*100)/100,
@@ -347,8 +347,9 @@
     p.mu = null; p.sd = null; p.floor = null; p.ceil = null; p.pPlay = null; p.srcs = [];
     if (!P) return p;
     const q = P.players[p.n] || null;
-    const tm = (q && q.team) || p.team; const g = P.games[teamCode(tm)] || null;
+    const tm = (q && q.team) || p.team; const g = tm==="FA" ? null : (P.games[teamCode(tm)] || null);
     p.liveTeam = tm; p.game = g;
+    p.noTeam = !!(q && q.team==="FA"); // released by his NFL team: the rankings/ROS file still lists his old club, the live feed says FA
     p.espn = q && typeof q.espn==="number" ? q.espn : null;
     p.sleeper = q && typeof q.sleeper==="number" ? q.sleeper : null;
     p.rankPts = rankPts(weeklyKey(p.pos), p.wkRank);
@@ -361,6 +362,7 @@
     p.injNote = (q && q.injNote) || (p.inj && p.inj.note) || "";
     p.pPlay = PPLAY[p.injLive]!=null ? PPLAY[p.injLive] : 1;
     if (p.onBye) p.pPlay = 0;
+    if (p.noTeam){ p.pPlay = 0; p.injNote = p.injNote || "no NFL team (released)"; } // unusable until someone signs him — never a stream, never a start
     const srcs = [];
     if (p.espn!=null) srcs.push({k:"ESPN", v:p.espn}); if (p.sleeper!=null) srcs.push({k:"Sleeper", v:p.sleeper}); if (p.rankPts!=null) srcs.push({k:"rank #"+p.wkRank, v:p.rankPts});
     p.srcs = srcs;
@@ -918,7 +920,7 @@
       : liveState(p) ? num("<span class='proj'>"+effPts(p).toFixed(1)+"</span> <small class='muted'>"+(liveState(p)==="final"?"final":"live proj")+"</small>")
       : num("<span class='proj'>"+p.mu.toFixed(1)+"</span>");
     const range = (!P || p.mu==null || liveState(p)) ? num("") : num(p.floor.toFixed(0)+"–"+p.ceil.toFixed(0));
-    const status = (p.onBye ? "<span class='tag bad'>BYE</span>" : "")+(P && p.locked ? "<span class='tag warn'>locked</span>" : "")+injBadge(p)+(extra||"");
+    const status = (p.onBye ? "<span class='tag bad'>BYE</span>" : "")+(p.noTeam ? "<span class='tag bad' title='Released by his NFL team; the live feed lists him as FA. Unusable until he signs somewhere.'>NO TEAM</span>" : "")+(P && p.locked ? "<span class='tag warn'>locked</span>" : "")+injBadge(p)+(extra||"");
     const cells = {
       "Slot": "<span class='slot'>"+esc(slot||"")+"</span>",
       "Pos": posTag(p.pos),

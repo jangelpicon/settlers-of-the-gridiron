@@ -355,9 +355,10 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(new RegExp("your gain \\+" + top.myGain + " · their side").test(openTxt()) && /EV /.test(openTxt()) && /wk proj/.test(openTxt()), "open proposal shows gain, their side, acceptance odds, EV and this-week projections");
   assert(/waiting 0d/.test(openTxt()), "open proposal shows how long it has been waiting");
   assert(/If everything landed/.test(openTxt()) && /expected acceptances/.test(openTxt()), "open proposals summary line rendered");
-  // All declined
+  // All declined (count relative to the repo log: tools/trade_log.py adds real declines over the season — 2026-10-13 Taylor offer)
+  const repoDeclined = (tradeLog.entries || []).filter(e => e.status === "declined").length;
   d.getElementById("declineAll").click();
-  assert(!/Open proposals/.test(openTxt()) && T.getLog().filter(e => e.status === "proposed").length === 0 && T.getLog().filter(e => e.status === "declined").length === 2, "'All declined' marks every open proposal declined");
+  assert(!/Open proposals/.test(openTxt()) && T.getLog().filter(e => e.status === "proposed").length === 0 && T.getLog().filter(e => e.status === "declined").length === repoDeclined + 2, "'All declined' marks every open proposal declined (" + repoDeclined + " repo-logged + 2)");
   const declinedToTop = T.getLog().filter(e => e.status === "declined" && e.team === top.team && typeof e.theirGain === "number");
   assert(T.teamFloor(top.team) === Math.max(...declinedToTop.map(e => e.theirGain)) + 3, "all-declined raises the floor for the team that said no (max across its declined offers)");
   assert(!T.findTrades().some(x => x.team === top.team && x.getName === top.getName && x.giveName === top.giveName), "declined-by-button offers are gone from the suggestions");
@@ -898,6 +899,20 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
       const fill = T.replFill(Array.from({ length: k }, () => ({ slot: byeFA.pos, p: null })));
       assert(fill.some(h => h.src === byeFA.name), "a free agent on bye stays in the replacement pool (" + k + " " + byeFA.pos + " holes → " + fill.map(h => h.src).join(", ") + ")");
     }
+  }
+
+  console.log("== Released-player guard ==");
+  // Released player guard (Mevis, cut by LAR 2026-10-13: ROS file still said LAR 9.4 proj, ESPN live said FA/no game)
+  {
+    const pj2 = JSON.parse(JSON.stringify(unlockedProjections));
+    pj2.players["noteamguy"] = { name: "No Team Guy", pos: "K", team: "FA", espn: 9.4, espnSeason: 120, injE: "ACT", own: 60 };
+    T.inject(season, rosters, exclusions, tradeLog, pj2);
+    const nt = T.predict({ name: "No Team Guy", n: "noteamguy", pos: "K", team: "LAR", wkRank: 3, inj: null });
+    assert(nt.noTeam === true && nt.pPlay === 0 && nt.mu === 0 && nt.game === null, "a player the live feed lists as FA (no NFL team) is flagged noTeam, predicts 0 and has no game — even if the rankings file still shows his old club");
+    const mkK = (n, mu, pr, bye) => ({ name: n, n: n.toLowerCase().replace(/[^a-z]/g, ""), pos: "K", team: "X", mu, posRank: pr, bye, ros: 200, srcs: [1, 2] });
+    const faK = { name: "No Team Guy", n: "noteamguy", pos: "K", team: "FA", mu: 0, pPlay: 0, noTeam: true, posRank: "K3", bye: 11, ros: 150, srcs: [] };
+    const r2 = T.streamStatusRaw([mkK("Mine K", 8.0, "K12", 9)], [faK, mkK("Real K", 9.6, "K9", 13)], "mu").find(st => st.pos === "K");
+    assert(r2.chain.every(c => c.name !== "No Team Guy") && r2.best && r2.best.name === "Real K", "a released player never enters the K/DST stream chain (" + r2.chain.map(c => c.name).join(" > ") + ")");
   }
 
   console.log("\n--- POWER ---");

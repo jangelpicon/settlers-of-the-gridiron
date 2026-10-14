@@ -68,7 +68,7 @@ def espn(week):
     for x in d.get("players", []):
         p = x["player"]; pos = ESPN_POS.get(p.get("defaultPositionId"))
         if not pos: continue
-        tm = ESPN_TEAM.get(p.get("proTeamId"))
+        tm = "FA" if p.get("proTeamId") == 0 else ESPN_TEAM.get(p.get("proTeamId"))  # 0 = released, no NFL team (Mevis 2026-10-13)
         name = TEAM_NAME.get(tm, p["fullName"]) if pos == "DST" else p["fullName"]
         proj = actual = season = None
         for s in p.get("stats", []):
