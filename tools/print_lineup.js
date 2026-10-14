@@ -15,13 +15,20 @@ let matchups = null; try { matchups = J("matchups.json"); } catch (e) {} // opti
   const w = dom.window, d = w.document, T = w.__seasonTest;
   T.inject(season, rosters, exclusions, trades, proj, null, matchups);
   const me = rosters.teams[rosters.me].map(T.info);
-  const L = T.optimalLineup(me, "mu");
+  // Lock-aware (2026-10-13): once games have kicked off, players in them are pinned to the slot ESPN has them in
+  // (a locked starter stays started, a locked bench player can't come in). Before any kickoff this equals optimalLineup.
+  // The Sunday re-check runs (11:10 / 14:10 CT) rely on this so a scratched noon starter is replaced only by someone unlocked.
+  const L = T.lockAwareLineup(me, "mu");
+  const row = p => p ? ({ player: p.name, pos: p.pos, team: p.team, proj: p.mu, locked: !!p.locked, espnSlot: p.slot || null,
+    inj: p.injLive && p.injLive !== "ACT" ? p.injLive : null, pPlay: p.pPlay, onBye: !!p.onBye,
+    game: p.game ? { opp: p.game.opp, home: !!p.game.home, state: p.game.state || "pre", status: p.game.status || null } : null }) : null;
   const out = {
     week: season.week,
     team: rosters.me,
     generated: proj.generated,
-    starters: L.slots.map(s => ({ slot: s.slot, player: s.p ? s.p.name : null, proj: s.p ? s.p.mu : null })),
-    bench: L.bench.map(b => ({ player: b.name, proj: b.mu })),
+    lockedCount: L.pinned || 0,
+    starters: L.slots.map(s => ({ slot: s.slot, ...(row(s.p) || { player: null, proj: null }) })),
+    bench: L.bench.map(row),
   };
   console.log(JSON.stringify(out, null, 2));
 })();
