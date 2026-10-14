@@ -150,6 +150,37 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(/Your drop order/.test(wtxt2) && ((WS.sugg.length || SC.length) ? /Your claim sheet — enter exactly this in ESPN/.test(wtxt2) : /Nothing on the wire is a clear season-long upgrade/.test(wtxt2)), "waiver tab shows the drop order plus the claim sheet (or the empty-wire note when there are no season-long OR weekly K/DST moves)");
   assert(SC.every(s => ["K","DST"].includes(s.pos) && (s.drop == null || s.drop.pos === s.pos)), "weekly stream claims are K/DST only and swap straight for your own (" + SC.map(s => s.pos + ":" + s.add.name).join(", ") + ")");
   assert(!SC.length || (/weekly (K|DST)/.test(wtxt2) && SC.every(s => rx(s.add.name).test(wtxt2))), "weekly K/DST streams appear on the claim sheet, tagged weekly, so the order is never empty when there's a stream to make");
+  // ---- K/DST streaming: rest-of-season aware, backup chain, full-roster drop (2026-10-13 Broncos/Mevis lessons) ----
+  console.log("== K/DST streaming rule ==");
+  const SS = T.weeklyStreamStatus();
+  assert(SS.length === 2 && SS.every(st => ["DST","K"].includes(st.pos) && ["ok","fill","swap","hold"].includes(st.verdict) && typeof st.reason === "string" && st.reason.length > 0), "every K/DST slot gets a verdict with a plain-language reason (" + SS.map(st => st.pos + ":" + st.verdict).join(", ") + ")");
+  SC.forEach(s => {
+    assert(Array.isArray(s.chain) && s.chain.length >= 1 && s.chain.length <= 3 && s.chain[0].n === s.add.n, s.pos + " claim carries a 1–3 deep backup chain led by the add (" + s.chain.map(c => c.name).join(" > ") + ")");
+    assert(s.chain.every(c => !(c.bye != null && c.bye === season.week + 1)), s.pos + " chain never includes someone on bye NEXT week (" + s.chain.map(c => c.name + " bye" + c.bye).join(", ") + ")");
+    const myAtPos = rosters.teams[rosters.me].filter(p => p.pos === s.pos);
+    if (s.verdict === "fill" && rosters.teams[rosters.me].length >= T.ROSTER_ACTIVE) assert(s.drop && s.drop.pos === s.pos && myAtPos.some(p => p.name === s.drop.name), s.pos + " on bye with a full roster → the claim drops my own " + s.pos + ", never 'nobody' (" + (s.drop && s.drop.name) + ")");
+  });
+  if (SC.some(s => s.verdict === "fill" && s.drop)) assert(!/open roster spot/.test(wtxt2) && SC.filter(s => s.drop).every(s => rx(s.drop.name).test(wtxt2)), "claim sheet names the drop for a bye-week K/DST instead of 'nobody'");
+  // synthetic: the rule itself, independent of this week's data
+  const mkDst = (n, mu, pr, bye) => ({ name: n, n: n.toLowerCase().replace(/[^a-z]/g, ""), pos: "DST", team: "X", mu, posRank: pr, bye, ros: 200, srcs: [1, 2] });
+  const wk = season.week;
+  let r = T.streamStatusRaw([mkDst("Mine Elite", 7.4, "DST3", 10)], [mkDst("Big Matchup", 10.4, "DST11", 13)], "mu")[0];
+  assert(r.verdict === "hold" && /DST3/.test(r.reason) && r.delta === 3, "a top-5 season DST is held even when a DST11 projects +3 this week (drop is permanent): " + r.reason);
+  r = T.streamStatusRaw([mkDst("Mine Elite", 7.4, "DST3", 10)], [mkDst("Peer", 9.4, "DST4", 13)], "mu")[0];
+  assert(r.verdict === "swap" && r.drop && r.drop.name === "Mine Elite", "…but a same-tier DST4 at +2.0 is a legitimate swap: " + r.reason);
+  r = T.streamStatusRaw([mkDst("Mine Mid", 7.4, "DST9", 10)], [mkDst("Small Edge", 8.8, "DST11", 13)], "mu")[0];
+  assert(r.verdict === "hold" && /1\.5/.test(r.reason), "+1.4 is under the 1.5-point bar → hold, and the reason names the bar: " + r.reason);
+  r = T.streamStatusRaw([mkDst("Mine Mid", 7.4, "DST9", 10)], [mkDst("Clear Edge", 9.0, "DST12", 13)], "mu")[0];
+  assert(r.verdict === "swap" && r.delta === 1.6, "+1.6 over a mid-tier DST → swap");
+  const mkK = (n, mu, pr, bye) => ({ ...mkDst(n, mu, pr, bye), pos: "K" });
+  const fullMe = Array.from({ length: T.ROSTER_ACTIVE - 1 }, (_, i) => ({ name: "Body" + i, n: "body" + i, pos: "WR", team: "X", mu: 5, ros: 300, srcs: [1, 2] })).concat([{ ...mkK("Bye Kicker", 0, "K10", wk), onBye: true, mu: null }]);
+  const kFA = [mkK("Loop Like", 9.2, "K7", 13), mkK("Butker Like", 9.3, "K9", wk - 1), mkK("Rental", 9.5, "K22", 11), mkK("Bye Next", 9.4, "K6", wk + 1)];
+  const saveR = T.getRosters(); T.setRosters({ ...saveR, teams: { ...saveR.teams, [saveR.me]: fullMe.map(p => ({ name: p.name, pos: p.pos, team: p.team })) } });
+  r = T.streamStatusRaw(fullMe, kFA, "mu").find(st => st.pos === "K");
+  T.setRosters(saveR);
+  assert(r.verdict === "fill" && r.drop && r.drop.name === "Bye Kicker", "kicker on bye + full roster → verdict fill, drop = the bye kicker: " + (r.drop && r.drop.name));
+  assert(!r.chain.some(c => c.name === "Bye Next"), "a kicker on bye next week is excluded from the chain");
+  assert(r.chain.map(c => c.name).join(">") === "Butker Like>Loop Like>Rental", "chain tie-break: within 0.5 proj, close season ranks → bye-already-done wins (Butker-like), then season rank, rental last (" + r.chain.map(c => c.name).join(" > ") + ")");
   {
     let pri = 0;
     const rows = [];
