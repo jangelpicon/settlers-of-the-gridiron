@@ -1378,6 +1378,11 @@
   const posRankNum = p => { const m = /(\d+)$/.exec((p && p.posRank) || ""); return m ? +m[1] : 99; };
   const byeDone = p => p.bye != null && S.week != null && p.bye < S.week;
   const byeNext = p => p.bye != null && S.week != null && p.bye === S.week + 1;
+  // ESPN waivers in this league hold a dropped player 24h and process daily; a claim filed now lands no sooner
+  // than that. A candidate whose game kicks before then scores nothing for you this week if he has to be claimed
+  // (2026-10-15 lesson: Broncos listed as a Thursday-night "backup" claim) — flag him and rank him last.
+  const WAIVER_HOURS = 24;
+  const kicksBeforeClaim = p => !!(p.game && p.game.kick && Date.parse(p.game.kick) <= Date.now() + WAIVER_HOURS*3600000);
   // Per position: what I have, the ranked candidate chain, and the verdict (fill / swap / hold).
   function weeklyStreamStatus(me, fa, wkey){
     return ["DST","K"].map(pos=>{
@@ -1389,8 +1394,15 @@
         const r=posRankNum(a)-posRankNum(b); if (Math.abs(r)>ELITE_GAP) return r; const bd=(byeDone(a)?0:1)-(byeDone(b)?0:1); return bd || r; };
       const mineAll = me.filter(p=>p.pos===pos);
       const mine = mineAll.filter(startable).sort(ord)[0] || null;
-      const chain = fa.filter(startable).filter(p=>!byeNext(p)).sort(chainOrd).slice(0,3); // never chain a guy who's on bye NEXT week
-      const best = chain[0] || null;
+      const cands = fa.filter(startable).filter(p=>!byeNext(p)).sort(chainOrd); // never chain a guy who's on bye NEXT week
+      cands.forEach(p=>{ p.claimLate = kicksBeforeClaim(p); });
+      const best = cands[0] || null;
+      // Every backup must clear the swap bar ON ITS OWN against what I have — a backup is a claim that can land,
+      // not a footnote (2026-10-15: Broncos at +1.0 and Giants at +0.0 were listed as Priority 2/3 behind the
+      // Steelers, and that morning a downgrade sat under the Broncos the same way). Fill (nobody startable) keeps
+      // every candidate. Late-kick candidates go to the back of the chain.
+      const clearsBar = c => !mine ? true : (c.mu!=null && mine.mu!=null) ? (c.mu-mine.mu) >= STREAM_BAR : (c.wkRank!=null && mine.wkRank!=null && (mine.wkRank-c.wkRank) >= 3);
+      const chain = cands.filter(c=>!mine || c.n!==mine.n).filter(clearsBar).sort((a,b)=>(a.claimLate?1:0)-(b.claimLate?1:0)).slice(0,3);
       const rosterFull = R.teams[R.me].length >= ROSTER_ACTIVE;
       const st = { pos, mine, best, chain, delta:null, verdict:"ok", drop:null, reason:"" };
       if (!best){ st.reason = "no startable free-agent "+pos+" this week"; return st; }
@@ -1473,9 +1485,10 @@
           const note = i===0
             ? (s.verdict==="fill" ? "fills your empty "+s.pos+" slot this week · " : "")+esc(s.reason)
             : "backup for Priority "+first+" — same drop; fires only if "+esc(s.chain[i-1].name)+" is taken by a team ahead of you in waiver priority";
-          h += "<div class='suggest'><b>Priority "+pri+"</b> · ➕ Add "+wkCand(c)+" &nbsp;➖ Drop "+dropHtml+" <span class='tag good'>weekly "+s.pos+"</span><br><span class='muted'>"+note+"</span></div>";
+          const late = c.claimLate ? " <span class='tag warn' title='This league holds dropped players on waivers for "+WAIVER_HOURS+"h; a claim filed now processes after his game, so he scores nothing for you this week. Only worth it as an instant add if he has already cleared waivers.'>⚠ kicks "+esc(kickText(c.game))+" — a waiver claim lands after his game</span>" : "";
+          h += "<div class='suggest'><b>Priority "+pri+"</b> · ➕ Add "+wkCand(c)+" &nbsp;➖ Drop "+dropHtml+" <span class='tag good'>weekly "+s.pos+"</span>"+late+"<br><span class='muted'>"+note+"</span></div>";
         });
-        h += "<div class='muted' style='margin:-2px 0 8px'>"+s.pos+" chain order: this-week projection first; projections within "+STREAM_TIE+" are a coin flip, so ties go to a kicker/defense whose bye is already behind him when the season ranks are close, otherwise to the better season rank. Anyone on bye next week is left out — you'd be streaming again in seven days.</div>";
+        h += "<div class='muted' style='margin:-2px 0 8px'>"+s.pos+" chain order: every claim here beats your "+s.pos+" by at least "+STREAM_BAR+" this week on its own (a backup that doesn't is left out); this-week projection first; projections within "+STREAM_TIE+" are a coin flip, so ties go to a kicker/defense whose bye is already behind him when the season ranks are close, otherwise to the better season rank. Anyone on bye next week is left out — you'd be streaming again in seven days.</div>";
       });
       streamHolds.forEach(st=>{ h += "<div class='suggest'>✋ <b>Hold "+esc(st.mine.name)+"</b> ("+st.pos+(st.mine.posRank?", "+esc(st.mine.posRank)+" for the season":"")+(st.mine.mu!=null?", "+st.mine.mu.toFixed(1)+" proj this week":"")+")<br><span class='muted'>"+esc(st.reason)+". Best available: "+esc(st.best.name)+" ("+(st.best.posRank||"unranked")+(st.best.mu!=null?", "+st.best.mu.toFixed(1)+" proj":"")+").</span></div>"; });
     }
