@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-10-14",
- "source": "ESPN league 882823976 sync 2026-10-14 02:00 CDT",
+ "updated": "2026-10-16",
+ "source": "ESPN league 882823976 sync 2026-10-16 02:00 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -27,8 +27,7 @@
     "name": "DeVonta Smith",
     "pos": "WR",
     "team": "PHI",
-    "ir": true,
-    "slot": "IR"
+    "slot": "WR"
    },
    {
     "name": "Ladd McConkey",
@@ -76,19 +75,13 @@
     "name": "Dontayvion Wicks",
     "pos": "WR",
     "team": "PHI",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Jacksonville Jaguars",
     "pos": "DST",
     "team": "JAX",
     "slot": "DST"
-   },
-   {
-    "name": "Tyreek Hill",
-    "pos": "WR",
-    "team": null,
-    "slot": "BN"
    },
    {
     "name": "C.J. Stroud",
@@ -147,12 +140,6 @@
     "slot": "RB"
    },
    {
-    "name": "Evan McPherson",
-    "pos": "K",
-    "team": "CIN",
-    "slot": "K"
-   },
-   {
     "name": "Josh Downs",
     "pos": "WR",
     "team": "IND",
@@ -165,12 +152,6 @@
     "slot": "BN"
    },
    {
-    "name": "Cincinnati Bengals",
-    "pos": "DST",
-    "team": "CIN",
-    "slot": "DST"
-   },
-   {
     "name": "Emeka Egbuka",
     "pos": "WR",
     "team": "TB",
@@ -181,6 +162,18 @@
     "pos": "QB",
     "team": "WAS",
     "slot": "BN"
+   },
+   {
+    "name": "Baltimore Ravens",
+    "pos": "DST",
+    "team": "BAL",
+    "slot": "DST"
+   },
+   {
+    "name": "Cairo Santos",
+    "pos": "K",
+    "team": "CHI",
+    "slot": "K"
    }
   ],
   "Resting Blitz Face": [
@@ -201,7 +194,7 @@
     "name": "Omarion Hampton",
     "pos": "RB",
     "team": "LAC",
-    "slot": "FLEX"
+    "slot": "BN"
    },
    {
     "name": "Tee Higgins",
@@ -237,7 +230,7 @@
     "name": "Jalen Coker",
     "pos": "WR",
     "team": "CAR",
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Brock Purdy",
@@ -270,9 +263,9 @@
     "slot": "WR"
    },
    {
-    "name": "Will Reichard",
+    "name": "Tyler Loop",
     "pos": "K",
-    "team": "MIN",
+    "team": "BAL",
     "slot": "K"
    }
   ],
@@ -379,13 +372,13 @@
     "name": "Mike Evans",
     "pos": "WR",
     "team": "SF",
-    "slot": "FLEX"
+    "slot": "WR"
    },
    {
     "name": "Patrick Mahomes",
     "pos": "QB",
     "team": "KC",
-    "slot": "BN"
+    "slot": "QB"
    },
    {
     "name": "Seattle Seahawks",
@@ -407,16 +400,10 @@
     "slot": "IR"
    },
    {
-    "name": "Pittsburgh Steelers",
-    "pos": "DST",
-    "team": "PIT",
-    "slot": "BN"
-   },
-   {
     "name": "Isaiah Likely",
     "pos": "TE",
     "team": "NYG",
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Emanuel Wilson",
@@ -425,34 +412,40 @@
     "slot": "RB"
    },
    {
-    "name": "T.J. Hockenson",
-    "pos": "TE",
-    "team": "MIN",
-    "slot": "TE"
-   },
-   {
-    "name": "Kirk Cousins",
-    "pos": "QB",
-    "team": "LV",
-    "slot": "QB"
-   },
-   {
-    "name": "Romeo Doubs",
-    "pos": "WR",
-    "team": "NE",
-    "slot": "WR"
-   },
-   {
-    "name": "Matt Gay",
-    "pos": "K",
-    "team": "LV",
-    "slot": "K"
-   },
-   {
     "name": "Braelon Allen",
     "pos": "RB",
     "team": "NYJ",
     "slot": "RB"
+   },
+   {
+    "name": "Pat Freiermuth",
+    "pos": "TE",
+    "team": "PIT",
+    "slot": "TE"
+   },
+   {
+    "name": "Aaron Rodgers",
+    "pos": "QB",
+    "team": "PIT",
+    "slot": "BN"
+   },
+   {
+    "name": "Khalil Shakir",
+    "pos": "WR",
+    "team": "BUF",
+    "slot": "BN"
+   },
+   {
+    "name": "Cincinnati Bengals",
+    "pos": "DST",
+    "team": "CIN",
+    "slot": "BN"
+   },
+   {
+    "name": "Dominic Zvada",
+    "pos": "K",
+    "team": "NYG",
+    "slot": "K"
    }
   ],
   "BlitzAndGiggles": [
@@ -499,12 +492,6 @@
     "slot": "RB"
    },
    {
-    "name": "Khalil Shakir",
-    "pos": "WR",
-    "team": "BUF",
-    "slot": "WR"
-   },
-   {
     "name": "Eddy Pineiro",
     "pos": "K",
     "team": "SF",
@@ -539,6 +526,12 @@
     "pos": "WR",
     "team": "CLE",
     "slot": "FLEX"
+   },
+   {
+    "name": "Darius Cooper",
+    "pos": "WR",
+    "team": "PHI",
+    "slot": "WR"
    }
   ],
   "Knight Moves Ore Else": [
@@ -577,7 +570,7 @@
     "name": "Jalen Hurts",
     "pos": "QB",
     "team": "PHI",
-    "slot": "QB"
+    "slot": "BN"
    },
    {
     "name": "Quinshon Judkins",
@@ -598,22 +591,10 @@
     "slot": "BN"
    },
    {
-    "name": "Sam Darnold",
-    "pos": "QB",
-    "team": "SEA",
-    "slot": "BN"
-   },
-   {
     "name": "Michael Wilson",
     "pos": "WR",
     "team": "ARI",
     "slot": "FLEX"
-   },
-   {
-    "name": "Cleveland Browns",
-    "pos": "DST",
-    "team": "CLE",
-    "slot": "DST"
    },
    {
     "name": "Zach Charbonnet",
@@ -632,6 +613,18 @@
     "pos": "TE",
     "team": "PHI",
     "slot": "TE"
+   },
+   {
+    "name": "San Francisco 49ers",
+    "pos": "DST",
+    "team": "SF",
+    "slot": "DST"
+   },
+   {
+    "name": "Jordan Love",
+    "pos": "QB",
+    "team": "GB",
+    "slot": "QB"
    }
   ],
   "ur done": [
@@ -708,15 +701,15 @@
     "slot": "BN"
    },
    {
-    "name": "Jake Bates",
+    "name": "Harrison Butker",
     "pos": "K",
-    "team": "DET",
+    "team": "KC",
     "slot": "K"
    },
    {
-    "name": "Denver Broncos",
+    "name": "Indianapolis Colts",
     "pos": "DST",
-    "team": "DEN",
+    "team": "IND",
     "slot": "DST"
    }
   ],
@@ -737,13 +730,13 @@
     "name": "Kenneth Walker III",
     "pos": "RB",
     "team": "KC",
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Zay Flowers",
     "pos": "WR",
     "team": "BAL",
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Lamar Jackson",
@@ -755,19 +748,13 @@
     "name": "Cam Skattebo",
     "pos": "RB",
     "team": "NYG",
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "Christian Watson",
     "pos": "WR",
     "team": "GB",
     "slot": "WR"
-   },
-   {
-    "name": "David Montgomery",
-    "pos": "RB",
-    "team": "HOU",
-    "slot": "BN"
    },
    {
     "name": "Dalton Kincaid",
@@ -779,19 +766,13 @@
     "name": "Minnesota Vikings",
     "pos": "DST",
     "team": "MIN",
-    "slot": "DST"
+    "slot": "BN"
    },
    {
     "name": "Tony Pollard",
     "pos": "RB",
     "team": "TEN",
     "slot": "BN"
-   },
-   {
-    "name": "Jaylen Waddle",
-    "pos": "WR",
-    "team": "DEN",
-    "slot": "FLEX"
    },
    {
     "name": "Cam Little",
@@ -804,6 +785,18 @@
     "pos": "QB",
     "team": "ARI",
     "slot": "QB"
+   },
+   {
+    "name": "Kendrick Bourne",
+    "pos": "WR",
+    "team": "ARI",
+    "slot": "BN"
+   },
+   {
+    "name": "Los Angeles Rams",
+    "pos": "DST",
+    "team": "LAR",
+    "slot": "DST"
    }
   ]
  }
