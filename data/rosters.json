@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-10-16",
- "source": "ESPN league 882823976 sync 2026-10-16 02:00 CDT",
+ "updated": "2026-10-18",
+ "source": "ESPN league 882823976 sync 2026-10-18 20:18 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -72,22 +72,22 @@
     "slot": "FLEX"
    },
    {
-    "name": "Dontayvion Wicks",
-    "pos": "WR",
-    "team": "PHI",
-    "slot": "BN"
-   },
-   {
-    "name": "Jacksonville Jaguars",
-    "pos": "DST",
-    "team": "JAX",
-    "slot": "DST"
-   },
-   {
     "name": "C.J. Stroud",
     "pos": "QB",
     "team": "HOU",
     "slot": "BN"
+   },
+   {
+    "name": "Kirk Cousins",
+    "pos": "QB",
+    "team": "LV",
+    "slot": "BN"
+   },
+   {
+    "name": "Indianapolis Colts",
+    "pos": "DST",
+    "team": "IND",
+    "slot": "DST"
    }
   ],
   "SACK OF WHEAT": [
@@ -101,7 +101,7 @@
     "name": "Rashee Rice",
     "pos": "WR",
     "team": "KC",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Breece Hall",
@@ -149,7 +149,7 @@
     "name": "DK Metcalf",
     "pos": "WR",
     "team": "PIT",
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Emeka Egbuka",
@@ -239,12 +239,6 @@
     "slot": "QB"
    },
    {
-    "name": "DJ Moore",
-    "pos": "WR",
-    "team": "BUF",
-    "slot": "BN"
-   },
-   {
     "name": "Travis Kelce",
     "pos": "TE",
     "team": "KC",
@@ -267,6 +261,12 @@
     "pos": "K",
     "team": "BAL",
     "slot": "K"
+   },
+   {
+    "name": "Will Reichard",
+    "pos": "K",
+    "team": "MIN",
+    "slot": "BN"
    }
   ],
   "Unnecessary Sanctions": [
@@ -525,13 +525,13 @@
     "name": "Denzel Boston",
     "pos": "WR",
     "team": "CLE",
-    "slot": "FLEX"
+    "slot": "WR"
    },
    {
-    "name": "Darius Cooper",
+    "name": "Xavier Worthy",
     "pos": "WR",
-    "team": "PHI",
-    "slot": "WR"
+    "team": "KC",
+    "slot": "FLEX"
    }
   ],
   "Knight Moves Ore Else": [
@@ -707,9 +707,9 @@
     "slot": "K"
    },
    {
-    "name": "Indianapolis Colts",
+    "name": "Pittsburgh Steelers",
     "pos": "DST",
-    "team": "IND",
+    "team": "PIT",
     "slot": "DST"
    }
   ],
