@@ -337,8 +337,13 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const allSuggested = trades.flatMap(t => t.gives.concat(t.gets)).concat(queue.flatMap(dl => [dl.sp.p, dl.get]));
   assert(allSuggested.every(p => !hardInj(p)), "no OUT/IR/SUSP player (live designation) ever appears on either side of a suggested deal");
   const softIncoming = trades.flatMap(t => t.gets).concat(queue.map(dl => dl.get)).filter(p => p.injLive && p.injLive !== "ACT");
-  if (softIncoming.length) {
-    assert(injTagRx.test(d.getElementById("tab-trades").textContent), "a Questionable/Doubtful incoming player triggers the stale-ROS-price warning on his card (" + softIncoming.map(p => p.name + " " + p.injLive).join(", ") + ")");
+  // Only deals the tab actually RENDERS can carry the tag (the engine generates more deals than the tiered card
+  // list shows — Stefon Diggs Q in an unrendered deal held the 10/18 deploy). Every rendered soft-injured
+  // incoming player must be tagged by name with his designation.
+  const tradesTxt = d.getElementById("tab-trades").textContent;
+  const shownSoft = softIncoming.filter((p, i, a) => a.findIndex(q => q.n === p.n) === i && rx(p.name).test(tradesTxt));
+  if (shownSoft.length) {
+    assert(shownSoft.every(p => new RegExp(p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + " is " + p.injLive).test(tradesTxt) && injTagRx.test(tradesTxt)), "a Questionable/Doubtful incoming player triggers the stale-ROS-price warning on his card (" + shownSoft.map(p => p.name + " " + p.injLive).join(", ") + ")");
   } else {
     console.log("  ok - (no Q/D incoming players in this snapshot — reprice-warning render untestable today, filter asserted above)");
   }
