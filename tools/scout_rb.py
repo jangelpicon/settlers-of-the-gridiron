@@ -20,7 +20,7 @@ def kona(slot, limit=160):
 def weekly(p):
     out={}
     for s in p['player'].get('stats',[]):
-        if s.get('statSourceId')==0 and s.get('statSplitTypeId')==1 and s.get('scoringPeriodId',0)>=1:
+        if s.get('statSourceId')==0 and s.get('statSplitTypeId')==1 and s.get('seasonId')==S and s.get('scoringPeriodId',0)>=1:  # this season only; ESPN emits no row for a bye week, so ppg never sees a bye zero
             out[s['scoringPeriodId']]=round(s.get('appliedTotal',0),1)
     return out
 ACT={}  # norm name -> {week:pts}

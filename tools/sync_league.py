@@ -90,11 +90,13 @@ def parse_schedule(d):
     return rows
 
 def parse_standings(d):
-    """mTeam -> {team display name: {wins, losses, waiverRank}} (all fields optional in ESPN's payload)."""
+    """mTeam -> {team display name: {wins, losses, pointsFor, waiverRank}} (all fields optional in ESPN's payload).
+    pointsFor is ESPN's own total, which leaves out the score a team posts in the week it sits (9-team league);
+    the page's PF/average/all-play follow the same rule (ruling 2026-10-18) and the test gate checks they agree."""
     out = {}
     for t in d.get("teams", []):
         rec = ((t.get("record") or {}).get("overall") or {})
-        out[team_name_of(t)] = {"wins": rec.get("wins"), "losses": rec.get("losses"), "waiverRank": t.get("waiverRank")}
+        out[team_name_of(t)] = {"wins": rec.get("wins"), "losses": rec.get("losses"), "pointsFor": rec.get("pointsFor"), "waiverRank": t.get("waiverRank")}
     return out
 
 def parse_settings(d):

@@ -99,12 +99,12 @@
       <dt>Status</dt><dd>Injury tag (Q = questionable, D = doubtful, OUT, IR) with his chance of playing; "locked" = his game already kicked off; BYE = off this week.</dd>
       <dt>Odds (start/sit)</dt><dd>Chance the bench player outscores the starter he would replace. Under 35% leave it; 35–55% coin flip, check news; over 55% the tool already swapped him in.</dd>
       <dt>Title % (league)</dt><dd><b>The ranking.</b> Chance a team wins the championship, from 10,000 simulated seasons: every remaining matchup on the real schedule, then the playoff bracket exactly as the league settings define it (playoff teams, seeding tiebreaker, reseeding). Playoff % = chance it makes the bracket; Proj seed = its average final standing (1 = top seed).</dd>
-      <dt>Scoring rate (league)</dt><dd>A team's expected points per week from here on: a blend of its <b>actual</b> weekly average and its <b>roster talent</b> converted to points. Early on talent carries more weight; every real week shifts the weight toward actual scoring (the % in brackets). The blend weight is measured from the league's own scores, not chosen.</dd>
+      <dt>Scoring rate (league)</dt><dd>A team's expected points per week from here on: a blend of its <b>actual</b> weekly average (real matchups only — points scored in a sat week count for nothing, same as ESPN's points-for) and its <b>roster talent</b> converted to points. Early on talent carries more weight; every real week shifts the weight toward actual scoring (the % in brackets). The blend weight is measured from the league's own scores, not chosen.</dd>
       <dt>Roster talent (ROS)</dt><dd>Paper strength: sum over a team's 9 best starters of (420 − rest-of-season rank), so +10 ≈ upgrading one starter by 10 rank spots. It is an <b>input</b> to the scoring rate — it ignores record and real scoring, so it never ranks teams on its own. "This week" = that team's projected points with its best lineup.</dd>
       <dt>Title Δ (trades, waivers, start/sit)</dt><dd>How much a move changes <b>your</b> title %, re-simulated with both rosters' talent updated (same random seasons, so the difference is the move itself). Shown in percentage points (pp). Talent you / them = the roster-talent change on each side — the other manager judges the offer on that, so it drives the odds they accept.</dd>
       <dt>EV (trades)</dt><dd>Title Δ × the chance they say yes. The one number to sort trades by.</dd>
       <dt>Win odds (matchup)</dt><dd>Chance your best lineup outscores theirs this week, from both teams' predicted totals and the usual week-to-week swing of every player involved.</dd>
-      <dt>All-play (matchup)</dt><dd>What a team's record would be if it played <b>everyone</b> every week. Strips the schedule out: a 1-2 team with a 12-4 all-play has been good and unlucky.</dd>
+      <dt>All-play (matchup)</dt><dd>What a team's record would be if it played <b>everyone</b> every week (sat weeks excluded on both sides). Strips the schedule out: a 1-2 team with a 12-4 all-play has been good and unlucky.</dd>
       <dt>Luck (matchup)</dt><dd>Actual wins minus the wins the all-play record says the scores deserved. Positive = the schedule has been kind; negative = better than the record shows.</dd>
     </dl>
   </details>
@@ -235,6 +235,9 @@
   // ================= League schedule + weekly scores (ESPN mMatchup) =================
   // Same shape tools/sync_league.py writes to data/league_history.json. One team sits each fantasy week
   // in a 9-team league — ESPN still records its score, so a "bye" row is a score with no opponent.
+  // Ruling (Jose, 2026-10-18): points scored in a sat week count for NOTHING — not points-for, not the
+  // average, not all-play, not the scoring rate behind the title odds. ESPN's own standings already leave
+  // them out of points-for (verified against mTeam record.overall.pointsFor), so the page now matches.
   function historyFromLeague(d){
     const names = {}; (d.teams||[]).forEach(t=>{ if (t.id!=null) names[t.id] = (t.name || ((t.location||"")+" "+(t.nickname||""))).trim(); });
     const schedule = [];
@@ -264,10 +267,10 @@
   // Everything the Matchup tab derives from the schedule. Completed = a decided matchup, or any score ESPN
   // recorded for a week before the current one (covers the sitting team's score in a 9-team league).
   function weekDone(r){ return r.winner==="HOME" || r.winner==="AWAY" || r.winner==="TIE" || (HIST && HIST.currentWeek!=null && r.w < HIST.currentWeek && r.hp!=null && (r.away==null || r.ap!=null)); }
-  function allScores(){ // {week: {team: pts}} across every completed row, bye scores included
+  function allScores(){ // {week: {team: pts}} across every completed MATCHUP; a sat week's score is left out
     const out = {};
     if (!HIST) return out;
-    HIST.schedule.filter(weekDone).forEach(r=>{
+    HIST.schedule.filter(r=>weekDone(r) && r.home!=null && r.away!=null).forEach(r=>{
       const wk = out[r.w] = out[r.w]||{};
       if (r.home!=null && r.hp!=null) wk[r.home] = r.hp;
       if (r.away!=null && r.ap!=null) wk[r.away] = r.ap;
@@ -284,11 +287,11 @@
       const res = opp==null ? "BYE" : r.winner==="TIE" ? "T" : (r.winner==="HOME")===home ? "W" : "L";
       rows.push({ w: r.w, opp, pf, pa, res, home });
     });
-    const games = rows.filter(r=>r.res!=="BYE");
-    const scores = rows.map(r=>r.pf);
+    const games = rows.filter(r=>r.res!=="BYE"); // every aggregate below is over real matchups only — a sat week's score is shown in the rows but counts for nothing
+    const scores = games.map(r=>r.pf);
     const sum = a=>a.reduce((s,x)=>s+x,0);
     const ap = { w:0, l:0 }; const AS = allScores();
-    rows.forEach(r=>{ const wk = AS[r.w]||{}; Object.keys(wk).forEach(t=>{ if (t===team) return; if (r.pf>wk[t]) ap.w++; else if (r.pf<wk[t]) ap.l++; }); });
+    games.forEach(r=>{ const wk = AS[r.w]||{}; Object.keys(wk).forEach(t=>{ if (t===team) return; if (r.pf>wk[t]) ap.w++; else if (r.pf<wk[t]) ap.l++; }); });
     const wins = games.filter(r=>r.res==="W").length, losses = games.filter(r=>r.res==="L").length, ties = games.filter(r=>r.res==="T").length;
     const last2 = scores.slice(-2);
     return { team, rows, wins, losses, ties,
@@ -676,8 +679,8 @@
     }
     return out;
   }
-  // obs: {team: [weekly scores]} — every recorded score, sat weeks included (a lineup's output is evidence
-  // about its scoring rate whether or not it had an opponent). talent: {team: strength()}.
+  // obs: {team: [weekly scores]} — scores from real matchups only. A sat week's score is NOT evidence here
+  // (ruling 2026-10-18: bye-week points count for nothing; allScores() already drops them). talent: {team: strength()}.
   // slope: points/week per strength unit (calibrated outside), or null = fit across teams from obs.
   function simScoringModel(obs, talent, slope){
     const teams = Object.keys(talent);
@@ -1096,7 +1099,7 @@
     h += "<div class='tbl'><div class='gh'><div class='hrow'><span>Week</span><span class='ctr'>W/L</span><span class='num'>Score</span><span>Opponent</span><span class='num'>Margin</span></div>";
     ts.rows.forEach(r=>{
       const margin = r.pa==null ? "" : (r.pf-r.pa>=0?"+":"")+f1(r.pf-r.pa);
-      h += "<div class='row grid'><span class='slot'>Wk "+r.w+"</span><span class='c' style='text-align:center'>"+resTag(r.res)+"</span><span class='c num'>"+f1(r.pf)+(r.pa!=null?" – "+f1(r.pa):"")+"</span><b class='c'>"+(r.opp?(r.home?"vs ":"at ")+esc(r.opp):"<span class='muted'>no matchup (odd team out)</span>")+"</b><span class='c num'>"+margin+"</span></div>";
+      h += "<div class='row grid'><span class='slot'>Wk "+r.w+"</span><span class='c' style='text-align:center'>"+resTag(r.res)+"</span><span class='c num'>"+(r.res==="BYE"?"<span class='muted' title='Scored in a sat week — not counted toward points-for, average, all-play or title odds'>"+f1(r.pf)+" (n/c)</span>":f1(r.pf)+(r.pa!=null?" – "+f1(r.pa):""))+"</span><b class='c'>"+(r.opp?(r.home?"vs ":"at ")+esc(r.opp):"<span class='muted'>no matchup (odd team out) — points not counted</span>")+"</b><span class='c num'>"+margin+"</span></div>";
     });
     h += "</div></div>";
     return h;
@@ -2050,7 +2053,7 @@
       const rival = oSorted.find(t=>t!==R.me);
       const pn = frame.projWeek ? " Wk "+frame.projWeek+" is this week's live projection (actual so far + the rest projected)." : "";
       h += "<div class='panel'><h2>Scoring over time</h2>";
-      h += lineChart("Points per week", "Weekly scores. Gold = you, blue = the best other roster on paper ("+esc(rival)+")."+pn, scoreSeries(rival, false), frame.wks);
+      h += lineChart("Points per week", "Weekly scores from real matchups — a week a team sat out is a gap and counts for nothing. Gold = you, blue = the best other roster on paper ("+esc(rival)+")."+pn, scoreSeries(rival, false), frame.wks);
       // table view of the completed-week scores (accessibility + exact numbers)
       const totals = {}; teamNames.forEach(t=>{ totals[t] = wks.reduce((s,w)=>s+(scores[w][t]||0),0); });
       const tg = "display:grid;grid-template-columns:minmax(110px,1.5fr) repeat("+(wks.length+1)+",minmax(44px,1fr));gap:4px;align-items:center";
@@ -2189,7 +2192,7 @@
       });
       h += "</div></div>";
       h += "<details class='panel'><summary>How the title odds work (tap to open)</summary><div class='muted'>"+
-        "<b>1) Scoring rate per team.</b> Start from the league's real weekly scores. Each team gets a <b>talent prior</b>: league average ("+M0.lgMean.toFixed(1)+") plus "+M0.slope.toFixed(3)+" pts/week per point of roster talent above the league's average roster ("+(M0.slopeSrc==="projections"?"that conversion is fitted from this week's player projections vs their ROS value — not from the game scores":"no projections loaded, so the conversion is fitted across teams from the game scores")+"). "+
+        "<b>1) Scoring rate per team.</b> Start from the league's real weekly scores — matchups only; a sat week's points count for nothing, matching ESPN's points-for. Each team gets a <b>talent prior</b>: league average ("+M0.lgMean.toFixed(1)+") plus "+M0.slope.toFixed(3)+" pts/week per point of roster talent above the league's average roster ("+(M0.slopeSrc==="projections"?"that conversion is fitted from this week's player projections vs their ROS value — not from the game scores":"no projections loaded, so the conversion is fitted across teams from the game scores")+"). "+
         "The rate is a blend of the team's actual average and that prior. The weight is measured, not chosen: true scoring rates currently sit ±"+Math.sqrt(M0.tau2).toFixed(1)+" pts/week off the talent line, while a single week swings ±"+M0.sigmaPool.toFixed(1)+" (league-pooled), so after n weeks the actual average gets weight τ²/(τ² + σ²/n). Few games → mostly talent; more games → mostly results. "+
         "<b>2) Weekly swing.</b> Each team's own week-to-week SD, never below the league-pooled "+M0.sigmaPool.toFixed(1)+" so a short steady streak can't make a team look like a lock. "+
         "<b>3) The season.</b> Each simulation first draws every team's true rate (we don't know it exactly — that uncertainty is what keeps long shots alive), then plays every remaining matchup, seeds the standings by win % (teams in a 9-team league play different numbers of games) then the tiebreaker, and plays the bracket. "+
