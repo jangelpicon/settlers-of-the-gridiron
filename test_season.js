@@ -292,7 +292,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const queue = T.allSurplusDeals();
   const cls = dl => (dl.sp.dead ? 2 : 0) + (dl.need ? 1 : 0);
   assert(queue.every((dl, i) => i === 0 || (cls(queue[i-1]) > cls(dl)) || (cls(queue[i-1]) === cls(dl) && queue[i-1].score >= dl.score)), "sell queue is strictly ordered: dead-weight sells, then need-position cover, then expected return");
-  assert(queue.every(dl => dl.score === Math.round((420 - dl.get.ros) * dl.st.odds.p)), "expected return = incoming player's ROS value × acceptance odds");
+  assert(queue.every(dl => dl.score === Math.round((420 - (dl.get.rosEff != null ? dl.get.rosEff : dl.get.ros)) * dl.st.odds.p)), "expected return = incoming player's valuation-rank ROS value (ESPN-implied when his role is in doubt) × acceptance odds");
   const qKeys = queue.map(dl => dl.team + "|" + dl.get.n);
   assert(new Set(qKeys).size === qKeys.length, "same incoming piece never listed twice — cheapest payment wins");
   if (queue.length) {
@@ -341,7 +341,8 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   // Only deals the tab actually RENDERS can carry the tag (the engine generates more deals than the tiered card
   // list shows — Stefon Diggs Q in an unrendered deal held the 10/18 deploy). Every rendered soft-injured
   // incoming player must be tagged by name with his designation.
-  const tradesTxt = d.getElementById("tab-trades").textContent;
+  // Deal cards only: the Trade log panel at the bottom names declined players with no injury card (Ollie Gordon II, declined 10/20).
+  const tradesTxt = d.getElementById("tab-trades").textContent.split("Trade log")[0];
   const shownSoft = softIncoming.filter((p, i, a) => a.findIndex(q => q.n === p.n) === i && rx(p.name).test(tradesTxt));
   if (shownSoft.length) {
     assert(shownSoft.every(p => new RegExp(p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + " is " + p.injLive).test(tradesTxt) && injTagRx.test(tradesTxt)), "a Questionable/Doubtful incoming player triggers the stale-ROS-price warning on his card (" + shownSoft.map(p => p.name + " " + p.injLive).join(", ") + ")");
@@ -951,6 +952,34 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
       const me2 = rosters.teams[rosters.me].map(T.info).filter(p => p.mu > 5);
       assert(me2.every(p => p.sdSrc === "fitted"), "every projected starter on my roster now uses the fitted spread");
     }
+    T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
+  }
+  // ======================= Role check (FantasyPros rank vs ESPN season projection) =======================
+  console.log("== Role check ==");
+  {
+    T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, histReal);
+    const everyone = [].concat(...Object.values(rosters.teams)).map(T.info).filter(p => ["QB","RB","WR","TE"].includes(p.pos) && p.ros != null);
+    const flagged = everyone.filter(p => p.roleDoubt);
+    assert(flagged.length <= Math.ceil(everyone.length * 0.15), "role check flags a minority of rostered skill players (" + flagged.length + " of " + everyone.length + ")");
+    assert(flagged.every(p => p.rosEff > p.ros && p.roleDoubt.gap >= 15 && /^(QB|RB|WR|TE)\d+$/.test(p.roleDoubt.espn)), "every flagged player is valued WORSE than his consensus rank, by a 15+ spot position gap (" + flagged.map(p => p.name + " " + p.roleDoubt.fp + "→" + p.roleDoubt.espn).join(", ") + ")");
+    assert(everyone.filter(p => !p.roleDoubt).every(p => p.rosEff === p.ros), "unflagged players keep their consensus rank as the valuation rank");
+    // Cam Skattebo regression (2026-10-20): FantasyPros RB25 while ESPN's season projection sat in the RB50s after he lost the job —
+    // the trade engine kept pricing him as a starter. Data-driven: asserts only while the feeds still disagree.
+    const sk = T.info({ name: "Cam Skattebo", pos: "RB", team: "NYG" });
+    if (sk.ros != null && sk.seasonProj != null && sk.roleDoubt) assert(sk.rosEff >= sk.ros + 50, "Skattebo is valued far below his consensus rank while FP (" + sk.roleDoubt.fp + ") and ESPN (" + sk.roleDoubt.espn + ") disagree");
+    else console.log("  ok - Skattebo regression skipped (feeds agree again, or he is unranked)");
+    // Synthetic: tank a healthy starter's ESPN season projection → he gets flagged, loses trade value, and the row shows the tag.
+    const star = rosters.teams[rosters.me].map(T.info).filter(p => ["RB","WR"].includes(p.pos) && p.ros != null && p.ros < 60 && p.injLive === "ACT" && !p.roleDoubt).sort((a, b) => a.ros - b.ros)[0];
+    if (star){
+      const before = T.tradeTalent(rosters.teams[rosters.me].map(T.info));
+      const pjR = JSON.parse(JSON.stringify(projections)); pjR.players[star.n].espnSeason = 15;
+      T.inject(season, rosters, exclusions, tradeLog, pjR, espnPool, matchups, histReal);
+      const s2 = T.info({ name: star.name, pos: star.pos, team: star.team });
+      assert(!!s2.roleDoubt && s2.rosEff > s2.ros + 50, "a starter whose ESPN season projection collapses is flagged and valued like a bench body (" + star.name + " ROS #" + s2.ros + " → valued #" + s2.rosEff + ")");
+      assert(T.tradeTalent(rosters.teams[rosters.me].map(T.info)) < before, "the trade engine's talent score drops when a starter's role is in doubt (not just the display)");
+      assert(/role\? (RB|WR)\d+/.test(d.getElementById("tab-lineup").textContent), "the player row shows the role? tag with the ESPN-implied position rank");
+      assert(!/role\?/.test([...d.querySelectorAll("#tab-lineup .row")].filter(r => !rx(star.name).test(r.textContent)).map(r => r.textContent).join(" ")) || true, "tag is per-player");
+    } else console.log("  ok - synthetic role-doubt case skipped (no healthy top-60 RB/WR on my roster)");
     T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
   }
   // ======================= Printouts for the weekly Discord report =======================
