@@ -1496,7 +1496,10 @@
     if (sugg.length || streamC.length){
       h += "<div class='muted' style='margin-bottom:6px'><b>Your claim sheet — enter exactly this in ESPN, top to bottom.</b> Same shape as ESPN's Pending Waiver Claims: one row per claim, priority order, add + drop. A <b>backup</b> row re-tries the same add with the next drop, for when the first drop is already gone; a row without a backup simply fails if its drop is taken — that's fine and by design. Season-long upgrades first, then weekly K/DST streams.</div>";
       let pri = 0;
-      const player = (p, dropSide) => "<b"+(dropSide?"":" class='hl'")+">"+esc(p.name)+"</b>, "+esc(p.team||"?")+" "+p.pos+" <span class='muted'>(ROS "+(p.ros!=null?"#"+p.ros:"unranked")+(p.seasonProj!=null?", "+p.seasonProj.toFixed(0)+" season pts":"")+(p.inj?", "+esc(p.inj.code):"")+")</span>";
+      // Live designation, same source as the lineup rows (2026-10-20: DJ Moore flipped OUT→Q on ESPN mid-afternoon; the
+      // row printed the 2 AM injury file's "O" while the claim logic, correctly, used the live Q — looked like a bug).
+      const claimInj = p => { const code = P ? p.injLive : (p.inj ? p.inj.code : null); if (!code || code==="ACT") return ""; const note = p.injNote || (p.inj && p.inj.note) || ""; const pct = (P && p.pPlay>0 && p.pPlay<1) ? " "+Math.round(p.pPlay*100)+"%" : ""; return ", "+esc(code==="O"?"OUT":code)+pct+(note?" · "+esc(note):""); };
+      const player = (p, dropSide) => "<b"+(dropSide?"":" class='hl'")+">"+esc(p.name)+"</b>, "+esc(p.team||"?")+" "+p.pos+" <span class='muted'>(ROS "+(p.ros!=null?"#"+p.ros:"unranked")+(p.seasonProj!=null?", "+p.seasonProj.toFixed(0)+" season pts":"")+claimInj(p)+")</span>";
       sugg.slice(0,6).forEach(s=>{
         pri++;
         let note = (s.dChamp!=null ? "title "+pp(s.dChamp)+(s.dChamp===0?" (depth only — doesn't crack your starting nine)":"")+" · " : "")+"+"+s.gain+" rest-of-season spots"+(s.seasonDelta!=null?" · "+(s.seasonDelta>=0?"+":"")+s.seasonDelta+" projected season points":" · ESPN season projection missing for one of them")+" — "+(s.agree?"both sources agree":"rank only");

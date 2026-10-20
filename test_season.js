@@ -982,6 +982,28 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     } else console.log("  ok - synthetic role-doubt case skipped (no healthy top-60 RB/WR on my roster)");
     T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
   }
+  // ======================= Claim sheet shows the LIVE injury designation =======================
+  console.log("== Claim sheet injury label ==");
+  {
+    // 2026-10-20: ESPN flipped DJ Moore OUT→Q mid-afternoon. The claim logic used the live Q (so he was listed), but the row
+    // printed the 2 AM injury file's "O". The row must show the same designation the logic used.
+    const pjQ = JSON.parse(JSON.stringify(projections));
+    const sQ = JSON.parse(JSON.stringify(season));
+    T.inject(sQ, rosters, exclusions, tradeLog, pjQ, espnPool, matchups, histReal);
+    const first = T.waiverSuggestions().sugg[0];
+    if (first){
+      const n = first.add.n;
+      sQ.injuries[n] = { code: "O", note: "stale weekly file" };                 // weekly file says OUT
+      if (pjQ.players[n]){ pjQ.players[n].injE = "Q"; pjQ.players[n].injS = "Q"; pjQ.players[n].injNote = "live says Q"; } // live feeds say Q
+      T.inject(sQ, rosters, exclusions, tradeLog, pjQ, espnPool, matchups, histReal);
+      const row = [...d.querySelectorAll("#tab-waivers .suggest, #tab-waivers .row, #tab-waivers div")].map(x => x.textContent).find(x => /Priority 1/.test(x) && rx(first.add.name).test(x)) || "";
+      const stillListed = T.waiverSuggestions().sugg.some(x => x.add.n === n);
+      if (stillListed){
+        assert(/, Q 75%|, Q ·|, Q\)|, Q /.test(row.replace(/\s+/g, " ")) && !/, O\)|, OUT/.test(row.replace(/\s+/g, " ")), "claim row prints the live designation (Q), not the stale weekly-file code (O) — " + first.add.name);
+      } else console.log("  ok - live Q dropped him from the sheet (pPlay gate), nothing to label");
+    } else console.log("  ok - no season-long claim to label this week");
+    T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
+  }
   // ======================= Printouts for the weekly Discord report =======================
   // The report must say what the dashboard says (Jose, 2026-10-20: "the dashboard is the source of truth").
   // So this block is fed EXACTLY what season.html loads in the browser: the snapshot projections (real kicks),
