@@ -24,6 +24,22 @@
    "get": "Amon-Ra St. Brown + CeeDee Lamb",
    "status": "declined",
    "date": "2026-10-20"
+  },
+  {
+   "key": "PapasCabezas|d'andre swift + jared goff|christian mccaffrey + kenneth walker iii",
+   "team": "PapasCabezas",
+   "give": "D'Andre Swift + Jared Goff",
+   "get": "Christian McCaffrey + Kenneth Walker III",
+   "status": "declined",
+   "date": "2026-10-20"
+  },
+  {
+   "key": "Knight Moves Ore Else|d'andre swift + jared goff|derrick henry + ollie gordon ii",
+   "team": "Knight Moves Ore Else",
+   "give": "D'Andre Swift + Jared Goff",
+   "get": "Derrick Henry + Ollie Gordon II",
+   "status": "declined",
+   "date": "2026-10-20"
   }
  ]
 }
