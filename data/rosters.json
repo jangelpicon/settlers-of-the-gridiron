@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-10-19",
- "source": "ESPN league 882823976 sync 2026-10-19 02:00 CDT",
+ "updated": "2026-10-20",
+ "source": "ESPN league 882823976 sync 2026-10-20 02:00 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -576,7 +576,7 @@
     "name": "Quinshon Judkins",
     "pos": "RB",
     "team": "CLE",
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "Brandon Aubrey",
@@ -588,7 +588,7 @@
     "name": "Ollie Gordon II",
     "pos": "RB",
     "team": "MIA",
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Michael Wilson",
@@ -632,7 +632,7 @@
     "name": "Ja'Marr Chase",
     "pos": "WR",
     "team": "CIN",
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Drake London",
@@ -674,7 +674,7 @@
     "name": "Parker Washington",
     "pos": "WR",
     "team": "JAX",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Jared Goff",
