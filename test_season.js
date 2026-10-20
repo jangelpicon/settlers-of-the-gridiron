@@ -7,6 +7,7 @@ const rosters = JSON.parse(fs.readFileSync(path.join(__dirname, "data/rosters.js
 const exclusions = JSON.parse(fs.readFileSync(path.join(__dirname, "data/exclusions.json"), "utf8"));
 const tradeLog = JSON.parse(fs.readFileSync(path.join(__dirname, "data/trades.json"), "utf8"));
 const projections = JSON.parse(fs.readFileSync(path.join(__dirname, "data/projections.json"), "utf8"));
+const espnPool = (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, "data/espn_pool.json"), "utf8")); } catch (e) { return null; } })();
 // Pre-lock twin of the snapshot: kicks pushed 24h out, games reset to pre, live points wiped.
 // The decision tests (start/sit, swaps, close calls) exercise THIS world — those decisions
 // vanish by design once games lock. The lock-aware section injects the real snapshot instead.
@@ -439,21 +440,6 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert([...d.querySelectorAll("#tab-league .row")].length === 9, "power ranking lists all 9 teams");
   assert([...d.querySelectorAll("#tab-league .row")].every(r => /^\d+\.\d$/.test(r.children[2].textContent.trim())), "power ranking shows each team's projected points this week in its own column");
 
-  // ======================= Printouts for the weekly Discord report =======================
-  console.log("\n--- OPTIMAL TRADES ---");
-  { const seen = new Set();
-    T.findTrades().filter(t => { const k = t.team + "|" + t.get.n; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 8).forEach((t, i) =>
-      console.log(`${i+1}. ${t.team}: give ${t.give.name} (${t.give.pos} ROS#${t.give.ros}) for ${t.get.name} (${t.get.pos} ROS#${t.get.ros}) | me +${t.myGain} them ${t.theirGain >= 0 ? "+" : ""}${t.theirGain} [${t.odds.label}] EV ${t.ev}`)); }
-  console.log("\n--- OPEN PROPOSALS (repo log) ---");
-  tradeLog.entries.filter(e => e.status === "proposed").forEach(e => { const s = T.tradeStats(e.team, e.give, e.get); console.log(`  ${e.team}: give ${e.give} for ${e.get} (sent ${e.date})` + (s ? ` | me +${s.myGain} them ${s.theirGain >= 0 ? "+" : ""}${s.theirGain} [${s.odds.label}] EV ${s.ev}` : " | stats n/a")); });
-  if (!tradeLog.entries.some(e => e.status === "proposed")) console.log("  (none)");
-  console.log("\n--- WAIVER SUGGESTIONS ---");
-  console.log(d.getElementById("tab-waivers").textContent.replace(/\s+/g, " ").slice(0, 900));
-  console.log("\n--- LINEUP (predicted points: proj floor–ceil | sources) ---");
-  console.log("  projections: " + projections.generated);
-  L.slots.forEach(s => { const p = s.p; console.log(`  ${s.slot.padEnd(4)} ${p ? `${p.name} (${p.pos} ${p.liveTeam}) ${p.mu.toFixed(1)} [${p.floor.toFixed(0)}–${p.ceil.toFixed(0)}] | ${p.srcs.map(x => x.k + " " + x.v.toFixed(1)).join(", ")} | Vegas ×${p.vegasMult.toFixed(2)}${p.injLive !== "ACT" ? " | " + p.injLive + " " + Math.round(p.pPlay*100) + "% to play" : ""}${p.game ? " | " + (p.game.home ? "vs " : "at ") + p.game.opp + " " + p.game.status : ""}` : "— empty —"}`); });
-  console.log("  BENCH:");
-  L.bench.forEach(p => console.log(`       ${p.name} (${p.pos}) ${p.mu != null ? p.mu.toFixed(1) + " [" + p.floor.toFixed(0) + "–" + p.ceil.toFixed(0) + "]" : "n/a"}${p.injLive !== "ACT" ? " | " + p.injLive + " " + Math.round(p.pPlay*100) + "%" : ""}`));
   // ======================= WR1-out alert =======================
   {
     const pjO = JSON.parse(JSON.stringify(projections));
@@ -539,10 +525,6 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   if (saints.matchup) assert(saints.mu < 9, "Saints D/ST regression: capped blend stays sane (" + saints.mu + ", was 15.2 uncapped vs ESPN 3.3)");
   else console.log("  ok - Saints D/ST regression skipped (no matchup row this week)");
 
-  console.log("\n--- START/SIT CALLS (chance bench player outscores the starter he'd replace) ---");
-  [...d.querySelectorAll("#tab-lineup .row")].filter(r => /%/.test(r.textContent) && /over/.test(r.textContent)).forEach(r => console.log("  " + r.textContent.replace(/\s+/g, " ").trim()));
-  const iw = [...d.querySelectorAll("#tab-lineup .suggest")].map(x => x.textContent.replace(/\s+/g, " ").trim()).filter(x => /Injury watch/.test(x));
-  if (iw.length) console.log("  " + iw.join("\n  "));
   // ======================= Matchup tab (head-to-head + season trends) =======================
   console.log("== Matchup tab ==");
   // graceful degrade: no history file -> tab explains itself, nothing crashes
@@ -971,6 +953,42 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     }
     T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
   }
+  // ======================= Printouts for the weekly Discord report =======================
+  // The report must say what the dashboard says (Jose, 2026-10-20: "the dashboard is the source of truth").
+  // So this block is fed EXACTLY what season.html loads in the browser: the snapshot projections (real kicks),
+  // this league's ESPN pool, data/matchups.json (opponent-adjusted form) and the real league history.
+  // Week 7 lesson: the printouts used to run consensus-only (no pool, no matchups) and told Jose "keep the
+  // Steelers, add Bates" while the page said "Jets, Fitzgerald". Never print a number from a different model.
+  console.log("== Discord report feed ==");
+  T.setSettings(settings);
+  T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, histReal);
+  const meR = rosters.teams[rosters.me].map(T.info);
+  const LR = T.optimalLineup(meR, "mu");
+  assert(!/running consensus-only/.test(d.getElementById("tab-lineup").textContent), "report uses the matchup view (data/matchups.json loaded), same as the page");
+  assert(!espnPool || !espnPool.players || !espnPool.players.length || T.freeAgents().every(p => espnPool.players.includes(p.n)), "report free agents are restricted to this league's ESPN pool, same as the page");
+  { const mine = meR.filter(p => ["K","DST"].includes(p.pos) && p.mu != null);
+    assert(mine.length > 0 && mine.every(p => p.srcs && p.srcs.length >= 2), "my K/DST projections in the report carry the same multi-source blend the page shows"); }
+  console.log("\n--- OPTIMAL TRADES ---");
+  { const seen = new Set();
+    T.findTrades().filter(t => { const k = t.team + "|" + t.get.n; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 8).forEach((t, i) =>
+      console.log(`${i+1}. ${t.team}: give ${t.give.name} (${t.give.pos} ROS#${t.give.ros}) for ${t.get.name} (${t.get.pos} ROS#${t.get.ros}) | me +${t.myGain} them ${t.theirGain >= 0 ? "+" : ""}${t.theirGain} [${t.odds.label}] EV ${t.ev}`)); }
+  console.log("\n--- OPEN PROPOSALS (repo log) ---");
+  tradeLog.entries.filter(e => e.status === "proposed").forEach(e => { const s = T.tradeStats(e.team, e.give, e.get); console.log(`  ${e.team}: give ${e.give} for ${e.get} (sent ${e.date})` + (s ? ` | me +${s.myGain} them ${s.theirGain >= 0 ? "+" : ""}${s.theirGain} [${s.odds.label}] EV ${s.ev}` : " | stats n/a")); });
+  if (!tradeLog.entries.some(e => e.status === "proposed")) console.log("  (none)");
+  console.log("\n--- WAIVER SUGGESTIONS ---");
+  { // the whole decision surface, verbatim from the page: needs strip, claim sheet (every Priority row), K/DST holds
+    const wt = d.getElementById("tab-waivers").textContent.replace(/\s+/g, " ");
+    const from = Math.max(0, wt.indexOf("🎯 Your needs")), to = wt.indexOf("Your drop order");
+    console.log(wt.slice(from, to > from ? to : from + 3000)); }
+  console.log("\n--- LINEUP (predicted points: proj floor–ceil | sources) ---");
+  console.log("  projections: " + projections.generated);
+  LR.slots.forEach(s => { const p = s.p; console.log(`  ${s.slot.padEnd(4)} ${p ? `${p.name} (${p.pos} ${p.liveTeam}) ${p.mu.toFixed(1)} [${p.floor.toFixed(0)}–${p.ceil.toFixed(0)}] | ${p.srcs.map(x => x.k + " " + x.v.toFixed(1)).join(", ")} | Vegas ×${p.vegasMult.toFixed(2)}${p.injLive !== "ACT" ? " | " + p.injLive + " " + Math.round(p.pPlay*100) + "% to play" : ""}${p.game ? " | " + (p.game.home ? "vs " : "at ") + p.game.opp + " " + p.game.status : ""}` : "— empty —"}`); });
+  console.log("  BENCH:");
+  LR.bench.forEach(p => console.log(`       ${p.name} (${p.pos}) ${p.mu != null ? p.mu.toFixed(1) + " [" + p.floor.toFixed(0) + "–" + p.ceil.toFixed(0) + "]" : "n/a"}${p.injLive !== "ACT" ? " | " + p.injLive + " " + Math.round(p.pPlay*100) + "%" : ""}`));
+  console.log("\n--- START/SIT CALLS (chance bench player outscores the starter he'd replace) ---");
+  [...d.querySelectorAll("#tab-lineup .row")].filter(r => /%/.test(r.textContent) && /over/.test(r.textContent)).forEach(r => console.log("  " + r.textContent.replace(/\s+/g, " ").trim()));
+  const iw = [...d.querySelectorAll("#tab-lineup .suggest")].map(x => x.textContent.replace(/\s+/g, " ").trim()).filter(x => /Injury watch/.test(x));
+  if (iw.length) console.log("  " + iw.join("\n  "));
   console.log("\n--- POWER ---");
   [...d.querySelectorAll("#tab-league .row")].forEach(r => console.log(" ", r.textContent.replace(/\s+/g, " ").trim()));
   console.log(failures ? failures + " FAILED" : "ALL SEASON TESTS PASSED"); process.exit(failures ? 1 : 0);
