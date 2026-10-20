@@ -9,11 +9,17 @@ const J = f => JSON.parse(fs.readFileSync(path.join(dir, "data", f), "utf8"));
 const season = J("season.json"), rosters = J("rosters.json"), exclusions = J("exclusions.json"),
   trades = J("trades.json"), proj = J("projections.json");
 let matchups = null; try { matchups = J("matchups.json"); } catch (e) {} // optional — page degrades to consensus-only
+// Same inputs as the browser (Jose 2026-10-20: the dashboard is the source of truth): the league's ESPN pool
+// restricts streamers to players actually in this league, and the history feeds win odds / title stakes.
+let pool = null; try { pool = J("espn_pool.json"); } catch (e) {}
+let history = null; try { history = J("league_history.json"); } catch (e) {}
+let settings = null; try { settings = J("settings.json"); } catch (e) {}
 (async () => {
   const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://localhost/", beforeParse(w) { w.__seasonNoAutoLoad = true; } });
   await new Promise(r => setTimeout(r, 50));
   const w = dom.window, d = w.document, T = w.__seasonTest;
-  T.inject(season, rosters, exclusions, trades, proj, null, matchups);
+  if (settings && T.setSettings) T.setSettings(settings);
+  T.inject(season, rosters, exclusions, trades, proj, pool, matchups, history);
   const me = rosters.teams[rosters.me].map(T.info);
   // Lock-aware (2026-10-13): once games have kicked off, players in them are pinned to the slot ESPN has them in
   // (a locked starter stays started, a locked bench player can't come in). Before any kickoff this equals optimalLineup.
