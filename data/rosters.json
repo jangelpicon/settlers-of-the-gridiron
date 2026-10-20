@@ -1,7 +1,7 @@
 {
  "me": "ur done",
  "updated": "2026-10-20",
- "source": "ESPN league 882823976 sync 2026-10-20 02:00 CDT",
+ "source": "ESPN league 882823976 sync 2026-10-20 18:00 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -187,8 +187,7 @@
     "name": "A.J. Brown",
     "pos": "WR",
     "team": "NE",
-    "ir": true,
-    "slot": "IR"
+    "slot": "BN"
    },
    {
     "name": "Omarion Hampton",
@@ -200,13 +199,14 @@
     "name": "Tee Higgins",
     "pos": "WR",
     "team": "CIN",
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Davante Adams",
     "pos": "WR",
     "team": "LAR",
-    "slot": "WR"
+    "ir": true,
+    "slot": "IR"
    },
    {
     "name": "Terry McLaurin",
@@ -230,7 +230,7 @@
     "name": "Jalen Coker",
     "pos": "WR",
     "team": "CAR",
-    "slot": "FLEX"
+    "slot": "WR"
    },
    {
     "name": "Brock Purdy",
@@ -257,16 +257,10 @@
     "slot": "WR"
    },
    {
-    "name": "Tyler Loop",
-    "pos": "K",
-    "team": "BAL",
-    "slot": "K"
-   },
-   {
     "name": "Will Reichard",
     "pos": "K",
     "team": "MIN",
-    "slot": "BN"
+    "slot": "K"
    }
   ],
   "Unnecessary Sanctions": [
@@ -453,13 +447,13 @@
     "name": "Justin Jefferson",
     "pos": "WR",
     "team": "MIN",
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Chase Brown",
     "pos": "RB",
     "team": "CIN",
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Ashton Jeanty",
@@ -477,19 +471,19 @@
     "name": "Joe Burrow",
     "pos": "QB",
     "team": "CIN",
-    "slot": "BN"
+    "slot": "QB"
    },
    {
     "name": "Sam LaPorta",
     "pos": "TE",
     "team": "DET",
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Rhamondre Stevenson",
     "pos": "RB",
     "team": "NE",
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "Eddy Pineiro",
@@ -507,7 +501,7 @@
     "name": "Bryce Young",
     "pos": "QB",
     "team": "CAR",
-    "slot": "QB"
+    "slot": "BN"
    },
    {
     "name": "George Kittle",
@@ -525,13 +519,13 @@
     "name": "Denzel Boston",
     "pos": "WR",
     "team": "CLE",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Xavier Worthy",
     "pos": "WR",
     "team": "KC",
-    "slot": "FLEX"
+    "slot": "BN"
    }
   ],
   "Knight Moves Ore Else": [
