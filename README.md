@@ -147,7 +147,7 @@ Live at the same site: `…/settlers-of-the-gridiron/season.html`. Reads
 - **Lineup**: best starters for the current week by FantasyPros weekly consensus
   (opponent + start/sit grade where available); bye-week and OUT/IR players are
   benched automatically; flags close calls.
-- **Waivers**: free agents (rest-of-season rank) that beat a bench player at the
+- **Waivers**: free agents (rest-of-season rank) that beat a bench player — or the starter they would replace, when he is worth less than anyone on the bench (2026-10-21) — at the
   same position, plus QB/DST/K streamers ranked for this week.
 - **Trades**: one list of 1-for-1 swaps ranked by expected value (my lineup gain ×
   odds they accept). Each offer has Proposed / Declined / Accepted buttons. A

@@ -1,7 +1,7 @@
 {
  "me": "ur done",
  "updated": "2026-10-21",
- "source": "ESPN league 882823976 sync 2026-10-21 02:00 CDT",
+ "source": "ESPN league 882823976 sync 2026-10-21 13:26 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -15,7 +15,7 @@
     "name": "James Cook III",
     "pos": "RB",
     "team": "BUF",
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "Brock Bowers",
@@ -39,7 +39,7 @@
     "name": "Jameson Williams",
     "pos": "WR",
     "team": "DET",
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Matthew Stafford",
@@ -51,7 +51,7 @@
     "name": "J.K. Dobbins",
     "pos": "RB",
     "team": "DEN",
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Spencer Shrader",
@@ -69,7 +69,7 @@
     "name": "Bhayshul Tuten",
     "pos": "RB",
     "team": "JAX",
-    "slot": "FLEX"
+    "slot": "BN"
    },
    {
     "name": "C.J. Stroud",
@@ -140,12 +140,6 @@
     "slot": "RB"
    },
    {
-    "name": "Josh Downs",
-    "pos": "WR",
-    "team": "IND",
-    "slot": "FLEX"
-   },
-   {
     "name": "DK Metcalf",
     "pos": "WR",
     "team": "PIT",
@@ -174,6 +168,12 @@
     "pos": "K",
     "team": "CHI",
     "slot": "K"
+   },
+   {
+    "name": "Jaylen Waddle",
+    "pos": "WR",
+    "team": "DEN",
+    "slot": "FLEX"
    }
   ],
   "Resting Blitz Face": [
@@ -261,6 +261,12 @@
     "pos": "K",
     "team": "MIN",
     "slot": "K"
+   },
+   {
+    "name": "Josh Jacobs",
+    "pos": "RB",
+    "team": "GB",
+    "slot": "BN"
    }
   ],
   "Unnecessary Sanctions": [
@@ -603,16 +609,22 @@
     "slot": "TE"
    },
    {
-    "name": "San Francisco 49ers",
-    "pos": "DST",
-    "team": "SF",
-    "slot": "DST"
-   },
-   {
     "name": "Jordan Love",
     "pos": "QB",
     "team": "GB",
     "slot": "QB"
+   },
+   {
+    "name": "Germie Bernard",
+    "pos": "WR",
+    "team": "PIT",
+    "slot": "BN"
+   },
+   {
+    "name": "Cleveland Browns",
+    "pos": "DST",
+    "team": "CLE",
+    "slot": "DST"
    }
   ],
   "ur done": [
@@ -677,28 +689,28 @@
     "slot": "BN"
    },
    {
-    "name": "Rome Odunze",
-    "pos": "WR",
-    "team": "CHI",
-    "slot": "BN"
-   },
-   {
     "name": "Trevor Lawrence",
     "pos": "QB",
     "team": "JAX",
     "slot": "BN"
    },
    {
-    "name": "Harrison Butker",
-    "pos": "K",
-    "team": "KC",
-    "slot": "K"
+    "name": "DJ Moore",
+    "pos": "WR",
+    "team": "BUF",
+    "slot": "BN"
    },
    {
-    "name": "Pittsburgh Steelers",
+    "name": "New York Jets",
     "pos": "DST",
-    "team": "PIT",
+    "team": "NYJ",
     "slot": "DST"
+   },
+   {
+    "name": "Ryan Fitzgerald",
+    "pos": "K",
+    "team": "CAR",
+    "slot": "K"
    }
   ],
   "PapasCabezas": [
@@ -745,16 +757,10 @@
     "slot": "WR"
    },
    {
-    "name": "Dalton Kincaid",
-    "pos": "TE",
-    "team": "BUF",
-    "slot": "TE"
-   },
-   {
     "name": "Minnesota Vikings",
     "pos": "DST",
     "team": "MIN",
-    "slot": "BN"
+    "slot": "DST"
    },
    {
     "name": "Tony Pollard",
@@ -766,13 +772,7 @@
     "name": "Cam Little",
     "pos": "K",
     "team": "JAX",
-    "slot": "K"
-   },
-   {
-    "name": "Jacoby Brissett",
-    "pos": "QB",
-    "team": "ARI",
-    "slot": "QB"
+    "slot": "BN"
    },
    {
     "name": "Kendrick Bourne",
@@ -781,10 +781,22 @@
     "slot": "BN"
    },
    {
-    "name": "Los Angeles Rams",
-    "pos": "DST",
-    "team": "LAR",
-    "slot": "DST"
+    "name": "Colston Loveland",
+    "pos": "TE",
+    "team": "CHI",
+    "slot": "TE"
+   },
+   {
+    "name": "Chase McLaughlin",
+    "pos": "K",
+    "team": "TB",
+    "slot": "K"
+   },
+   {
+    "name": "Kyler Murray",
+    "pos": "QB",
+    "team": "MIN",
+    "slot": "QB"
    }
   ]
  }

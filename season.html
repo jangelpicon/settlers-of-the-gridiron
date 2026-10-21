@@ -923,7 +923,7 @@
   // Δ title % of an add/drop: my roster talent changes by (with add, without drop) − now.
   function waiverChamp(me, add, drop, fast){
     if (!leagueSim()) return null;
-    const dS = strength(me.filter(p=>!drop || p.n!==drop.n).concat([add])) - strength(me);
+    const dS = tradeTalent(me.filter(p=>!drop || p.n!==drop.n).concat([add])) - tradeTalent(me); // bye-present: a Week-N bye is not "absent for the season"
     return dS===0 ? 0 : (fast ? simDeltaFast({ [R.me]: dS }) : simDelta({ [R.me]: dS }));
   }
 
@@ -1247,7 +1247,7 @@
   function fitNote(fa, me){
     if (fa.pos!=="TE") return null;
     const best = me.filter(p=>p.pos==="TE" && !undraftable(p)).sort((a,b)=>(a.ros||ROS_MAX)-(b.ros||ROS_MAX))[0];
-    if (best && (best.ros||ROS_MAX) < (fa.ros||ROS_MAX)) return "backup TE behind "+best.name+" — with 5 bench spots he'd rarely play; trade bait or injury insurance only";
+    if (best && (rosR(best)||ROS_MAX) < (rosR(fa)||ROS_MAX)) return "backup TE behind "+best.name+" — with 5 bench spots he'd rarely play; trade bait or injury insurance only";
     return null;
   }
   // The drop ladder: bench skill players, least season-long value first. Claim 1 costs #1; land a second
@@ -1330,7 +1330,7 @@
   function waiverSuggestions(me, bench, fa){
     const board = waiverBoard(me, bench, fa.filter(f=>f.ros!=null && !["K","DST"].includes(f.pos)));
     const N = teamNeeds();
-    const toItem = b => ({ drop:b.drop, add:b.fa, gain:b.verdict.rosDelta, agree: b.verdict.seasonDelta!=null, seasonDelta: b.verdict.seasonDelta, fit: fitNote(b.fa, me), need: N.needPos.has(b.fa.pos),
+    const toItem = b => ({ drop:b.drop, add:b.fa, gain:b.verdict.rosDelta, agree: b.verdict.seasonDelta!=null, seasonDelta: b.verdict.seasonDelta, fit: fitNote(b.fa, me), need: N.needPos.has(b.fa.pos), key: b.verdict.key, text: b.verdict.text, starts: b.verdict.starts, displaced: b.verdict.displaced,
       dChamp: ["add","marginal"].includes(b.verdict.key) ? waiverChamp(me, b.fa, b.drop, false) : null });
     // Clean fits first, then Δ title % (the objective), then adds at a position of need, then raw season-long gain.
     // The season-long rule stays the GATE (it values bench depth the simulator can't see — the talent score only
@@ -1338,7 +1338,7 @@
     const dc = x => x.dChamp!=null ? x.dChamp : 0;
     const byFitThenGain = (a,b)=> ((a.fit?1:0)-(b.fit?1:0)) || (dc(b)-dc(a)) || ((b.need?1:0)-(a.need?1:0)) || (b.gain-a.gain);
     const sugg = board.filter(b=>b.verdict.key==="add").map(toItem).sort(byFitThenGain);
-    const marginal = board.filter(b=>b.verdict.key==="marginal").map(toItem).sort(byFitThenGain);
+    const marginal = board.filter(b=>["marginal","split"].includes(b.verdict.key)).map(toItem).sort(byFitThenGain);
     chainClaims(sugg, me, bench);
     return { sugg, marginal, needs: N };
   }
@@ -1354,7 +1354,7 @@
       const d = scarcityPool(sim, s.add.pos).sort((a,b)=>(rosR(b)||ROS_MAX)-(rosR(a)||ROS_MAX))[0];
       if (!d) return;
       if (i>0 && s.drop && d.n!==s.drop.n){
-        const v = dropVerdict(s.add, d);
+        const v = dropVerdict(s.add, d, lineupImpact(me, s.add));
         s.chain = { drop:d, verdict:v, worth: v.key==="add", samePos: d.pos===s.add.pos };
       }
       // consume: the drop this claim would really use if everything above landed
@@ -1365,16 +1365,32 @@
   // Who would you drop to add this free agent, and is it worth it? Roster spots are fixed, so every add is a drop.
   // Drop candidate = the bench player with the least rest-of-season value (worst ROS rank). Verdict uses the same
   // season-long rule as the suggestions: +ROS_MARGIN spots AND ESPN season projection not lower.
-  function dropCandidate(bench, me, fa){
+  // Would this free agent START for me (rest-of-season lens, bye this week = present), and whom does he push out?
+  // The lineup he joins is the same optimizer the trade math uses, so a TE9 on bye still counts as a starter.
+  function lineupImpact(me, fa){
+    const before = tradeLineup(me), after = tradeLineup(me.concat([fa]));
+    if (!after.used.has(fa.n)) return { starts:false, displaced:null };
+    return { starts:true, displaced: me.find(p=>before.used.has(p.n) && !after.used.has(p.n)) || null };
+  }
+  function dropCandidate(bench, me, fa, imp){
     if (["K","DST"].includes(fa.pos)) return me.filter(p=>p.pos===fa.pos)[0] || null;      // K/DST: straight swap for yours
     if (fa.pos==="QB"){ const qbs = me.filter(p=>p.pos==="QB"); return qbs.length ? qbs.slice().sort((a,b)=>(rosR(b)||ROS_MAX)-(rosR(a)||ROS_MAX))[0] : null; } // QB: straight swap for your worst QB
     const pool = scarcityPool(bench, fa.pos);
-    if (!pool.length) return null;
-    return pool.sort((a,b)=>(rosR(b)||ROS_MAX)-(rosR(a)||ROS_MAX))[0];
+    const worst = pool.length ? pool.slice().sort((a,b)=>(rosR(b)||ROS_MAX)-(rosR(a)||ROS_MAX))[0] : null;
+    // Ruling 2026-10-21 (Kincaid/Juwan Johnson): a STARTER is the drop when the free agent would start over him
+    // and he is worth less, rest-of-season, than any bench player I can spare. Otherwise the starter he pushes
+    // out just slides to the bench and the drop is the usual least-value bench player. Before this, starters
+    // were untouchable, so a TE14 starter sat while a TE9 on the wire read "pass — worse than <bench WR>".
+    const I = imp || lineupImpact(me, fa);
+    if (I.starts && I.displaced && !["K","DST","QB"].includes(I.displaced.pos) && (!worst || (rosR(I.displaced)||ROS_MAX) > (rosR(worst)||ROS_MAX))) return I.displaced;
+    return worst;
   }
-  function dropVerdict(fa, drop){
+  function dropVerdict(fa, drop, imp){
     if (!drop) return { key:"none", text:"no one to drop" };
     const rosDelta = (rosR(drop)||ROS_MAX) - (rosR(fa)||ROS_MAX);
+    const I = (imp && !["K","DST","QB"].includes(fa.pos)) ? imp : null;
+    const starts = !!(I && I.starts), displaced = I && I.displaced ? I.displaced.name : null;
+    const over = starts ? (displaced && displaced!==drop.name ? " · starts over "+displaced+" (he goes to your bench)" : displaced ? " · starts in his slot" : " · fills an empty starting slot") : " · bench depth only";
     const seasonRaw = (fa.seasonProj!=null && drop.seasonProj!=null) ? fa.seasonProj - drop.seasonProj : null;
     const seasonDelta = seasonRaw==null ? null : (Math.abs(seasonRaw) < 1 ? Math.round(seasonRaw*10)/10 : Math.round(seasonRaw));
     const seasonOk = seasonRaw==null || seasonRaw >= 0;   // unrounded, same test the suggestion box uses
@@ -1388,13 +1404,16 @@
       if (rosDelta > 0 && seasonOk) return { key:"marginal", rosDelta, seasonDelta, text:"marginal over "+drop.name+" (+"+rosDelta+" ROS spots) — watch him, not worth the churn yet" };
       return { key:"rental", rosDelta, seasonDelta, text:"1-week rental — only if your QB is out or on bye" };
     }
-    if (rosDelta >= ROS_MARGIN && seasonOk) return { key:"add", rosDelta, seasonDelta, text:"ADD: +"+rosDelta+" ROS spots"+(seasonDelta!=null?", +"+seasonDelta+" season pts":"") };
-    if (rosDelta > 0 && seasonOk) return { key:"marginal", rosDelta, seasonDelta, text:"marginal: +"+rosDelta+" ROS spots"+(seasonDelta!=null?", +"+seasonDelta+" season pts":"")+" — not worth the churn" };
-    if (rosDelta > 0) return { key:"pass", rosDelta, seasonDelta, text:"pass — ESPN season projection says no ("+seasonDelta+" pts)" };
-    return { key:"pass", rosDelta, seasonDelta, text:"pass — worse than "+drop.name+" for the season ("+rosDelta+" spots)" };
+    if (rosDelta >= ROS_MARGIN && seasonOk) return { key:"add", rosDelta, seasonDelta, starts, displaced, text:"ADD: +"+rosDelta+" ROS spots over "+drop.name+(seasonDelta!=null?", +"+seasonDelta+" season pts":"")+over };
+    if (rosDelta > 0 && seasonOk) return { key:"marginal", rosDelta, seasonDelta, starts, displaced, text:"marginal: +"+rosDelta+" ROS spots over "+drop.name+(seasonDelta!=null?", +"+seasonDelta+" season pts":"")+over+" — not worth the churn" };
+    // The two season-long sources disagree. Not an ADD (the rule needs both), but not silent either — a starter-level
+    // upgrade on FantasyPros' number is a judgment call Jose should see, not a "pass" buried in the table.
+    if (rosDelta >= ROS_MARGIN) return { key:"split", rosDelta, seasonDelta, starts, displaced, text:"split — FantasyPros says yes (+"+rosDelta+" ROS spots over "+drop.name+over+") but ESPN's season projection says no ("+seasonDelta+" pts); your call" };
+    if (rosDelta > 0) return { key:"pass", rosDelta, seasonDelta, starts, displaced, text:"pass — ESPN season projection says no ("+seasonDelta+" pts)" };
+    return { key:"pass", rosDelta, seasonDelta, starts, displaced, text:"pass — worse than "+drop.name+" for the season ("+rosDelta+" spots)" };
   }
   function waiverBoard(me, bench, fa){
-    return fa.map(f=>{ const drop = dropCandidate(bench, me, f); const verdict = dropVerdict(f, drop);
+    return fa.map(f=>{ const imp = ["K","DST","QB"].includes(f.pos) ? null : lineupImpact(me, f); const drop = dropCandidate(bench, me, f, imp); const verdict = dropVerdict(f, drop, imp);
       if (drop && !["K","DST"].includes(f.pos)){ const d = waiverChamp(me, f, drop, true); if (d!=null) verdict.dChamp = d; }
       return { fa:f, drop, verdict }; });
   }
@@ -1475,7 +1494,7 @@
   const WCOLS = [["Drop for him","The bench player you'd drop to add him (least rest-of-season value at a position you can spare — your only backup at a position never drops for a different position; K/DST = straight swap)"],["Verdict","Is the swap worth it under the season-long rule?"]];
   function waiverHeader(){ return playerHeader(); } // drop + verdict sit on a full-width line under each player so nothing is cut off
   function waiverRow(b, tag){
-    const v = b.verdict; const cls = v.key==="add"?"good":v.key==="marginal"||v.key==="rental"?"warn":"";
+    const v = b.verdict; const cls = v.key==="add"?"good":v.key==="marginal"||v.key==="split"||v.key==="rental"?"warn":"";
     const wkly = ["K","DST"].includes(b.fa.pos);
     const drop = b.drop ? "<b>"+esc(b.drop.name)+"</b> <span class='muted'>"+b.drop.pos+" · ROS #"+(b.drop.ros!=null?b.drop.ros:"–")+(b.drop.seasonProj!=null?" · "+b.drop.seasonProj.toFixed(0)+" season pts":"")+(wkly && b.drop.mu!=null?" · "+b.drop.mu.toFixed(1)+" proj this week":"")+"</span>" : "<span class='muted'>nobody</span>";
     return "<div class='row grid'>"+playerLine(b.fa, tag||"", "FA")+next4Detail(b.fa)+"<span class='sub'><span><span class='lbl' title='"+esc(WCOLS[0][1])+"'>"+WCOLS[0][0]+":</span> "+drop+"</span><span><span class='lbl' title='"+esc(WCOLS[1][1])+"'>"+WCOLS[1][0]+":</span> <span class='tag "+cls+"'>"+esc(v.text)+"</span>"+(v.dChamp!=null?" <span class='muted' title='Change in your title odds from this add/drop (championship simulator; estimate)'>title "+pp(v.dChamp)+"</span>":"")+"</span></span></div>";
@@ -1543,10 +1562,10 @@
       });
       streamHolds.forEach(st=>{ h += "<div class='suggest'>✋ <b>Hold "+esc(st.mine.name)+"</b> ("+st.pos+(st.mine.posRank?", "+esc(st.mine.posRank)+" for the season":"")+(st.mine.mu!=null?", "+st.mine.mu.toFixed(1)+" proj this week":"")+")<br><span class='muted'>"+esc(st.reason)+". Best available: "+esc(st.best.name)+" ("+(st.best.posRank||"unranked")+(st.best.mu!=null?", "+st.best.mu.toFixed(1)+" proj":"")+").</span></div>"; });
     }
-    marginal.slice(0,4).forEach(s=>{ h += "<div class='suggest'>⚖️ <b class='hl'>Marginal: "+esc(s.add.name)+"</b> ("+s.add.pos+", ROS #"+s.add.ros+(s.add.seasonProj!=null?", ESPN season "+s.add.seasonProj.toFixed(0)+" pts":"")+") over "+esc(s.drop.name)+" (ROS #"+s.drop.ros+(s.drop.seasonProj!=null?", "+s.drop.seasonProj.toFixed(0)+" pts":"")+")<br><span class='muted'>"+(s.dChamp!=null?"title "+pp(s.dChamp)+" · ":"")+"+"+s.gain+" rest-of-season spots"+(s.seasonDelta!=null?" · "+(s.seasonDelta>=0?"+":"")+s.seasonDelta+" projected season points":"")+" — under the "+ROS_MARGIN+"-spot bar, so not worth the churn unless you want that position's depth</span>"+(s.fit?"<br><span class='tag warn'>"+esc(s.fit)+"</span>":"")+"</div>"; });
+    marginal.slice(0,4).forEach(s=>{ const split = s.key==="split"; h += "<div class='suggest'>"+(split?"⚡ <b class='hl'>Sources split: ":"⚖️ <b class='hl'>Marginal: ")+esc(s.add.name)+"</b> ("+s.add.pos+", ROS #"+s.add.ros+(s.add.seasonProj!=null?", ESPN season "+s.add.seasonProj.toFixed(0)+" pts":"")+") over "+esc(s.drop.name)+" (ROS #"+s.drop.ros+(s.drop.seasonProj!=null?", "+s.drop.seasonProj.toFixed(0)+" pts":"")+")"+(s.starts?" <span class='tag good'>would start"+(s.displaced && s.displaced!==s.drop.name?" over "+esc(s.displaced):"")+"</span>":"")+"<br><span class='muted'>"+(s.dChamp!=null?"title "+pp(s.dChamp)+" · ":"")+(split ? "FantasyPros has him +"+s.gain+" rest-of-season spots, ESPN's season projection has him "+s.seasonDelta+" pts — the season-long rule needs both to agree, so this is your judgment call, not an automatic claim" : "+"+s.gain+" rest-of-season spots"+(s.seasonDelta!=null?" · "+(s.seasonDelta>=0?"+":"")+s.seasonDelta+" projected season points":"")+" — under the "+ROS_MARGIN+"-spot bar, so not worth the churn unless you want that position's depth")+"</span>"+(s.fit?"<br><span class='tag warn'>"+esc(s.fit)+"</span>":"")+"</div>"; });
     const dorder = dropOrder(me, bench);
     if (dorder.length){
-      h += "<h3>Your drop order</h3><div class='muted' style='margin-bottom:6px'>Least season-long value first — when a claim needs a roster spot, this is the sequence. Claim 1 costs #1; land a second add and it costs #2, and so on. Your kicker and defense only ever swap for another K/DST, your QB for a QB, and starters are never drop candidates. <b>Scarcity guard:</b> your only bench player at a position never drops for a different position — depth you can't replace beats a player who'd never crack your lineup.</div>";
+      h += "<h3>Your drop order</h3><div class='muted' style='margin-bottom:6px'>Least season-long value first — when a claim needs a roster spot, this is the sequence. Claim 1 costs #1; land a second add and it costs #2, and so on. Your kicker and defense only ever swap for another K/DST, your QB for a QB. A <b>starter</b> is the drop only when a free agent at his position would start over him and he's worth less for the season than anyone on your bench (the Kincaid/Juwan Johnson case) — otherwise he just slides to the bench and the drop comes from this ladder. <b>Scarcity guard:</b> your only bench player at a position never drops for a different position — depth you can't replace beats a player who'd never crack your lineup.</div>";
       const dcounts = {}; dorder.forEach(p=>{ dcounts[p.pos]=(dcounts[p.pos]||0)+1; });
       dorder.forEach((p,i)=>{ h += "<div class='suggest'>➖ <b>#"+(i+1)+" "+esc(p.name)+"</b> <span class='muted'>"+p.pos+" · ROS "+(p.ros!=null?"#"+p.ros:"unranked")+(p.seasonProj!=null?" · "+p.seasonProj.toFixed(0)+" season pts":"")+(p.inj?" · "+esc(p.inj.code):"")+(p.bye!=null?" · bye "+p.bye:"")+"</span>"+(dcounts[p.pos]===1?" <span class='tag warn'>only "+p.pos+" on your bench — drops only for another "+p.pos+"</span>":"")+"</div>"; });
     }
@@ -1563,12 +1582,12 @@
       });
       h += "</div></div>";
     });
-    h += "<h3>Top free agents (rest of season) — and who you'd drop</h3><div class='muted' style='margin-bottom:6px'>Every add is a drop. \"Drop for him\" is the bench player with the least rest-of-season value <b>at a position you can spare</b> — your only backup at a position never drops for a different position. The verdict applies the season-long rule (+"+ROS_MARGIN+" ROS spots and ESPN's season projection not lower).</div><div class='tbl'><div class='gw'>"+waiverHeader();
+    h += "<h3>Top free agents (rest of season) — and who you'd drop</h3><div class='muted' style='margin-bottom:6px'>Every add is a drop. \"Drop for him\" is the bench player with the least rest-of-season value <b>at a position you can spare</b> — your only backup at a position never drops for a different position — or the <b>starter he'd replace</b>, when that starter is worth less than anyone on your bench. The verdict applies the season-long rule (+"+ROS_MARGIN+" ROS spots and ESPN's season projection not lower); when the two sources disagree it says <b>split</b> instead of hiding him.</div><div class='tbl'><div class='gw'>"+waiverHeader();
     // ADDs and marginals always make the table (even if outside the top 15 by rank), and sort to the top.
-    const order = { add:0, marginal:1, rental:2, pass:3, none:4 };
+    const order = { add:0, marginal:1, split:1, rental:2, pass:3, none:4 };
     const boardAll = waiverBoard(me, bench, fa.filter(p=>!["K","DST"].includes(p.pos) && p.ros!=null));
     const seenN = new Set();
-    boardAll.filter(b=>["add","marginal"].includes(b.verdict.key)).concat(boardAll.slice().sort((a,b)=>a.fa.ros-b.fa.ros).slice(0,15))
+    boardAll.filter(b=>["add","marginal","split"].includes(b.verdict.key)).concat(boardAll.slice().sort((a,b)=>a.fa.ros-b.fa.ros).slice(0,15))
       .filter(b=>{ if (seenN.has(b.fa.n)) return false; seenN.add(b.fa.n); return true; })
       .sort((a,b)=> (order[a.verdict.key]-order[b.verdict.key]) || (a.fa.ros-b.fa.ros))
       .forEach(b=>{ h += waiverRow(b); });
@@ -2341,7 +2360,7 @@
     weeklyStreamClaims:()=>{ const me = myTeam(); return weeklyStreamClaims(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
     weeklyStreamStatus:()=>{ const me = myTeam(); return weeklyStreamStatus(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
     streamStatusRaw:(me,fa,wkey)=>weeklyStreamStatus(me, fa, wkey||"mu"), ROSTER_ACTIVE, STREAM_BAR,
-    dropOrder:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return dropOrder(me, bench); }, fitNote, scarcityPool,
+    dropOrder:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return dropOrder(me, bench); }, fitNote, scarcityPool, lineupImpact, dropCandidate,
     setTeamParam:(qs)=>{ applyTeamParam(qs); buildIndex(); renderAll(); },
     benchSkill:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return bench.filter(p=>!["K","DST"].includes(p.pos)); },
     waiverBoard:(list)=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverBoard(me, bench, list || freeAgents().filter(p=>!undraftable(p))); } };
