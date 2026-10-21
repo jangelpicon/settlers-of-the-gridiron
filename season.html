@@ -313,6 +313,8 @@
     if (!r) return null;
     return { week: r.w, opp: r.home===R.me ? r.away : r.home, home: r.home===R.me };
   }
+  // 9 teams, one sits each week. In a sat week a this-week K/DST stream buys nothing (Jose, 2026-10-20, SACK OF WHEAT Wk 7).
+  function satThisWeek(){ const c = currentOpponent(); return !!(c && c.opp==null); }
   function scoringRank(team){ // rank by average score among all teams with scores
     const AS = allScores(); const tot = {}, n = {};
     Object.values(AS).forEach(wk=>Object.keys(wk).forEach(t=>{ tot[t]=(tot[t]||0)+wk[t]; n[t]=(n[t]||0)+1; }));
@@ -1054,7 +1056,8 @@
     const me = myTeam();
     const key = lineupKey();
     const { slots, bench, pinned } = lockAwareLineup(me, key);
-    let h = "<div class='panel'><h2>Week "+S.week+" — start these</h2><div class='muted' style='margin-bottom:6px'>"+
+    let h = (satThisWeek() ? "<div class='suggest'>🛋️ <b>You sit this week (Week "+S.week+")</b> — 9 teams, one sits, no head-to-head and nothing to set. The lineup below is for reference; your score counts for nothing this week.</div>" : "")
+      + "<div class='panel'><h2>Week "+S.week+" — start these</h2><div class='muted' style='margin-bottom:6px'>"+
       (pinned ? "Games have kicked off: <b>locked players are shown where your ESPN lineup actually has them</b> (a locked starter stays started even if he got hurt mid-game — that decision is already spent). Only players whose games haven't started are still optimized by predicted points."
        : P ? "Best lineup by <b>predicted points</b>. The gray line under each player is the receipt: every step from the raw projections to his number."
          : "Best lineup by this week's consensus ranks (live projections unavailable).")+" Bye-week and OUT/IR players are automatically benched"+(pinned?" (unless already locked in)":"")+".</div>";
@@ -1439,6 +1442,12 @@
       const chain = cands.filter(c=>!mine || c.n!==mine.n).filter(clearsBar).sort((a,b)=>(a.claimLate?1:0)-(b.claimLate?1:0)).slice(0,3);
       const rosterFull = R.teams[R.me].length >= ROSTER_ACTIVE;
       const st = { pos, mine, best, chain, delta:null, verdict:"ok", drop:null, reason:"" };
+      if (satThisWeek()){
+        st.verdict = "sat"; st.chain = [];
+        st.reason = "you sit this week (Week "+S.week+", no matchup), so a this-week "+pos+" stream buys nothing — judge it against next week's projections after Tuesday's refresh"
+          + (mine && byeNext(mine) ? ". Heads-up: "+mine.name+" is on bye next week (Wk "+(S.week+1)+"), so plan that claim then" : "");
+        return st;
+      }
       if (!best){ st.reason = "no startable free-agent "+pos+" this week"; return st; }
       if (!mine){
         // My K/DST is on bye or out: the LINEUP slot is empty, the ROSTER spot is not. Same-position swap: drop him.
@@ -1490,9 +1499,14 @@
     // the order looks empty when there's actually a stream to make. Straight same-position swap (drop your own).
     const streamS = weeklyStreamStatus(me, fa, wkey);
     const streamC = weeklyStreamClaims(me, fa, wkey);
-    const streamHolds = streamS.filter(st=>st.verdict==="hold");
+    const streamHolds = streamS.filter(st=>st.verdict==="hold" || st.verdict==="sat");
+    if (satThisWeek()){
+      const byes = streamS.filter(st=>st.mine && byeNext(st.mine)).map(st=>st.mine.name+" ("+st.pos+", bye Wk "+(S.week+1)+")");
+      h += "<div class='suggest'>🛋️ <b>You sit this week (Week "+S.week+")</b> — no weekly K/DST claims: a this-week streamer buys you nothing, and next week's projections aren't in yet. Season-long claims below still apply."
+        + (byes.length ? " <b>Heads-up:</b> "+esc(byes.join(", "))+" on bye next week — claim a replacement after Tuesday's refresh, when next week's numbers load." : " Next week's streamer call comes with Tuesday's refresh.")+"</div>";
+    }
     if (!sugg.length && !streamC.length) h += "<div class='muted'>Nothing on the wire is a clear season-long upgrade over your bench, and your K/DST are fine this week. Good sign.</div>";
-    if (!sugg.length && !streamC.length) streamHolds.forEach(st=>{ h += "<div class='suggest'>✋ <b>Hold "+esc(st.mine.name)+"</b> ("+st.pos+(st.mine.posRank?", "+esc(st.mine.posRank)+" for the season":"")+")<br><span class='muted'>"+esc(st.reason)+"</span></div>"; });
+    if (!sugg.length && !streamC.length) streamHolds.filter(st=>st.verdict==="hold").forEach(st=>{ h += "<div class='suggest'>✋ <b>Hold "+esc(st.mine.name)+"</b> ("+st.pos+(st.mine.posRank?", "+esc(st.mine.posRank)+" for the season":"")+")<br><span class='muted'>"+esc(st.reason)+"</span></div>"; });
     if (sugg.length || streamC.length){
       h += "<div class='muted' style='margin-bottom:6px'><b>Your claim sheet — enter exactly this in ESPN, top to bottom.</b> Same shape as ESPN's Pending Waiver Claims: one row per claim, priority order, add + drop. A <b>backup</b> row re-tries the same add with the next drop, for when the first drop is already gone; a row without a backup simply fails if its drop is taken — that's fine and by design. Season-long upgrades first, then weekly K/DST streams.</div>";
       let pri = 0;
@@ -1536,7 +1550,7 @@
       const dcounts = {}; dorder.forEach(p=>{ dcounts[p.pos]=(dcounts[p.pos]||0)+1; });
       dorder.forEach((p,i)=>{ h += "<div class='suggest'>➖ <b>#"+(i+1)+" "+esc(p.name)+"</b> <span class='muted'>"+p.pos+" · ROS "+(p.ros!=null?"#"+p.ros:"unranked")+(p.seasonProj!=null?" · "+p.seasonProj.toFixed(0)+" season pts":"")+(p.inj?" · "+esc(p.inj.code):"")+(p.bye!=null?" · bye "+p.bye:"")+"</span>"+(dcounts[p.pos]===1?" <span class='tag warn'>only "+p.pos+" on your bench — drops only for another "+p.pos+"</span>":"")+"</div>"; });
     }
-    h += "<h3>One-week streamers (Week "+S.week+", by "+(P?"predicted points":"rank")+")</h3><div class='muted' style='margin-bottom:6px'>Kickers and defenses are meant to be streamed. A quarterback listed here is a one-week rental only — worth it when your QB is on bye or out, never as a reason to drop him.</div>";
+    h += "<h3>One-week streamers (Week "+S.week+", by "+(P?"predicted points":"rank")+")"+(satThisWeek()?" — you sit this week, informational only":"")+"</h3><div class='muted' style='margin-bottom:6px'>"+(satThisWeek()?"<b>No claim to make this week:</b> you have no matchup, so a Week "+S.week+" streamer scores for nobody. Re-check after Tuesday's refresh for next week. ":"")+"Kickers and defenses are meant to be streamed. A quarterback listed here is a one-week rental only — worth it when your QB is on bye or out, never as a reason to drop him.</div>";
     ["QB","DST","K"].forEach(pos=>{
       const mineList = me.filter(p=>p.pos===pos && !p.onBye && !undraftable(p) && p[wkey]!=null);
       const mine = mineList.sort((a,b)=> wkey==="mu" ? b.mu-a.mu : a.wkRank-b.wkRank)[0];

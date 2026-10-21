@@ -1004,6 +1004,30 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     } else console.log("  ok - no season-long claim to label this week");
     T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
   }
+  // ======================= Sat week: no weekly K/DST claims =======================
+  console.log("== Sat week ==");
+  {
+    // Real case 2026-10-20: SACK OF WHEAT sits in Week 7; the sheet still pushed Jets/Fitzgerald-style one-week streams.
+    T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, histReal);
+    const sitters = (histReal.schedule || []).filter(r => r.w === histReal.currentWeek && (r.home == null || r.away == null)).map(r => r.home || r.away);
+    if (sitters.length){
+      T.setTeamParam("?team=" + encodeURIComponent(sitters[0]).replace(/%20/g, "+"));
+      const wv = d.getElementById("tab-waivers").textContent.replace(/\s+/g, " ");
+      assert(/You sit this week/.test(wv), sitters[0] + " sits this week → the Waivers tab says so");
+      assert(!/Priority \d+ · ➕ Add [^➖]*? [A-Z]{2,3} (DST|K) \(/.test(wv), "no K/DST claim rows on the sheet in a sat week (the intro text may still mention weekly streams)");
+      assert(T.weeklyStreamClaims().length === 0 && T.streamStatusRaw(rosters.teams[sitters[0]].map(T.info), T.freeAgents(), "mu").every(st => st.verdict === "sat"), "stream status is 'sat' for both K and DST, no claims");
+      assert(/sit this week/.test(d.getElementById("tab-lineup").textContent), "the Lineup tab carries the sat-week note");
+      T.setTeamParam("");
+    } else console.log("  ok - nobody sits this week (skipped real case)");
+    // Synthetic, durable: make MY team the one that sits.
+    const hx = JSON.parse(JSON.stringify(histReal));
+    hx.schedule = hx.schedule.map(r => (r.w === hx.currentWeek && (r.home === rosters.me || r.away === rosters.me)) ? { ...r, home: rosters.me, away: null, ap: null } : r);
+    T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, hx);
+    assert(T.weeklyStreamClaims().length === 0 && /You sit this week/.test(d.getElementById("tab-waivers").textContent), "when I sit, the claim sheet has no K/DST stream and says why");
+    T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, histReal);
+    assert(T.streamStatusRaw(rosters.teams[rosters.me].map(T.info), T.freeAgents(), "mu").every(st => st.verdict !== "sat"), "with a real matchup the K/DST stream logic is back (no sat verdicts)");
+    T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
+  }
   // ======================= Printouts for the weekly Discord report =======================
   // The report must say what the dashboard says (Jose, 2026-10-20: "the dashboard is the source of truth").
   // So this block is fed EXACTLY what season.html loads in the browser: the snapshot projections (real kicks),
