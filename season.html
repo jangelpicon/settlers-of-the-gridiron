@@ -1331,7 +1331,7 @@
     const board = waiverBoard(me, bench, fa.filter(f=>f.ros!=null && !["K","DST"].includes(f.pos)));
     const N = teamNeeds();
     const toItem = b => ({ drop:b.drop, add:b.fa, gain:b.verdict.rosDelta, agree: b.verdict.seasonDelta!=null, seasonDelta: b.verdict.seasonDelta, fit: fitNote(b.fa, me), need: N.needPos.has(b.fa.pos), key: b.verdict.key, text: b.verdict.text, starts: b.verdict.starts, displaced: b.verdict.displaced,
-      dChamp: ["add","marginal"].includes(b.verdict.key) ? waiverChamp(me, b.fa, b.drop, false) : null });
+      dChamp: ["add","marginal","split"].includes(b.verdict.key) ? waiverChamp(me, b.fa, b.drop, false) : null });
     // Clean fits first, then Δ title % (the objective), then adds at a position of need, then raw season-long gain.
     // The season-long rule stays the GATE (it values bench depth the simulator can't see — the talent score only
     // counts the starting nine, so a pure depth add reads +0 title); title odds decide the ORDER.
