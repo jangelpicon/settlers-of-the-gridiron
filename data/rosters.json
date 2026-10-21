@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-10-20",
- "source": "ESPN league 882823976 sync 2026-10-20 18:00 CDT",
+ "updated": "2026-10-21",
+ "source": "ESPN league 882823976 sync 2026-10-21 02:00 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -533,13 +533,13 @@
     "name": "Amon-Ra St. Brown",
     "pos": "WR",
     "team": "DET",
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "CeeDee Lamb",
     "pos": "WR",
     "team": "DAL",
-    "slot": "WR"
+    "slot": "FLEX"
    },
    {
     "name": "Derrick Henry",
@@ -559,12 +559,6 @@
     "team": "NO",
     "ir": true,
     "slot": "IR"
-   },
-   {
-    "name": "Jalen Hurts",
-    "pos": "QB",
-    "team": "PHI",
-    "slot": "BN"
    },
    {
     "name": "Quinshon Judkins",
@@ -588,7 +582,7 @@
     "name": "Michael Wilson",
     "pos": "WR",
     "team": "ARI",
-    "slot": "FLEX"
+    "slot": "BN"
    },
    {
     "name": "Zach Charbonnet",
