@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-10-21",
- "source": "ESPN league 882823976 sync 2026-10-21 13:26 CDT",
+ "updated": "2026-10-22",
+ "source": "ESPN league 882823976 sync 2026-10-22 02:00 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -45,7 +45,7 @@
     "name": "Matthew Stafford",
     "pos": "QB",
     "team": "LAR",
-    "slot": "QB"
+    "slot": "BN"
    },
    {
     "name": "J.K. Dobbins",
@@ -75,7 +75,7 @@
     "name": "C.J. Stroud",
     "pos": "QB",
     "team": "HOU",
-    "slot": "BN"
+    "slot": "QB"
    },
    {
     "name": "Kirk Cousins",
@@ -187,7 +187,7 @@
     "name": "A.J. Brown",
     "pos": "WR",
     "team": "NE",
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Omarion Hampton",
@@ -199,7 +199,7 @@
     "name": "Tee Higgins",
     "pos": "WR",
     "team": "CIN",
-    "slot": "FLEX"
+    "slot": "BN"
    },
    {
     "name": "Davante Adams",
@@ -207,12 +207,6 @@
     "team": "LAR",
     "ir": true,
     "slot": "IR"
-   },
-   {
-    "name": "Terry McLaurin",
-    "pos": "WR",
-    "team": "WAS",
-    "slot": "BN"
    },
    {
     "name": "Tucker Kraft",
@@ -254,7 +248,7 @@
     "name": "Matthew Golden",
     "pos": "WR",
     "team": "GB",
-    "slot": "WR"
+    "slot": "FLEX"
    },
    {
     "name": "Will Reichard",
@@ -267,6 +261,12 @@
     "pos": "RB",
     "team": "GB",
     "slot": "BN"
+   },
+   {
+    "name": "Tre Tucker",
+    "pos": "WR",
+    "team": "LV",
+    "slot": "BN"
    }
   ],
   "Unnecessary Sanctions": [
@@ -274,7 +274,7 @@
     "name": "Jahmyr Gibbs",
     "pos": "RB",
     "team": "DET",
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Chris Olave",
@@ -286,7 +286,7 @@
     "name": "Josh Allen",
     "pos": "QB",
     "team": "BUF",
-    "slot": "QB"
+    "slot": "BN"
    },
    {
     "name": "Tetairoa McMillan",
@@ -304,7 +304,7 @@
     "name": "Tyler Warren",
     "pos": "TE",
     "team": "IND",
-    "slot": "TE"
+    "slot": "BN"
    },
    {
     "name": "Ka'imi Fairbairn",
@@ -328,19 +328,13 @@
     "name": "Harold Fannin Jr.",
     "pos": "TE",
     "team": "CLE",
-    "slot": "FLEX"
+    "slot": "TE"
    },
    {
     "name": "Deebo Samuel Sr.",
     "pos": "WR",
     "team": "SF",
     "slot": "BN"
-   },
-   {
-    "name": "MarShawn Lloyd",
-    "pos": "RB",
-    "team": "GB",
-    "slot": "RB"
    },
    {
     "name": "Chuba Hubbard",
@@ -352,7 +346,13 @@
     "name": "Tyler Shough",
     "pos": "QB",
     "team": "NO",
-    "slot": "BN"
+    "slot": "QB"
+   },
+   {
+    "name": "Woody Marks",
+    "pos": "RB",
+    "team": "HOU",
+    "slot": "FLEX"
    }
   ],
   "The Brady Bunch": [
@@ -366,7 +366,7 @@
     "name": "Saquon Barkley",
     "pos": "RB",
     "team": "PHI",
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Mike Evans",
@@ -378,13 +378,13 @@
     "name": "Patrick Mahomes",
     "pos": "QB",
     "team": "KC",
-    "slot": "QB"
+    "slot": "BN"
    },
    {
     "name": "Seattle Seahawks",
     "pos": "DST",
     "team": "SEA",
-    "slot": "DST"
+    "slot": "BN"
    },
    {
     "name": "Stefon Diggs",
@@ -396,20 +396,19 @@
     "name": "Caleb Williams",
     "pos": "QB",
     "team": "CHI",
-    "ir": true,
-    "slot": "IR"
+    "slot": "QB"
    },
    {
     "name": "Isaiah Likely",
     "pos": "TE",
     "team": "NYG",
-    "slot": "FLEX"
+    "slot": "TE"
    },
    {
     "name": "Emanuel Wilson",
     "pos": "RB",
     "team": "SEA",
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "Braelon Allen",
@@ -418,34 +417,28 @@
     "slot": "RB"
    },
    {
-    "name": "Pat Freiermuth",
-    "pos": "TE",
-    "team": "PIT",
-    "slot": "TE"
-   },
-   {
-    "name": "Aaron Rodgers",
-    "pos": "QB",
-    "team": "PIT",
-    "slot": "BN"
-   },
-   {
     "name": "Khalil Shakir",
     "pos": "WR",
     "team": "BUF",
     "slot": "BN"
    },
    {
-    "name": "Cincinnati Bengals",
-    "pos": "DST",
-    "team": "CIN",
-    "slot": "BN"
+    "name": "Chris Boswell",
+    "pos": "K",
+    "team": "PIT",
+    "slot": "K"
    },
    {
-    "name": "Dominic Zvada",
-    "pos": "K",
-    "team": "NYG",
-    "slot": "K"
+    "name": "Tennessee Titans",
+    "pos": "DST",
+    "team": "TEN",
+    "slot": "DST"
+   },
+   {
+    "name": "RJ Harvey",
+    "pos": "RB",
+    "team": "DEN",
+    "slot": "FLEX"
    }
   ],
   "BlitzAndGiggles": [
@@ -754,7 +747,7 @@
     "name": "Christian Watson",
     "pos": "WR",
     "team": "GB",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Minnesota Vikings",
@@ -775,12 +768,6 @@
     "slot": "BN"
    },
    {
-    "name": "Kendrick Bourne",
-    "pos": "WR",
-    "team": "ARI",
-    "slot": "BN"
-   },
-   {
     "name": "Colston Loveland",
     "pos": "TE",
     "team": "CHI",
@@ -797,6 +784,12 @@
     "pos": "QB",
     "team": "MIN",
     "slot": "QB"
+   },
+   {
+    "name": "DeMario Douglas",
+    "pos": "WR",
+    "team": "NE",
+    "slot": "WR"
    }
   ]
  }
