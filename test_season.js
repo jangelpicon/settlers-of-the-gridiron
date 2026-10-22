@@ -108,14 +108,25 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   console.log("== Waivers: season-long rule ==");
   const WS = T.waiverSuggestions();
   const SC = T.weeklyStreamClaims();
-  assert(WS.sugg.every(s => s.gain >= T.ROS_MARGIN), "every add/drop suggestion is at least " + T.ROS_MARGIN + " rest-of-season rank spots better (" + WS.sugg.length + " suggestions)");
-  assert(WS.sugg.concat(WS.marginal).every(s => s.add.seasonProj == null || s.drop.seasonProj == null || s.add.seasonProj >= s.drop.seasonProj), "no suggestion drops a player with a higher ESPN full-season projection than the add");
+  // Open roster spot (2026-10-22, 13/14 after a 2-for-1 trade): the best free agents are FREE adds with no drop; the
+  // season-long rule governs only the rows that still need a drop. With a full roster there are no free rows at all.
+  const openNow = T.openSpots(me);
+  const paid = WS.sugg.filter(s => !s.free), freeRows = WS.sugg.filter(s => s.free);
+  assert(openNow > 0 ? freeRows.length > 0 && freeRows.every(s => s.drop == null && /open roster spot/.test(s.text)) : freeRows.length === 0, "free (no-drop) suggestions exist exactly when a roster spot is open (" + openNow + " open, " + freeRows.length + " free rows)");
+  if (openNow > 0){
+    assert(WS.sugg[0].free && !WS.sugg[0].backup && freeRows.filter(s => !s.backup).length === openNow, "Priority 1 takes the open spot; exactly one free row per open spot is a real claim, the rest are backups");
+    assert(freeRows.every(s => ["RB","WR","TE"].includes(s.add.pos)), "a free add is never a QB/K/DST (dead roster slot)");
+    const wt0 = d.getElementById("tab-waivers").textContent;
+    assert(/open roster spot/.test(wt0) && /Drop\s*nobody — open roster spot/.test(wt0.replace(/\s+/g, " ")) && !/Nothing on the wire is a clear season-long upgrade/.test(wt0), "the Waivers tab tells Jose the spot is open and names a free claim instead of 'nothing on the wire'");
+  }
+  assert(paid.every(s => s.gain >= T.ROS_MARGIN), "every add/drop suggestion is at least " + T.ROS_MARGIN + " rest-of-season rank spots better (" + paid.length + " suggestions)");
+  assert(paid.concat(WS.marginal).every(s => s.add.seasonProj == null || s.drop.seasonProj == null || s.add.seasonProj >= s.drop.seasonProj), "no suggestion drops a player with a higher ESPN full-season projection than the add");
   const benchSkill = T.benchSkill().slice().sort((a, b) => (b.ros || 420) - (a.ros || 420));
   const scarceDrop = pos => T.scarcityPool(T.benchSkill(), pos).sort((a, b) => (b.ros || 420) - (a.ros || 420))[0];
   const rosOf = p => (p.rosEff != null ? p.rosEff : p.ros) || 420;
   // Ruling 2026-10-21 (Kincaid/Juwan): the drop is the scarcity-aware bench worst, OR the starter the add pushes out when that starter is worth less than the bench worst.
   const rightDrop = (add, drop) => { const sd = scarceDrop(add.pos); const imp = T.lineupImpact(me, add); if (imp.starts && imp.displaced && (!sd || rosOf(imp.displaced) > rosOf(sd))) return drop.n === imp.displaced.n; return !!sd && drop.n === sd.n; };
-  assert(WS.sugg.concat(WS.marginal).every(s => !["K","DST"].includes(s.add.pos) && (s.add.pos === "QB" ? s.drop.pos === "QB" : rightDrop(s.add, s.drop))), "suggestions drop your least-valuable spareable bench player (scarcity-aware) — or the starter the add replaces when he's worth less than that; a QB suggestion is a straight QB swap; K/DST never suggested");
+  assert(paid.concat(WS.marginal).every(s => !["K","DST"].includes(s.add.pos) && (s.add.pos === "QB" ? s.drop.pos === "QB" : rightDrop(s.add, s.drop))), "suggestions drop your least-valuable spareable bench player (scarcity-aware) — or the starter the add replaces when he's worth less than that; a QB suggestion is a straight QB swap; K/DST never suggested");
   assert(WS.sugg.every(s => T.waiverBoard([s.add])[0].verdict.key === "add") && WS.marginal.every(s => ["marginal","split"].includes(T.waiverBoard([s.add])[0].verdict.key)), "suggestion box and per-player verdict column agree (one rule)");
   assert(me.every(p => typeof p.seasonProj === "number"), "every rostered player has a live ESPN full-season projection");
   const wtxt = d.getElementById("tab-waivers").textContent;
@@ -125,7 +136,9 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   console.log("== Waivers: who to drop ==");
   const WB = T.waiverBoard();
   const benchRos = T.benchSkill();
-  assert(WB.length > 0 && WB.filter(b => !["K","DST","QB"].includes(b.fa.pos)).every(b => b.drop && rightDrop(b.fa, b.drop)), "every skill free agent names the scarcity-aware drop candidate (least rest-of-season value at a position you can spare), or the starter he'd replace when that starter is worth less");
+  const WBfree = WB.filter(b => b.verdict.free), WBpaid = WB.filter(b => !b.verdict.free);
+  assert(WBfree.length === (T.openSpots(me) > 0 ? Math.min(12, WBfree.length || 12) : 0) && WBfree.every(b => b.drop == null && b.verdict.key === "add" && ["RB","WR","TE"].includes(b.fa.pos)), "free-add rows (open roster spot) carry no drop, are capped at 12 and are skill players only (" + WBfree.length + " rows)");
+  assert(WB.length > 0 && WBpaid.filter(b => !["K","DST","QB"].includes(b.fa.pos)).every(b => b.drop && rightDrop(b.fa, b.drop)), "every skill free agent names the scarcity-aware drop candidate (least rest-of-season value at a position you can spare), or the starter he'd replace when that starter is worth less");
   const starterDrops = WB.filter(b => b.drop && b.verdict.starts && !T.benchSkill().some(p => p.n === b.drop.n));
   assert(starterDrops.every(b => b.drop.pos === b.fa.pos || T.optimalLineup(me, "ros").slots.some(s => s.slot === "FLEX" && s.p && s.p.n === b.drop.n)) && starterDrops.every(b => rosOf(b.drop) > rosOf(scarceDrop(b.fa.pos))), "a starter is only ever the drop for a free agent who takes his slot AND when he's worth less than the spareable bench worst (" + starterDrops.length + " such rows)");
   const benchCounts = {}; benchRos.forEach(p => benchCounts[p.pos] = (benchCounts[p.pos] || 0) + 1);
@@ -136,8 +149,8 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(WB.filter(b => b.fa.pos === "QB").every(b => b.drop && b.drop.pos === "QB"), "QB free agents are a straight swap for your QB, never a bench drop");
   assert(WB.filter(b => b.fa.pos === "DST").every(b => b.drop && b.drop.pos === "DST") && WB.filter(b => b.fa.pos === "K").every(b => b.drop && b.drop.pos === "K"), "K/DST free agents are a straight swap for your K/DST");
   assert(WB.every(b => ["add","marginal","split","pass","rental","none"].includes(b.verdict.key) && b.verdict.text.length > 3), "every free agent has a verdict (add / marginal / split / pass / rental)");
-  assert(WB.filter(b => ["RB","WR","TE"].includes(b.fa.pos)).every(b => (b.verdict.key === "split") === (b.verdict.rosDelta >= T.ROS_MARGIN && b.verdict.seasonDelta != null && b.verdict.seasonDelta < 0)), "'split' = FantasyPros clears the bar but ESPN's season projection says no — surfaced, never a silent pass");
-  assert(WB.filter(b => ["RB","WR","TE"].includes(b.fa.pos)).every(b => (b.verdict.key === "add") === (b.verdict.rosDelta >= T.ROS_MARGIN && (b.verdict.seasonDelta == null || b.verdict.seasonDelta >= 0))), "ADD verdict matches the season-long rule exactly");
+  assert(WBpaid.filter(b => ["RB","WR","TE"].includes(b.fa.pos)).every(b => (b.verdict.key === "split") === (b.verdict.rosDelta >= T.ROS_MARGIN && b.verdict.seasonDelta != null && b.verdict.seasonDelta < 0)), "'split' = FantasyPros clears the bar but ESPN's season projection says no — surfaced, never a silent pass");
+  assert(WBpaid.filter(b => ["RB","WR","TE"].includes(b.fa.pos)).every(b => (b.verdict.key === "add") === (b.verdict.rosDelta >= T.ROS_MARGIN && (b.verdict.seasonDelta == null || b.verdict.seasonDelta >= 0))), "ADD verdict matches the season-long rule exactly");
   assert(WB.filter(b => b.fa.pos === "QB").every(b => b.verdict.key === (b.verdict.rosDelta >= T.ROS_MARGIN && (b.verdict.seasonDelta == null || b.verdict.seasonDelta >= 0) ? "add" : b.verdict.rosDelta > 0 && (b.verdict.seasonDelta == null || b.verdict.seasonDelta >= 0) ? "marginal" : "rental")), "a QB free agent is a SWAP when he beats your QB season-long, a rental otherwise — the season-long rule applies to QBs too");
   // capability check: hand Jose a weak QB and the tool must recommend swapping in the wire's best QB
   // (no hardcoded name — free agents change as leaguemates make pickups)
@@ -154,7 +167,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const DO = T.dropOrder();
   assert(DO.length > 0 && DO.every(p => !["K","DST"].includes(p.pos)), "drop order lists bench skill players only (K/DST swap for their own slot, never drop)");
   assert(DO.every((p, i) => i === 0 || (DO[i-1].ros || 420) >= (p.ros || 420)), "drop order runs least season-long value first");
-  assert(WS.sugg.concat(WS.marginal).filter(s => s.add.pos !== "QB").every(s => rightDrop(s.add, s.drop)), "every claim names the scarcity-aware top of the drop order (or the out-valued starter it replaces) — the ladder explains multi-add drops");
+  assert(paid.concat(WS.marginal).filter(s => s.add.pos !== "QB").every(s => rightDrop(s.add, s.drop)), "every claim names the scarcity-aware top of the drop order (or the out-valued starter it replaces) — the ladder explains multi-add drops");
   const wtxt2 = d.getElementById("tab-waivers").textContent;
   assert(/Your drop order/.test(wtxt2) && ((WS.sugg.length || SC.length) ? /Your claim sheet — enter exactly this in ESPN/.test(wtxt2) : /Nothing on the wire is a clear season-long upgrade/.test(wtxt2)), "waiver tab shows the drop order plus the claim sheet (or the empty-wire note when there are no season-long OR weekly K/DST moves)");
   assert(SC.every(s => ["K","DST"].includes(s.pos) && (s.drop == null || s.drop.pos === s.pos)), "weekly stream claims are K/DST only and swap straight for your own (" + SC.map(s => s.pos + ":" + s.add.name).join(", ") + ")");
@@ -169,7 +182,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     const myAtPos = rosters.teams[rosters.me].filter(p => p.pos === s.pos);
     if (s.verdict === "fill" && rosters.teams[rosters.me].length >= T.ROSTER_ACTIVE) assert(s.drop && s.drop.pos === s.pos && myAtPos.some(p => p.name === s.drop.name), s.pos + " on bye with a full roster → the claim drops my own " + s.pos + ", never 'nobody' (" + (s.drop && s.drop.name) + ")");
   });
-  if (SC.some(s => s.verdict === "fill" && s.drop)) assert(!/open roster spot/.test(wtxt2) && SC.filter(s => s.drop).every(s => rx(s.drop.name).test(wtxt2)), "claim sheet names the drop for a bye-week K/DST instead of 'nobody'");
+  if (SC.some(s => s.verdict === "fill" && s.drop)) assert(!/nobody — open roster spot.*weekly/.test(wtxt2.replace(/\s+/g, " ")) && SC.filter(s => s.drop).every(s => rx(s.drop.name).test(wtxt2)), "claim sheet names the drop for a bye-week K/DST instead of 'nobody'");
   // synthetic: the rule itself, independent of this week's data
   const mkDst = (n, mu, pr, bye) => ({ name: n, n: n.toLowerCase().replace(/[^a-z]/g, ""), pos: "DST", team: "X", mu, posRank: pr, bye, ros: 200, srcs: [1, 2] });
   const wk = season.week;
@@ -203,7 +216,9 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   {
     let pri = 0;
     const rows = [];
-    WS.sugg.slice(0,6).forEach(s => { rows.push([++pri, s.add.name, s.drop.name]); if (s.chain && s.chain.worth) rows.push([++pri, s.add.name, s.chain.drop.name]); });
+    // the sheet shows at most 3 free rows (the open-spot claim + 2 backups), then up to 6 add/drop rows
+    let freeLeft = 3;
+    WS.sugg.filter(s => !s.free || freeLeft-- > 0).slice(0, 6 + Math.min(3 - Math.max(freeLeft, 0), 3)).forEach(s => { rows.push([++pri, s.add.name, s.free ? "nobody — open roster spot" : s.drop.name]); if (s.chain && s.chain.worth) rows.push([++pri, s.add.name, s.chain.drop.name]); });
     assert(rows.every(r => { const m = wtxt2.indexOf("Priority " + r[0]); if (m < 0) return false; const seg = wtxt2.slice(m, wtxt2.indexOf("Priority " + (r[0]+1)) > 0 ? wtxt2.indexOf("Priority " + (r[0]+1)) : m + 400); return rx(r[1]).test(seg) && rx(r[2]).test(seg); }), "claim sheet renders every row as 'Priority N · add X · drop Y' in exact order, backups included (" + rows.map(r => r[0] + ":" + r[1] + "/" + r[2]).join(", ") + ")");
     assert(WS.sugg.every(s => !s.chain || !s.chain.worth || /backup for Priority/.test(wtxt2)), "a worth-it deeper drop becomes its own backup claim row, ESPN-style");
   }
@@ -213,9 +228,9 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(firstFit === -1 || lastClean === -1 || firstFit > lastClean, "bench-clog adds rank below clean adds in the claim ladder");
   console.log("== Waivers: chained claims ==");
   assert(!WS.sugg.length || WS.sugg[0].chain == null, "claim 1 never carries a chained drop — nothing above it can land");
-  assert(WS.sugg.every(s => !s.chain || s.chain.drop.n !== s.drop.n), "a chained drop is only shown when it differs from the claim's own drop");
+  assert(WS.sugg.every(s => !s.chain || !s.drop || s.chain.drop.n !== s.drop.n), "a chained drop is only shown when it differs from the claim's own drop");
   assert(WS.sugg.every(s => !s.chain || (s.chain.worth === (s.chain.verdict.key === "add"))), "the deeper drop gets its own season-long verdict — worth it only on a real ADD");
-  if (WS.sugg.length >= 2 && WS.sugg[0].drop && WS.sugg[0].add.pos !== "QB" && WS.sugg[1].chain){
+  if (WS.sugg.length >= 2 && WS.sugg[0].drop && WS.sugg[0].add.pos !== "QB" && WS.sugg[1].chain && !WS.sugg[1].free){
     const sim = benchRos.filter(p => p.n !== WS.sugg[0].drop.n).concat([WS.sugg[0].add]);
     const expect = T.scarcityPool(sim, WS.sugg[1].add.pos).sort((a, b) => (b.ros || 420) - (a.ros || 420))[0];
     assert(WS.sugg[1].chain.drop.n === expect.n, "when claim 1 lands, claim 2's chained drop is the scarcity-aware next man up (" + expect.name + ")");

@@ -1,7 +1,7 @@
 {
  "me": "ur done",
  "updated": "2026-10-22",
- "source": "ESPN league 882823976 sync 2026-10-22 02:00 CDT",
+ "source": "ESPN league 882823976 sync 2026-10-22 08:26 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -134,12 +134,6 @@
     "slot": "BN"
    },
    {
-    "name": "Jaylen Warren",
-    "pos": "RB",
-    "team": "PIT",
-    "slot": "RB"
-   },
-   {
     "name": "DK Metcalf",
     "pos": "WR",
     "team": "PIT",
@@ -149,12 +143,6 @@
     "name": "Emeka Egbuka",
     "pos": "WR",
     "team": "TB",
-    "slot": "BN"
-   },
-   {
-    "name": "Jayden Daniels",
-    "pos": "QB",
-    "team": "WAS",
     "slot": "BN"
    },
    {
@@ -174,6 +162,18 @@
     "pos": "WR",
     "team": "DEN",
     "slot": "FLEX"
+   },
+   {
+    "name": "Trevor Lawrence",
+    "pos": "QB",
+    "team": "JAX",
+    "slot": "BN"
+   },
+   {
+    "name": "Luther Burden III",
+    "pos": "WR",
+    "team": "CHI",
+    "slot": "BN"
    }
   ],
   "Resting Blitz Face": [
@@ -417,12 +417,6 @@
     "slot": "RB"
    },
    {
-    "name": "Khalil Shakir",
-    "pos": "WR",
-    "team": "BUF",
-    "slot": "BN"
-   },
-   {
     "name": "Chris Boswell",
     "pos": "K",
     "team": "PIT",
@@ -439,6 +433,12 @@
     "pos": "RB",
     "team": "DEN",
     "slot": "FLEX"
+   },
+   {
+    "name": "Rome Odunze",
+    "pos": "WR",
+    "team": "CHI",
+    "slot": "BN"
    }
   ],
   "BlitzAndGiggles": [
@@ -655,12 +655,6 @@
     "name": "Bucky Irving",
     "pos": "RB",
     "team": "TB",
-    "slot": "RB"
-   },
-   {
-    "name": "Luther Burden III",
-    "pos": "WR",
-    "team": "CHI",
     "slot": "FLEX"
    },
    {
@@ -682,12 +676,6 @@
     "slot": "BN"
    },
    {
-    "name": "Trevor Lawrence",
-    "pos": "QB",
-    "team": "JAX",
-    "slot": "BN"
-   },
-   {
     "name": "DJ Moore",
     "pos": "WR",
     "team": "BUF",
@@ -704,6 +692,12 @@
     "pos": "K",
     "team": "CAR",
     "slot": "K"
+   },
+   {
+    "name": "Jaylen Warren",
+    "pos": "RB",
+    "team": "PIT",
+    "slot": "RB"
    }
   ],
   "PapasCabezas": [

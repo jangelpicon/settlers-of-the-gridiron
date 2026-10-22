@@ -122,6 +122,11 @@
   const LINEUP = { QB:1, RB:2, WR:2, TE:1, FLEX:1, DST:1, K:1 };
   const BENCH_SLOTS = 5; // ESPN lineupSlotCounts slot 20 = 5 (IR slot 21 is IR-only and never counts as an open spot)
   const ROSTER_ACTIVE = Object.values(LINEUP).reduce((a,b)=>a+b,0) + BENCH_SLOTS; // 14 — an empty LINEUP slot is not an open ROSTER spot
+  // Active roster = everyone not parked in the IR slot. Open spots = 14 minus that. (2026-10-22: Jose traded two
+  // players for one and sat at 13/14; every waiver row still read "pass — worse than <bench player>" because the
+  // page assumed every add is a drop. With a spot open the first claim is free: nobody has to go.)
+  const activeCount = team => team.filter(p=>!p.ir && p.slot!=="IR").length;
+  const openSpots = team => Math.max(0, ROSTER_ACTIVE - activeCount(team));
   const FLEX = ["RB","WR","TE"];
   const ROS_MAX = 420; // value = ROS_MAX - rank
   // Role check (2026-10-20, Cam Skattebo lesson): FantasyPros' rest-of-season rank reprices a lost starting job
@@ -1330,13 +1335,13 @@
   function waiverSuggestions(me, bench, fa){
     const board = waiverBoard(me, bench, fa.filter(f=>f.ros!=null && !["K","DST"].includes(f.pos)));
     const N = teamNeeds();
-    const toItem = b => ({ drop:b.drop, add:b.fa, gain:b.verdict.rosDelta, agree: b.verdict.seasonDelta!=null, seasonDelta: b.verdict.seasonDelta, fit: fitNote(b.fa, me), need: N.needPos.has(b.fa.pos), key: b.verdict.key, text: b.verdict.text, starts: b.verdict.starts, displaced: b.verdict.displaced,
+    const toItem = b => ({ drop:b.drop, add:b.fa, gain:b.verdict.rosDelta, agree: b.verdict.seasonDelta!=null, seasonDelta: b.verdict.seasonDelta, fit: fitNote(b.fa, me), need: N.needPos.has(b.fa.pos), key: b.verdict.key, text: b.verdict.text, starts: b.verdict.starts, displaced: b.verdict.displaced, free: !!b.verdict.free, ref: b.verdict.ref || null,
       dChamp: ["add","marginal","split"].includes(b.verdict.key) ? waiverChamp(me, b.fa, b.drop, false) : null });
     // Clean fits first, then Δ title % (the objective), then adds at a position of need, then raw season-long gain.
     // The season-long rule stays the GATE (it values bench depth the simulator can't see — the talent score only
     // counts the starting nine, so a pure depth add reads +0 title); title odds decide the ORDER.
     const dc = x => x.dChamp!=null ? x.dChamp : 0;
-    const byFitThenGain = (a,b)=> ((a.fit?1:0)-(b.fit?1:0)) || (dc(b)-dc(a)) || ((b.need?1:0)-(a.need?1:0)) || (b.gain-a.gain);
+    const byFitThenGain = (a,b)=> ((a.fit?1:0)-(b.fit?1:0)) || ((b.free?1:0)-(a.free?1:0)) || (dc(b)-dc(a)) || ((b.need?1:0)-(a.need?1:0)) || ((b.gain||0)-(a.gain||0));
     const sugg = board.filter(b=>b.verdict.key==="add").map(toItem).sort(byFitThenGain);
     const marginal = board.filter(b=>["marginal","split"].includes(b.verdict.key)).map(toItem).sort(byFitThenGain);
     chainClaims(sugg, me, bench);
@@ -1348,8 +1353,14 @@
   // simply die when the ones above land. A landed add joins the simulated bench (he can be outdropped too).
   function chainClaims(sugg, me, bench){
     let sim = bench.filter(p=>!["K","DST"].includes(p.pos)).slice();
+    // Open roster spot: the first `open` free rows take the spot(s). Every later free row is a BACKUP for the spot —
+    // ESPN fails a no-drop claim on a full roster, so it lands only if the ones above were taken. Rows with a drop
+    // (season-long upgrades) stay as they are: if they land on a still-open roster, fine, the spot is still open.
+    let open = openSpots(me);
+    sugg.forEach(s=>{ if (!s.free) return; if (open>0){ s.backup=false; open--; sim.push(s.add); } else s.backup=true; });
     sugg.forEach((s,i)=>{
       s.chain = null;
+      if (s.free) return;
       if (s.add.pos==="QB") return;                                  // QB swaps never touch the bench
       const d = scarcityPool(sim, s.add.pos).sort((a,b)=>(rosR(b)||ROS_MAX)-(rosR(a)||ROS_MAX))[0];
       if (!d) return;
@@ -1412,8 +1423,33 @@
     if (rosDelta > 0) return { key:"pass", rosDelta, seasonDelta, starts, displaced, text:"pass — ESPN season projection says no ("+seasonDelta+" pts)" };
     return { key:"pass", rosDelta, seasonDelta, starts, displaced, text:"pass — worse than "+drop.name+" for the season ("+rosDelta+" spots)" };
   }
+  // Open roster spot: the best free agents become FREE adds (no drop). The "add" tier is the free agents who beat
+  // your weakest spareable bench player for the season, or the 10 best on the wire regardless — a spot is a spot —
+  // capped at FREE_ADD_ROWS so the title simulator isn't run for the whole pool. Everyone else keeps the normal
+  // add-is-a-drop verdict, because once the spot is filled that's the rule again. QB/K/DST never take the spot:
+  // a third QB or a second kicker is a dead roster slot.
+  const FREE_ADD_ROWS = 12, FREE_ADD_TOP = 10;
+  function freeAddSet(me, bench, fa){
+    if (openSpots(me) === 0) return new Set();
+    const skill = fa.filter(f=>["RB","WR","TE"].includes(f.pos) && f.ros!=null && !undraftable(f)).sort((a,b)=>(rosR(a)||ROS_MAX)-(rosR(b)||ROS_MAX));
+    const beats = f => { const ref = dropCandidate(bench, me, f, null); return !ref || (rosR(ref)||ROS_MAX) > (rosR(f)||ROS_MAX); };
+    return new Set(skill.filter((f,i)=>i<FREE_ADD_TOP || beats(f)).slice(0,FREE_ADD_ROWS).map(f=>f.n));
+  }
+  function freeVerdict(me, bench, fa, imp){
+    const ref = dropCandidate(bench, me, fa, imp); // your weakest spareable piece — the yardstick, NOT a drop
+    const rosDelta = ref ? (rosR(ref)||ROS_MAX) - (rosR(fa)||ROS_MAX) : null;
+    const seasonRaw = (ref && fa.seasonProj!=null && ref.seasonProj!=null) ? fa.seasonProj - ref.seasonProj : null;
+    const seasonDelta = seasonRaw==null ? null : (Math.abs(seasonRaw) < 1 ? Math.round(seasonRaw*10)/10 : Math.round(seasonRaw));
+    const I = imp || lineupImpact(me, fa), starts = !!I.starts, displaced = I.displaced ? I.displaced.name : null;
+    const over = starts ? (displaced ? " · starts over "+displaced+" (he goes to your bench)" : " · fills an empty starting slot") : " · bench depth";
+    const vs = ref ? " · "+(rosDelta>=0?"+":"")+rosDelta+" ROS spots vs "+ref.name+", your weakest spare" : "";
+    return { key:"add", free:true, ref, rosDelta, seasonDelta, starts, displaced, text:"ADD — open roster spot, no drop needed"+over+vs };
+  }
   function waiverBoard(me, bench, fa){
-    return fa.map(f=>{ const imp = ["K","DST","QB"].includes(f.pos) ? null : lineupImpact(me, f); const drop = dropCandidate(bench, me, f, imp); const verdict = dropVerdict(f, drop, imp);
+    const free = freeAddSet(me, bench, fa);
+    return fa.map(f=>{ const imp = ["K","DST","QB"].includes(f.pos) ? null : lineupImpact(me, f);
+      if (free.has(f.n)){ const verdict = freeVerdict(me, bench, f, imp); const d = waiverChamp(me, f, null, true); if (d!=null) verdict.dChamp = d; return { fa:f, drop:null, verdict }; }
+      const drop = dropCandidate(bench, me, f, imp); const verdict = dropVerdict(f, drop, imp);
       if (drop && !["K","DST"].includes(f.pos)){ const d = waiverChamp(me, f, drop, true); if (d!=null) verdict.dChamp = d; }
       return { fa:f, drop, verdict }; });
   }
@@ -1459,7 +1495,7 @@
       // every candidate. Late-kick candidates go to the back of the chain.
       const clearsBar = c => !mine ? true : (c.mu!=null && mine.mu!=null) ? (c.mu-mine.mu) >= STREAM_BAR : (c.wkRank!=null && mine.wkRank!=null && (mine.wkRank-c.wkRank) >= 3);
       const chain = cands.filter(c=>!mine || c.n!==mine.n).filter(clearsBar).sort((a,b)=>(a.claimLate?1:0)-(b.claimLate?1:0)).slice(0,3);
-      const rosterFull = R.teams[R.me].length >= ROSTER_ACTIVE;
+      const rosterFull = openSpots(me) === 0;
       const st = { pos, mine, best, chain, delta:null, verdict:"ok", drop:null, reason:"" };
       if (satThisWeek()){
         st.verdict = "sat"; st.chain = [];
@@ -1472,7 +1508,7 @@
         // My K/DST is on bye or out: the LINEUP slot is empty, the ROSTER spot is not. Same-position swap: drop him.
         st.verdict = "fill";
         st.drop = rosterFull ? (mineAll.slice().sort((a,b)=>rosVal(a)-rosVal(b))[0] || null) : null;
-        st.reason = st.drop ? "your "+pos+" ("+st.drop.name+") is "+(st.drop.onBye?"on bye":"out")+" and the roster is full at "+R.teams[R.me].length+", so he's the drop — "+pos+" only ever swaps for "+pos
+        st.reason = st.drop ? "your "+pos+" ("+st.drop.name+") is "+(st.drop.onBye?"on bye":"out")+" and the roster is full at "+activeCount(me)+", so he's the drop — "+pos+" only ever swaps for "+pos
                             : "open roster spot — no drop needed";
         return st;
       }
@@ -1496,7 +1532,7 @@
   function waiverRow(b, tag){
     const v = b.verdict; const cls = v.key==="add"?"good":v.key==="marginal"||v.key==="split"||v.key==="rental"?"warn":"";
     const wkly = ["K","DST"].includes(b.fa.pos);
-    const drop = b.drop ? "<b>"+esc(b.drop.name)+"</b> <span class='muted'>"+b.drop.pos+" · ROS #"+(b.drop.ros!=null?b.drop.ros:"–")+(b.drop.seasonProj!=null?" · "+b.drop.seasonProj.toFixed(0)+" season pts":"")+(wkly && b.drop.mu!=null?" · "+b.drop.mu.toFixed(1)+" proj this week":"")+"</span>" : "<span class='muted'>nobody</span>";
+    const drop = b.drop ? "<b>"+esc(b.drop.name)+"</b> <span class='muted'>"+b.drop.pos+" · ROS #"+(b.drop.ros!=null?b.drop.ros:"–")+(b.drop.seasonProj!=null?" · "+b.drop.seasonProj.toFixed(0)+" season pts":"")+(wkly && b.drop.mu!=null?" · "+b.drop.mu.toFixed(1)+" proj this week":"")+"</span>" : v.free ? "<span class='muted'>nobody — open roster spot</span>" : "<span class='muted'>nobody</span>";
     return "<div class='row grid'>"+playerLine(b.fa, tag||"", "FA")+next4Detail(b.fa)+"<span class='sub'><span><span class='lbl' title='"+esc(WCOLS[0][1])+"'>"+WCOLS[0][0]+":</span> "+drop+"</span><span><span class='lbl' title='"+esc(WCOLS[1][1])+"'>"+WCOLS[1][0]+":</span> <span class='tag "+cls+"'>"+esc(v.text)+"</span>"+(v.dChamp!=null?" <span class='muted' title='Change in your title odds from this add/drop (championship simulator; estimate)'>title "+pp(v.dChamp)+"</span>":"")+"</span></span></div>";
   }
   function excluded(){ const s = new Set(); (X.players||[]).forEach(p=>s.add(norm(p.name))); return s; }
@@ -1533,8 +1569,19 @@
       // row printed the 2 AM injury file's "O" while the claim logic, correctly, used the live Q — looked like a bug).
       const claimInj = p => { const code = P ? p.injLive : (p.inj ? p.inj.code : null); if (!code || code==="ACT") return ""; const note = p.injNote || (p.inj && p.inj.note) || ""; const pct = (P && p.pPlay>0 && p.pPlay<1) ? " "+Math.round(p.pPlay*100)+"%" : ""; return ", "+esc(code==="O"?"OUT":code)+pct+(note?" · "+esc(note):""); };
       const player = (p, dropSide) => "<b"+(dropSide?"":" class='hl'")+">"+esc(p.name)+"</b>, "+esc(p.team||"?")+" "+p.pos+" <span class='muted'>(ROS "+(p.ros!=null?"#"+p.ros:"unranked")+(p.seasonProj!=null?", "+p.seasonProj.toFixed(0)+" season pts":"")+claimInj(p)+")</span>";
-      sugg.slice(0,6).forEach(s=>{
+      const openN = openSpots(me);
+      if (openN>0) h += "<div class='suggest'>🟢 <b>You have "+openN+" open roster spot"+(openN>1?"s":"")+"</b> ("+activeCount(me)+" of "+ROSTER_ACTIVE+" filled) — the first claim is free, nobody has to be dropped. Priority 1 is the best player on the wire for the rest of the season; the backups below it fire only if he's taken. Fill the spot: an empty slot scores zero.</div>";
+      let freeShown = 0, firstFree = 0;
+      sugg.filter(s=>!s.free || freeShown++ < 3).slice(0,6+Math.min(freeShown,3)).forEach(s=>{
         pri++;
+        if (s.free){
+          const title = s.dChamp!=null ? "title "+pp(s.dChamp)+(s.dChamp===0?" (depth only — doesn't crack your starting nine)":"")+" · " : "";
+          const vs = s.ref ? (s.gain>=0?"+":"")+s.gain+" rest-of-season spots vs "+esc(s.ref.name)+" (your weakest spare, kept)" : "best available for the rest of the season";
+          const back = s.backup ? "backup for Priority "+firstFree+" — no drop; fires only if the player"+(pri-firstFree>1?"s":"")+" above "+(pri-firstFree>1?"are":"is")+" already taken" : "takes your open roster spot — no drop";
+          if (!s.backup) firstFree = pri;
+          h += "<div class='suggest'><b>Priority "+pri+"</b> · ➕ Add "+player(s.add)+" &nbsp;➖ Drop <span class='muted'>nobody — open roster spot</span>"+(s.need?" <span class='tag good'>fills a need: "+s.add.pos+"</span>":"")+(s.starts?" <span class='tag good'>would start"+(s.displaced && s.displaced!==(s.ref&&s.ref.name)?" over "+esc(s.displaced):"")+"</span>":"")+"<br><span class='muted'>"+(s.backup?"":title)+vs+" · "+back+"</span>"+(s.fit?"<br><span class='tag warn'>"+esc(s.fit)+"</span>":"")+"</div>";
+          return;
+        }
         let note = (s.dChamp!=null ? "title "+pp(s.dChamp)+(s.dChamp===0?" (depth only — doesn't crack your starting nine)":"")+" · " : "")+"+"+s.gain+" rest-of-season spots"+(s.seasonDelta!=null?" · "+(s.seasonDelta>=0?"+":"")+s.seasonDelta+" projected season points":" · ESPN season projection missing for one of them")+" — "+(s.agree?"both sources agree":"rank only");
         if (s.chain && !s.chain.worth) note += " · no backup row: if "+esc(s.drop.name)+" is already gone, the next man up ("+esc(s.chain.drop.name)+" #"+s.chain.drop.ros+") isn't worth dropping for him, so this claim just fails";
         h += "<div class='suggest'><b>Priority "+pri+"</b> · ➕ Add "+player(s.add)+" &nbsp;➖ Drop "+player(s.drop,true)+(s.need?" <span class='tag good'>fills a need: "+s.add.pos+"</span>":"")+"<br><span class='muted'>"+note+"</span>"+(s.fit?"<br><span class='tag warn'>"+esc(s.fit)+"</span>":"")+"</div>";
@@ -1582,12 +1629,12 @@
       });
       h += "</div></div>";
     });
-    h += "<h3>Top free agents (rest of season) — and who you'd drop</h3><div class='muted' style='margin-bottom:6px'>Every add is a drop. \"Drop for him\" is the bench player with the least rest-of-season value <b>at a position you can spare</b> — your only backup at a position never drops for a different position — or the <b>starter he'd replace</b>, when that starter is worth less than anyone on your bench. The verdict applies the season-long rule (+"+ROS_MARGIN+" ROS spots and ESPN's season projection not lower); when the two sources disagree it says <b>split</b> instead of hiding him.</div><div class='tbl'><div class='gw'>"+waiverHeader();
+    h += "<h3>Top free agents (rest of season) — and who you'd drop</h3><div class='muted' style='margin-bottom:6px'>"+(openSpots(me)>0 ? "You have an open roster spot, so the best free agents are <b>free adds</b> (no drop). Once it's filled, every add is a drop. " : "Every add is a drop. ")+"\"Drop for him\" is the bench player with the least rest-of-season value <b>at a position you can spare</b> — your only backup at a position never drops for a different position — or the <b>starter he'd replace</b>, when that starter is worth less than anyone on your bench. The verdict applies the season-long rule (+"+ROS_MARGIN+" ROS spots and ESPN's season projection not lower); when the two sources disagree it says <b>split</b> instead of hiding him.</div><div class='tbl'><div class='gw'>"+waiverHeader();
     // ADDs and marginals always make the table (even if outside the top 15 by rank), and sort to the top.
     const order = { add:0, marginal:1, split:1, rental:2, pass:3, none:4 };
     const boardAll = waiverBoard(me, bench, fa.filter(p=>!["K","DST"].includes(p.pos) && p.ros!=null));
     const seenN = new Set();
-    boardAll.filter(b=>["add","marginal","split"].includes(b.verdict.key)).concat(boardAll.slice().sort((a,b)=>a.fa.ros-b.fa.ros).slice(0,15))
+    boardAll.filter(b=>["add","marginal","split"].includes(b.verdict.key) && !b.verdict.free).concat(boardAll.slice().sort((a,b)=>a.fa.ros-b.fa.ros).slice(0,15))
       .filter(b=>{ if (seenN.has(b.fa.n)) return false; seenN.add(b.fa.n); return true; })
       .sort((a,b)=> (order[a.verdict.key]-order[b.verdict.key]) || (a.fa.ros-b.fa.ros))
       .forEach(b=>{ h += waiverRow(b); });
@@ -2359,7 +2406,7 @@
     waiverSuggestions:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,
     weeklyStreamClaims:()=>{ const me = myTeam(); return weeklyStreamClaims(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
     weeklyStreamStatus:()=>{ const me = myTeam(); return weeklyStreamStatus(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
-    streamStatusRaw:(me,fa,wkey)=>weeklyStreamStatus(me, fa, wkey||"mu"), ROSTER_ACTIVE, STREAM_BAR,
+    streamStatusRaw:(me,fa,wkey)=>weeklyStreamStatus(me, fa, wkey||"mu"), ROSTER_ACTIVE, STREAM_BAR, openSpots, activeCount,
     dropOrder:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return dropOrder(me, bench); }, fitNote, scarcityPool, lineupImpact, dropCandidate,
     setTeamParam:(qs)=>{ applyTeamParam(qs); buildIndex(); renderAll(); },
     benchSkill:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return bench.filter(p=>!["K","DST"].includes(p.pos)); },
