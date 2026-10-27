@@ -603,8 +603,11 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(/win odds/.test(mtxt) && /%/.test(mtxt), "win odds rendered from both projected totals");
   const mrows = [...d.querySelectorAll("#tab-matchup .gm .row.grid")];
   assert(mrows.length === 9, "head-to-head compares all 9 slots");
+  // Bye-aware (Week 8 2026: the opponent had six players on bye → WR2/DST/K empty): the expected count is the number
+  // of slots where BOTH sides field a player, read from the rendered rows, never a fixed minimum.
+  const bothSided = mrows.filter(r => !/— empty —/.test(r.children[1].textContent) && !/— empty —/.test(r.children[3].textContent)).length;
   const edges = mrows.map(r => r.querySelector(".tag.edge")).filter(Boolean).map(x => parseInt(x.textContent));
-  assert(edges.length >= 7 && edges.every(v => v >= 0 && v <= 100), "per-slot edge percentages are probabilities (" + edges.length + " slots with both players)");
+  assert(bothSided >= 1 && edges.length === bothSided && edges.every(v => v >= 0 && v <= 100), "per-slot edge percentages are probabilities on every slot both sides fill (" + edges.length + "/" + bothSided + " slots with both players; " + (mrows.length - bothSided) + " empty by bye/injury)");
   assert(/Season so far/.test(mtxt) && /all-play/.test(mtxt) && /1–0/.test(mtxt), "season story shows the record and all-play line");
   assert(/Head-to-head this season/.test(mtxt) && /Week 1/.test(mtxt), "past meeting with this opponent listed");
   assert(/sat/.test(mtxt) && /odd team out/.test(mtxt) && /points not counted/.test(mtxt) && /110\.0 \(n\/c\)/.test(mtxt), "the no-matchup week renders as 'sat', its score marked not counted");
@@ -798,8 +801,15 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const luckSvg = d.querySelector("#tab-league svg.lc[aria-label='Luck']");
   assert(luckSvg && /Luck — record vs what the scores deserved/.test(lgTxt), "League tab renders a luck chart");
   assert(luckSvg.querySelectorAll("rect").length === 9 && /buy-low/.test(lgTxt) && /sell-high/.test(lgTxt), "luck chart draws a bar per team and frames buy-low / sell-high targets");
-  const lgR = [...d.querySelectorAll("#tab-league .gl .row")].map(r => { const v = x => { const s = x.textContent.trim(); return s.startsWith("<") ? 0.05 : parseFloat(s); }; return { c: v(r.children[2]), p: v(r.children[3]) }; });
-  assert(lgR.every((r, i) => i === 0 || r.c < lgR[i - 1].c || (r.c === lgR[i - 1].c && r.p <= lgR[i - 1].p + 1e-9)), "League rows sorted by title %, then playoff %");
+  // Sort order is judged on the simulator's unrounded numbers (the table rounds to 0.1 pp, so two teams can print the
+  // same title % while differing underneath — 15.07% vs 15.05% on 2026-10-27 — and the rounded display can't be used
+  // to adjudicate the playoff-% tiebreak). The display itself must still be non-increasing in title %.
+  const lgL = T.leagueSim(), lgTeams = Object.keys(lgL.byTeam);
+  const lgR = [...d.querySelectorAll("#tab-league .gl .row")].map(r => { const v = x => { const s = x.textContent.trim(); return s.startsWith("<") ? 0.05 : parseFloat(s); }; const nm = r.children[1].textContent.trim(); const key = lgTeams.find(t => nm === t || nm.startsWith(t + " ")); return { c: v(r.children[2]), p: v(r.children[3]), sim: key ? lgL.byTeam[key] : null }; });
+  assert(lgR.length === lgTeams.length && lgR.every(r => r.sim), "every League row maps back to a simulated team");
+  assert(lgR.every((r, i) => i === 0 || r.c <= lgR[i - 1].c), "League rows: displayed title % never increases down the table");
+  const lgAfter = (a, b) => b.champ < a.champ || (b.champ === a.champ && (b.playoff < a.playoff || (b.playoff === a.playoff && b.seed >= a.seed)));
+  assert(lgR.every((r, i) => i === 0 || lgAfter(lgR[i - 1].sim, r.sim)), "League rows sorted by title %, then playoff %, then projected seed (unrounded simulator values)");
   assert(/Roster talent \(ROS\)/.test(d.getElementById("tab-strength").textContent) && !/<b>Overall<\/b>/.test(d.getElementById("tab-strength").innerHTML) && /Title %/.test(d.getElementById("tab-strength").textContent), "Strength tab: 'Overall' relabeled 'Roster talent (ROS)', title % beside it");
   const leg = d.getElementById("legend").textContent;
   assert(/Title %/.test(leg) && /Roster talent \(ROS\)/.test(leg) && /never ranks teams on its own/.test(leg) && !/the power ranking/.test(leg), "glossary defines title %, scoring rate, roster talent (as an input, not a ranking)");
