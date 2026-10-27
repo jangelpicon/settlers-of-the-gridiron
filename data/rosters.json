@@ -1,7 +1,7 @@
 {
  "me": "ur done",
  "updated": "2026-10-27",
- "source": "ESPN league 882823976 sync 2026-10-27 13:04 CDT",
+ "source": "ESPN league 882823976 sync 2026-10-27 13:21 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -638,7 +638,7 @@
     "name": "Drake London",
     "pos": "WR",
     "team": "ATL",
-    "slot": "WR"
+    "slot": "FLEX"
    },
    {
     "name": "Trey McBride",
@@ -668,7 +668,7 @@
     "name": "Parker Washington",
     "pos": "WR",
     "team": "JAX",
-    "slot": "FLEX"
+    "slot": "WR"
    },
    {
     "name": "Jared Goff",
