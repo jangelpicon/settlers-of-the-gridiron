@@ -244,13 +244,16 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(WS.sugg.every(s => !s.chain || !s.drop || s.chain.drop.n !== s.drop.n), "a chained drop is only shown when it differs from the claim's own drop");
   assert(WS.sugg.every(s => !s.chain || (s.chain.worth === (s.chain.verdict.key === "add"))), "the deeper drop gets its own season-long verdict — worth it only on a real ADD");
   if (WS.sugg.length >= 2 && WS.sugg[0].drop && WS.sugg[0].add.pos !== "QB" && WS.sugg[1].chain && !WS.sugg[1].free){
-    const sim = benchRos.filter(p => p.n !== WS.sugg[0].drop.n).concat([WS.sugg[0].add]);
+    const sim = benchRos.filter(p => p.n !== WS.sugg[0].drop.n); // the landed add is NOT in the pool — he can't be filed as a drop
     const expect = T.scarcityPool(sim, WS.sugg[1].add.pos).sort((a, b) => (b.ros || 420) - (a.ros || 420))[0];
-    assert(WS.sugg[1].chain.drop.n === expect.n, "when claim 1 lands, claim 2's chained drop is the scarcity-aware next man up (" + expect.name + ")");
+    assert(WS.sugg[1].chain.drop.n === expect.n, "when claim 1 lands, claim 2's chained drop is the scarcity-aware next man up from TODAY's roster, never the landed add (" + expect.name + ")");
   }
   {
     const usedDrops = WS.sugg.map(s => s.chain ? (s.chain.worth ? s.chain.drop.n : null) : (s.drop && s.drop.n)).filter(Boolean);
     assert(new Set(usedDrops).size === usedDrops.length, "in the all-claims-land scenario no player is dropped twice");
+    const nowRoster = new Set(rosters.teams[rosters.me].map(p => T.norm(p.name)));
+    assert(WS.sugg.every(s => (!s.drop || nowRoster.has(s.drop.n)) && (!s.chain || nowRoster.has(s.chain.drop.n))), "every drop and every backup drop is a player on the roster RIGHT NOW — ESPN can't file a claim dropping someone you don't own yet (2026-10-26 Priority-4 Mason bug)");
+    assert(!WS.sugg.some(s => s.chain && WS.sugg.some(o => o.add.n === s.chain.drop.n)), "no backup row drops another claim's add");
   }
   assert(WS.sugg.every(s => !s.chain || s.chain.worth || /isn't worth dropping for him, so this claim just fails/.test(d.getElementById("tab-waivers").textContent)), "a not-worth-it deeper drop gets no backup row and says the claim just fails");
   // fairness: a deal where they hand over the far bigger name craters the accept odds; landing the bigger name raises them

@@ -1350,14 +1350,16 @@
   // Chained claims: walk the ladder assuming every claim above LANDED, so each later claim knows who's
   // actually next on the chopping block (the standalone drop may already be gone). The deeper drop gets its
   // own verdict — if the add doesn't beat the next man up, the claim should keep its original drop and
-  // simply die when the ones above land. A landed add joins the simulated bench (he can be outdropped too).
+  // simply die when the ones above land. A landed add is NOT a drop candidate: ESPN only lets you file a
+  // claim dropping a player you own right now (2026-10-26 Jose: "how can I drop a player I do not have" —
+  // Priority 4 said drop Jordan Mason, who was Priority 1's add). Backups must be fileable tonight.
   function chainClaims(sugg, me, bench){
     let sim = bench.filter(p=>!["K","DST"].includes(p.pos)).slice();
     // Open roster spot: the first `open` free rows take the spot(s). Every later free row is a BACKUP for the spot —
     // ESPN fails a no-drop claim on a full roster, so it lands only if the ones above were taken. Rows with a drop
     // (season-long upgrades) stay as they are: if they land on a still-open roster, fine, the spot is still open.
     let open = openSpots(me);
-    sugg.forEach(s=>{ if (!s.free) return; if (open>0){ s.backup=false; open--; sim.push(s.add); } else s.backup=true; });
+    sugg.forEach(s=>{ if (!s.free) return; if (open>0){ s.backup=false; open--; } else s.backup=true; });
     sugg.forEach((s,i)=>{
       s.chain = null;
       if (s.free) return;
@@ -1370,7 +1372,7 @@
       }
       // consume: the drop this claim would really use if everything above landed
       const used = s.chain ? (s.chain.worth ? s.chain.drop : null) : s.drop;
-      if (used){ sim = sim.filter(p=>p.n!==used.n); sim.push(s.add); }
+      if (used) sim = sim.filter(p=>p.n!==used.n); // the add does not join the pool — you can't file a drop on him
     });
   }
   // Who would you drop to add this free agent, and is it worth it? Roster spots are fixed, so every add is a drop.
