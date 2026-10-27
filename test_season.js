@@ -134,6 +134,18 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(/season-long only/.test(wtxt) && /never a reason to drop/.test(wtxt), "waiver tab states the season-long rule in plain language");
   const qbBlock = wtxt.slice(wtxt.indexOf("QB — yours:"), wtxt.indexOf("DST — yours:"));
   assert(qbBlock.length > 0 && !/better than yours this week/.test(qbBlock), "a QB streamer is a rental or a season swap — never a one-week 'better than yours'");
+  // 2026-10-27 (Bass/Ryland question): the One-week streamers table and the claim sheet are ONE rule. A K/DST row may
+  // say "swap" only when it is a season upgrade (top-8 unit over a bottom-tier of mine) or clears STREAM_BAR against a
+  // non-elite unit of mine; "season upgrade over yours" only when the simulator's season-upgrade path applies.
+  const kdFA = T.freeAgents().filter(p => ["K","DST"].includes(p.pos) && p.mu != null && !p.onBye);
+  const kdRows = T.waiverBoard(kdFA);
+  const prn = p => { const m = /(\d+)$/.exec((p && p.posRank) || ""); return m ? +m[1] : 99; };
+  const myKD = pos => me.filter(p => p.pos === pos)[0];
+  assert(kdRows.length > 0 && kdRows.every(b => { const mine = myKD(b.fa.pos); if (!mine) return true; const v = b.verdict, up = prn(b.fa) <= 8 && prn(mine) > prn(b.fa) + 5 && (v.wkDelta == null || v.wkDelta >= 0), elite = prn(mine) <= 8 && prn(b.fa) > prn(mine) + 5;
+    return v.key === "add" ? (up || (v.wkDelta != null && v.wkDelta >= 3 && !elite)) : !(up || (v.wkDelta != null && v.wkDelta >= 3 && !elite)); }), "K/DST table verdicts follow the claim-sheet rule: swap only on a season upgrade or a +3 edge over a non-top-8 unit (" + kdRows.filter(b => b.verdict.key === "add").map(b => b.fa.name + " " + b.verdict.wkDelta).join(", ") + ")");
+  assert(kdRows.every(b => !b.verdict.seasonUp || (prn(b.fa) <= 8 && prn(myKD(b.fa.pos)) > prn(b.fa) + 5)), "'season upgrade' on a K/DST row means a top-8 season unit over a bottom-tier of mine, nothing weaker");
+  assert(kdRows.every(b => !(b.verdict.wkDelta != null && b.verdict.wkDelta > 0 && b.verdict.wkDelta < 3 && !b.verdict.seasonUp) || b.verdict.key === "marginal"), "a K/DST edge under 3 points is marginal (noise), never a swap");
+  SC.filter(s => ["K","DST"].includes(s.pos)).forEach(s => { const blk = wtxt.slice(wtxt.indexOf(s.pos + " — yours:")); const i = blk.indexOf(s.add.name); assert(i > 0 && i < blk.indexOf("Top free agents"), s.pos + " streamer table lists the claim sheet's pick (" + s.add.name + ")"); });
   console.log("== Waivers: who to drop ==");
   const WB = T.waiverBoard();
   const benchRos = T.benchSkill();

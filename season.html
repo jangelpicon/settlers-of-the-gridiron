@@ -1408,9 +1408,21 @@
     const seasonDelta = seasonRaw==null ? null : (Math.abs(seasonRaw) < 1 ? Math.round(seasonRaw*10)/10 : Math.round(seasonRaw));
     const seasonOk = seasonRaw==null || seasonRaw >= 0;   // unrounded, same test the suggestion box uses
     if (["K","DST"].includes(fa.pos)){
+      // One rule, two surfaces (2026-10-27: the table said "swap Bass +2.4 · season upgrade" at the old 1.5 bar while the
+      // claim sheet, on the 3.0 bar + season tiers, picked McPherson). Mirror weeklyStreamStatus exactly:
+      // season upgrade (top-8 unit vs a bottom-tier of mine, projecting no worse) → swap; clears STREAM_BAR and mine is
+      // not an elite hold → swap; clears the bar but mine is top-8 → hold; under the bar → noise, keep yours.
       const wk = (fa.mu!=null && drop.mu!=null) ? Math.round((fa.mu - drop.mu)*10)/10 : null;
-      return { key: wk!=null && wk>=1.5 ? "add" : wk!=null && wk>0 ? "marginal" : "pass", rosDelta, seasonDelta, wkDelta: wk,
-        text: wk==null ? "no projection" : (wk>=1.5 ? "swap: +"+wk.toFixed(1)+" pts this week" : wk>0 ? "+"+wk.toFixed(1)+" this week — barely" : "keep yours ("+wk.toFixed(1)+" this week)") };
+      const mineR = posRankNum(drop), faR = posRankNum(fa);
+      const elite = mineR <= ELITE_POS_RANK && faR > mineR + ELITE_GAP;
+      const seasonUp = faR <= ELITE_POS_RANK && mineR > faR + ELITE_GAP && (wk==null || wk >= 0);
+      const clears = wk!=null && wk >= STREAM_BAR;
+      const wkTxt = wk==null ? "" : (wk>=0?"+":"")+wk.toFixed(1);
+      if (seasonUp) return { key:"add", seasonUp:true, rosDelta, seasonDelta, wkDelta: wk, text:"swap: "+(fa.posRank||"top-8")+" for the season vs your "+(drop.posRank||"unranked")+(wk!=null?" and "+wkTxt+" this week":"")+" — claim once, then hold" };
+      if (clears && !elite) return { key:"add", seasonUp:false, rosDelta, seasonDelta, wkDelta: wk, text:"swap: "+wkTxt+" pts this week clears the "+STREAM_BAR.toFixed(0)+"-point bar ("+(fa.posRank||"unranked")+" vs your "+(drop.posRank||"unranked")+")" };
+      if (clears && elite) return { key:"pass", seasonUp:false, rosDelta, seasonDelta, wkDelta: wk, text:"hold yours: "+drop.posRank+" for the season, a drop is permanent — "+wkTxt+" this week isn't worth it" };
+      return { key: wk!=null && wk>0 ? "marginal" : "pass", seasonUp:false, rosDelta, seasonDelta, wkDelta: wk,
+        text: wk==null ? "no projection" : (wk>0 ? wkTxt+" this week — under the "+STREAM_BAR.toFixed(0)+"-point swap bar (K/DST projections are noise at that size)" : "keep yours ("+wkTxt+" this week)") };
     }
     if (fa.pos==="QB"){
       if (rosDelta >= ROS_MARGIN && seasonOk) return { key:"add", rosDelta, seasonDelta, text:"SWAP: better than "+drop.name+" for the season (+"+rosDelta+" ROS spots"+(seasonDelta!=null?", +"+seasonDelta+" season pts":"")+")" };
@@ -1630,11 +1642,16 @@
     ["QB","DST","K"].forEach(pos=>{
       const mineList = me.filter(p=>p.pos===pos && !p.onBye && !undraftable(p) && p[wkey]!=null);
       const mine = mineList.sort((a,b)=> wkey==="mu" ? b.mu-a.mu : a.wkRank-b.wkRank)[0];
-      const best = fa.filter(p=>p.pos===pos && p[wkey]!=null && !p.onBye).sort((a,b)=> wkey==="mu" ? b.mu-a.mu : a.wkRank-b.wkRank).slice(0,3);
+      // Top 3 this week; ties (within STREAM_TIE) break on season rank so the claim sheet's pick lists first, and the
+      // claim sheet's add is always on the table even if a fourth man edges him on raw projection.
+      const byWeek = (a,b)=>{ if (wkey!=="mu") return a.wkRank-b.wkRank; const d=b.mu-a.mu; return Math.abs(d)>=STREAM_TIE ? d : (posRankNum(a)-posRankNum(b)) || d; };
+      let best = fa.filter(p=>p.pos===pos && p[wkey]!=null && !p.onBye).sort(byWeek).slice(0,3);
+      const claimPick = pos==="QB" ? null : (weeklyStreamClaims(me, fa, wkey).find(c=>c.pos===pos) || {}).add;
+      if (claimPick && !best.some(p=>p.n===claimPick.n)) best = [claimPick].concat(best).slice(0,3);
       h += "<div class='muted' style='margin:6px 0 2px'><b>"+pos+"</b> — yours: "+(mine? esc(mine.name)+(P?" ("+mine.mu.toFixed(1)+" proj)":" (wk #"+(mine.wkRank!=null?mine.wkRank:"–")+")") : "none this week — stream one")+"</div><div class='tbl'><div class='gw'>"+waiverHeader();
       waiverBoard(me, bench, best).forEach(b=>{
         const p = b.fa, bt = mine && better(p, mine);
-        const tag = b.verdict.key==="add" ? "<span class='tag good'>season upgrade over yours</span>" : !mine ? "<span class='tag good'>fills the hole this week</span>" : (bt ? (pos==="QB" ? "<span class='tag warn' title='1-week rental only — keep "+esc(mine.name)+"'>1-wk rental</span>" : "<span class='tag good'>better than yours this week</span>") : "");
+        const tag = b.verdict.key==="add" ? (b.verdict.seasonUp || pos==="QB" ? "<span class='tag good'>season upgrade over yours</span>" : "<span class='tag good'>clears the swap bar</span>") : !mine ? "<span class='tag good'>fills the hole this week</span>" : (bt ? (pos==="QB" ? "<span class='tag warn' title='1-week rental only — keep "+esc(mine.name)+"'>1-wk rental</span>" : "<span class='tag good'>better than yours this week</span>") : "");
         h += waiverRow(b, tag);
       });
       h += "</div></div>";
