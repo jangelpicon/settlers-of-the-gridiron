@@ -1463,10 +1463,13 @@
   //  (a) it compared THIS WEEK only, so the DST3 for the season was a "drop" for a +1.4 matchup edge that moved
   //      above and below the bar between 2 AM and 8 AM; (b) a kicker on bye made "mine" vanish, so the sheet said
   //      "drop nobody" on a full roster; (c) one add, no backup chain, no bye or season-rank context.
-  const STREAM_BAR = 1.5;    // this-week points needed to justify a straight swap of a startable K/DST
+  // 2026-10-26 Week 7 post-mortem (Jets 0 / Fitzgerald 1 after a +1.7 swap off the Steelers): K/DST projections
+  // correlate ~0.3 with actuals and swing ~5.5 pts a week, so a sub-3-point edge is noise. Swap only on a real edge,
+  // and treat a top-8 season unit as a hold unless the add is in the same tier.
+  const STREAM_BAR = 3.0;    // this-week points needed to justify a straight swap of a startable K/DST
   const STREAM_TIE = 0.5;    // projections closer than this are noise → break on season rank, then "bye already done"
-  const ELITE_POS_RANK = 5;  // a K/DST ranked top-5 for the season is a hold, not a weekly rental
-  const ELITE_GAP = 3;       // ...unless the add is within this many season spots of him
+  const ELITE_POS_RANK = 8;  // a K/DST ranked top-8 for the season is a hold, not a weekly rental
+  const ELITE_GAP = 5;       // ...unless the add is within this many season spots of him
   const posRankNum = p => { const m = /(\d+)$/.exec((p && p.posRank) || ""); return m ? +m[1] : 99; };
   const byeDone = p => p.bye != null && S.week != null && p.bye < S.week;
   const byeNext = p => p.bye != null && S.week != null && p.bye === S.week + 1;
