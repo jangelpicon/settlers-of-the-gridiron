@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-10-26",
- "source": "ESPN league 882823976 sync 2026-10-26 21:28 CDT",
+ "updated": "2026-10-27",
+ "source": "ESPN league 882823976 sync 2026-10-27 13:04 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -15,7 +15,7 @@
     "name": "James Cook III",
     "pos": "RB",
     "team": "BUF",
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Brock Bowers",
@@ -46,13 +46,13 @@
     "name": "Matthew Stafford",
     "pos": "QB",
     "team": "LAR",
-    "slot": "BN"
+    "slot": "QB"
    },
    {
     "name": "J.K. Dobbins",
     "pos": "RB",
     "team": "DEN",
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "Spencer Shrader",
@@ -70,13 +70,13 @@
     "name": "Bhayshul Tuten",
     "pos": "RB",
     "team": "JAX",
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "C.J. Stroud",
     "pos": "QB",
     "team": "HOU",
-    "slot": "QB"
+    "slot": "BN"
    },
    {
     "name": "Kirk Cousins",
@@ -88,7 +88,7 @@
     "name": "Malik Washington",
     "pos": "WR",
     "team": "MIA",
-    "slot": "FLEX"
+    "slot": "BN"
    },
    {
     "name": "Denver Broncos",
@@ -545,7 +545,7 @@
     "name": "CeeDee Lamb",
     "pos": "WR",
     "team": "DAL",
-    "slot": "FLEX"
+    "slot": "WR"
    },
    {
     "name": "Derrick Henry",
@@ -557,7 +557,7 @@
     "name": "Malik Nabers",
     "pos": "WR",
     "team": "NYG",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Travis Etienne Jr.",
@@ -570,7 +570,7 @@
     "name": "Quinshon Judkins",
     "pos": "RB",
     "team": "CLE",
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Brandon Aubrey",
@@ -618,13 +618,13 @@
     "name": "Cleveland Browns",
     "pos": "DST",
     "team": "CLE",
-    "slot": "DST"
+    "slot": "BN"
    },
    {
     "name": "Pittsburgh Steelers",
     "pos": "DST",
     "team": "PIT",
-    "slot": "BN"
+    "slot": "DST"
    }
   ],
   "ur done": [
@@ -656,19 +656,19 @@
     "name": "D'Andre Swift",
     "pos": "RB",
     "team": "CHI",
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "Bucky Irving",
     "pos": "RB",
     "team": "TB",
-    "slot": "FLEX"
+    "slot": "RB"
    },
    {
     "name": "Parker Washington",
     "pos": "WR",
     "team": "JAX",
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Jared Goff",
