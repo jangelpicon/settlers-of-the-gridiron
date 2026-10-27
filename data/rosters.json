@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-10-22",
- "source": "ESPN league 882823976 sync 2026-10-22 08:26 CDT",
+ "updated": "2026-10-26",
+ "source": "ESPN league 882823976 sync 2026-10-26 20:55 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -27,7 +27,8 @@
     "name": "DeVonta Smith",
     "pos": "WR",
     "team": "PHI",
-    "slot": "WR"
+    "ir": true,
+    "slot": "IR"
    },
    {
     "name": "Ladd McConkey",
@@ -39,7 +40,7 @@
     "name": "Jameson Williams",
     "pos": "WR",
     "team": "DET",
-    "slot": "FLEX"
+    "slot": "WR"
    },
    {
     "name": "Matthew Stafford",
@@ -84,9 +85,15 @@
     "slot": "BN"
    },
    {
-    "name": "Indianapolis Colts",
+    "name": "Malik Washington",
+    "pos": "WR",
+    "team": "MIA",
+    "slot": "FLEX"
+   },
+   {
+    "name": "Denver Broncos",
     "pos": "DST",
-    "team": "IND",
+    "team": "DEN",
     "slot": "DST"
    }
   ],
@@ -107,7 +114,7 @@
     "name": "Breece Hall",
     "pos": "RB",
     "team": "NYJ",
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Kyren Williams",
@@ -120,12 +127,6 @@
     "pos": "QB",
     "team": "DAL",
     "slot": "QB"
-   },
-   {
-    "name": "Juwan Johnson",
-    "pos": "TE",
-    "team": "NO",
-    "slot": "TE"
    },
    {
     "name": "Carnell Tate",
@@ -174,6 +175,12 @@
     "pos": "WR",
     "team": "CHI",
     "slot": "BN"
+   },
+   {
+    "name": "Dalton Kincaid",
+    "pos": "TE",
+    "team": "BUF",
+    "slot": "TE"
    }
   ],
   "Resting Blitz Face": [
@@ -432,13 +439,13 @@
     "name": "RJ Harvey",
     "pos": "RB",
     "team": "DEN",
-    "slot": "FLEX"
+    "slot": "BN"
    },
    {
     "name": "Rome Odunze",
     "pos": "WR",
     "team": "CHI",
-    "slot": "BN"
+    "slot": "FLEX"
    }
   ],
   "BlitzAndGiggles": [
@@ -590,12 +597,6 @@
     "slot": "BN"
    },
    {
-    "name": "Devaughn Vele",
-    "pos": "WR",
-    "team": "NO",
-    "slot": "BN"
-   },
-   {
     "name": "Dallas Goedert",
     "pos": "TE",
     "team": "PHI",
@@ -618,6 +619,12 @@
     "pos": "DST",
     "team": "CLE",
     "slot": "DST"
+   },
+   {
+    "name": "Pittsburgh Steelers",
+    "pos": "DST",
+    "team": "PIT",
+    "slot": "BN"
    }
   ],
   "ur done": [
@@ -673,7 +680,8 @@
     "name": "Jeremiyah Love",
     "pos": "RB",
     "team": "ARI",
-    "slot": "BN"
+    "ir": true,
+    "slot": "IR"
    },
    {
     "name": "DJ Moore",
@@ -698,6 +706,18 @@
     "pos": "RB",
     "team": "PIT",
     "slot": "RB"
+   },
+   {
+    "name": "Jakobi Meyers",
+    "pos": "WR",
+    "team": "JAX",
+    "slot": "BN"
+   },
+   {
+    "name": "Chris Godwin Jr.",
+    "pos": "WR",
+    "team": "TB",
+    "slot": "BN"
    }
   ],
   "PapasCabezas": [
