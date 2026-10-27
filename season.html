@@ -1520,6 +1520,11 @@
       const qualifies = st.delta!=null ? st.delta>=STREAM_BAR : (best.wkRank!=null && mine.wkRank!=null && (mine.wkRank-best.wkRank)>=3);
       const mineR = posRankNum(mine), bestR = posRankNum(best);
       const elite = mineR <= ELITE_POS_RANK && bestR > mineR + ELITE_GAP;
+      // Season upgrade (2026-10-26): holding a bottom-tier unit while a top-8 season K/DST sits on the wire is the
+      // mirror image of the Jets mistake — the weekly edge is noise either way, so take the better season unit as
+      // long as he doesn't project WORSE this week. The chain still only lists adds that clear the weekly bar.
+      const seasonUp = bestR <= ELITE_POS_RANK && mineR > bestR + ELITE_GAP && (st.delta==null || st.delta >= 0);
+      if (seasonUp && !qualifies){ st.verdict = "swap"; st.drop = mine; st.reason = "season upgrade: "+best.name+" is "+best.posRank+" for the rest of the season vs "+mine.name+" ("+(mine.posRank||"unranked")+") and projects "+(st.delta!=null?(st.delta>=0?"+":"")+st.delta.toFixed(1)+" points":"no worse")+" this week — one claim, then hold him"; if (!st.chain.some(c=>c.n===best.n)) st.chain = [best].concat(st.chain).slice(0,3); return st; }
       if (qualifies && !elite){ st.verdict = "swap"; st.drop = mine; st.reason = "+"+(st.delta!=null?st.delta.toFixed(1)+" points":"matchup")+" this week, and "+best.name+" ("+(best.posRank||"unranked")+" for the season) is in the same tier as "+mine.name+" ("+(mine.posRank||"unranked")+")"; return st; }
       if (qualifies && elite){ st.verdict = "hold"; st.reason = "hold "+mine.name+": he's "+mine.posRank+" for the rest of the season and a drop is permanent; "+best.name+" is "+(best.posRank||"unranked")+", so +"+(st.delta!=null?st.delta.toFixed(1):"?")+" this week isn't worth it"; return st; }
       st.verdict = "hold"; st.reason = (st.delta!=null ? (st.delta>=0?"+":"")+st.delta.toFixed(1)+" points" : "no clear matchup edge")+" this week for "+best.name+" is under the "+STREAM_BAR+"-point swap bar"+(mineR<=ELITE_POS_RANK?" (and "+mine.name+" is "+mine.posRank+" for the season)":"")+" — keep "+mine.name;
