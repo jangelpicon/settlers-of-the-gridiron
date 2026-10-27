@@ -1416,13 +1416,13 @@
       const mineR = posRankNum(drop), faR = posRankNum(fa);
       const elite = mineR <= ELITE_POS_RANK && faR > mineR + ELITE_GAP;
       const seasonUp = faR <= ELITE_POS_RANK && mineR > faR + ELITE_GAP && (wk==null || wk >= 0);
-      const clears = wk!=null && wk >= STREAM_BAR;
+      const bar = swapBar(drop), clears = wk!=null && wk >= bar;
       const wkTxt = wk==null ? "" : (wk>=0?"+":"")+wk.toFixed(1);
       if (seasonUp) return { key:"add", seasonUp:true, rosDelta, seasonDelta, wkDelta: wk, text:"swap: "+(fa.posRank||"top-8")+" for the season vs your "+(drop.posRank||"unranked")+(wk!=null?" and "+wkTxt+" this week":"")+" — claim once, then hold" };
-      if (clears && !elite) return { key:"add", seasonUp:false, rosDelta, seasonDelta, wkDelta: wk, text:"swap: "+wkTxt+" pts this week clears the "+STREAM_BAR.toFixed(0)+"-point bar ("+(fa.posRank||"unranked")+" vs your "+(drop.posRank||"unranked")+")" };
+      if (clears && !elite) return { key:"add", seasonUp:false, rosDelta, seasonDelta, wkDelta: wk, text:"swap: "+wkTxt+" pts this week"+(isEliteUnit(drop) ? " clears the "+STREAM_BAR.toFixed(0)+"-point bar for a same-tier swap" : " — your "+(drop.posRank||"unranked")+" isn't worth protecting")+" ("+(fa.posRank||"unranked")+" vs your "+(drop.posRank||"unranked")+")" };
       if (clears && elite) return { key:"pass", seasonUp:false, rosDelta, seasonDelta, wkDelta: wk, text:"hold yours: "+drop.posRank+" for the season, a drop is permanent — "+wkTxt+" this week isn't worth it" };
       return { key: wk!=null && wk>0 ? "marginal" : "pass", seasonUp:false, rosDelta, seasonDelta, wkDelta: wk,
-        text: wk==null ? "no projection" : (wk>0 ? wkTxt+" this week — under the "+STREAM_BAR.toFixed(0)+"-point swap bar (K/DST projections are noise at that size)" : "keep yours ("+wkTxt+" this week)") };
+        text: wk==null ? "no projection" : (wk>0 ? wkTxt+" this week — "+(isEliteUnit(drop) ? "under the "+STREAM_BAR.toFixed(0)+"-point bar for dropping a top-8 season unit" : "a coin flip (within "+STREAM_TIE+"), nothing to gain") : "keep yours ("+wkTxt+" this week)") };
     }
     if (fa.pos==="QB"){
       if (rosDelta >= ROS_MARGIN && seasonOk) return { key:"add", rosDelta, seasonDelta, text:"SWAP: better than "+drop.name+" for the season (+"+rosDelta+" ROS spots"+(seasonDelta!=null?", +"+seasonDelta+" season pts":"")+")" };
@@ -1480,11 +1480,17 @@
   // 2026-10-26 Week 7 post-mortem (Jets 0 / Fitzgerald 1 after a +1.7 swap off the Steelers): K/DST projections
   // correlate ~0.3 with actuals and swing ~5.5 pts a week, so a sub-3-point edge is noise. Swap only on a real edge,
   // and treat a top-8 season unit as a hold unless the add is in the same tier.
-  const STREAM_BAR = 3.0;    // this-week points needed to justify a straight swap of a startable K/DST
+  // 2026-10-27 (Jose, Bass/Ryland): the bar protects a unit WORTH holding. It applies only when mine is a top-8
+  // season unit; a replaceable (non-top-8) K/DST swaps for the best this-week projection whenever the edge is more
+  // than a coin flip (STREAM_TIE) — there is nothing to protect, so "it isn't a season upgrade" is never a reason to keep him.
+  const STREAM_BAR = 3.0;    // this-week points needed to justify swapping OUT a top-8 season K/DST (for a same-tier add)
   const STREAM_TIE = 0.5;    // projections closer than this are noise → break on season rank, then "bye already done"
   const ELITE_POS_RANK = 8;  // a K/DST ranked top-8 for the season is a hold, not a weekly rental
   const ELITE_GAP = 5;       // ...unless the add is within this many season spots of him
   const posRankNum = p => { const m = /(\d+)$/.exec((p && p.posRank) || ""); return m ? +m[1] : 99; };
+  const isEliteUnit = p => !!p && posRankNum(p) <= ELITE_POS_RANK;
+  const swapBar = mine => isEliteUnit(mine) ? STREAM_BAR : STREAM_TIE;   // points a candidate must beat MY unit by
+  const swapBarRank = mine => isEliteUnit(mine) ? 3 : 1;                  // same idea on weekly rank when no projections
   const byeDone = p => p.bye != null && S.week != null && p.bye < S.week;
   const byeNext = p => p.bye != null && S.week != null && p.bye === S.week + 1;
   // ESPN waivers in this league hold a dropped player 24h and process daily; a claim filed now lands no sooner
@@ -1510,7 +1516,7 @@
       // not a footnote (2026-10-15: Broncos at +1.0 and Giants at +0.0 were listed as Priority 2/3 behind the
       // Steelers, and that morning a downgrade sat under the Broncos the same way). Fill (nobody startable) keeps
       // every candidate. Late-kick candidates go to the back of the chain.
-      const clearsBar = c => !mine ? true : (c.mu!=null && mine.mu!=null) ? (c.mu-mine.mu) >= STREAM_BAR : (c.wkRank!=null && mine.wkRank!=null && (mine.wkRank-c.wkRank) >= 3);
+      const clearsBar = c => !mine ? true : (c.mu!=null && mine.mu!=null) ? (c.mu-mine.mu) >= swapBar(mine) : (c.wkRank!=null && mine.wkRank!=null && (mine.wkRank-c.wkRank) >= swapBarRank(mine));
       const chain = cands.filter(c=>!mine || c.n!==mine.n).filter(clearsBar).sort((a,b)=>(a.claimLate?1:0)-(b.claimLate?1:0)).slice(0,3);
       const rosterFull = openSpots(me) === 0;
       const st = { pos, mine, best, chain, delta:null, verdict:"ok", drop:null, reason:"" };
@@ -1531,17 +1537,17 @@
       }
       if (best.n===mine.n){ st.reason = mine.name+" is already the best "+pos+" available"; return st; }
       if (best.mu!=null && mine.mu!=null) st.delta = Math.round((best.mu-mine.mu)*10)/10;
-      const qualifies = st.delta!=null ? st.delta>=STREAM_BAR : (best.wkRank!=null && mine.wkRank!=null && (mine.wkRank-best.wkRank)>=3);
+      const qualifies = st.delta!=null ? st.delta>=swapBar(mine) : (best.wkRank!=null && mine.wkRank!=null && (mine.wkRank-best.wkRank)>=swapBarRank(mine));
       const mineR = posRankNum(mine), bestR = posRankNum(best);
       const elite = mineR <= ELITE_POS_RANK && bestR > mineR + ELITE_GAP;
       // Season upgrade (2026-10-26): holding a bottom-tier unit while a top-8 season K/DST sits on the wire is the
       // mirror image of the Jets mistake — the weekly edge is noise either way, so take the better season unit as
       // long as he doesn't project WORSE this week. The chain still only lists adds that clear the weekly bar.
       const seasonUp = bestR <= ELITE_POS_RANK && mineR > bestR + ELITE_GAP && (st.delta==null || st.delta >= 0);
-      if (seasonUp && !qualifies){ st.verdict = "swap"; st.drop = mine; st.reason = "season upgrade: "+best.name+" is "+best.posRank+" for the rest of the season vs "+mine.name+" ("+(mine.posRank||"unranked")+") and projects "+(st.delta!=null?(st.delta>=0?"+":"")+st.delta.toFixed(1)+" points":"no worse")+" this week — one claim, then hold him"; if (!st.chain.some(c=>c.n===best.n)) st.chain = [best].concat(st.chain).slice(0,3); return st; }
-      if (qualifies && !elite){ st.verdict = "swap"; st.drop = mine; st.reason = "+"+(st.delta!=null?st.delta.toFixed(1)+" points":"matchup")+" this week, and "+best.name+" ("+(best.posRank||"unranked")+" for the season) is in the same tier as "+mine.name+" ("+(mine.posRank||"unranked")+")"; return st; }
+      if (seasonUp){ st.verdict = "swap"; st.drop = mine; st.reason = "season upgrade: "+best.name+" is "+best.posRank+" for the rest of the season vs "+mine.name+" ("+(mine.posRank||"unranked")+") and projects "+(st.delta!=null?(st.delta>=0?"+":"")+st.delta.toFixed(1)+" points":"no worse")+" this week — one claim, then hold him"; if (!st.chain.some(c=>c.n===best.n)) st.chain = [best].concat(st.chain).slice(0,3); return st; }
+      if (qualifies && !elite){ st.verdict = "swap"; st.drop = mine; st.reason = "+"+(st.delta!=null?st.delta.toFixed(1)+" points":"matchup")+" this week"+(isEliteUnit(mine) ? ", and "+best.name+" ("+(best.posRank||"unranked")+" for the season) is in the same tier as "+mine.name+" ("+(mine.posRank||"unranked")+")" : " for "+best.name+" ("+(best.posRank||"unranked")+" for the season); "+mine.name+" ("+(mine.posRank||"unranked")+") isn't a top-8 season unit, so there's nothing to protect — take the better week"); return st; }
       if (qualifies && elite){ st.verdict = "hold"; st.reason = "hold "+mine.name+": he's "+mine.posRank+" for the rest of the season and a drop is permanent; "+best.name+" is "+(best.posRank||"unranked")+", so +"+(st.delta!=null?st.delta.toFixed(1):"?")+" this week isn't worth it"; return st; }
-      st.verdict = "hold"; st.reason = (st.delta!=null ? (st.delta>=0?"+":"")+st.delta.toFixed(1)+" points" : "no clear matchup edge")+" this week for "+best.name+" is under the "+STREAM_BAR+"-point swap bar"+(mineR<=ELITE_POS_RANK?" (and "+mine.name+" is "+mine.posRank+" for the season)":"")+" — keep "+mine.name;
+      st.verdict = "hold"; st.reason = (st.delta!=null ? (st.delta>=0?"+":"")+st.delta.toFixed(1)+" points" : "no clear matchup edge")+" this week for "+best.name+(isEliteUnit(mine) ? " is under the "+STREAM_BAR+"-point swap bar (and "+mine.name+" is "+mine.posRank+" for the season — a drop is permanent)" : " is a coin flip (within "+STREAM_TIE+") — nothing to gain")+" — keep "+mine.name;
       return st;
     });
   }
@@ -1627,7 +1633,7 @@
           const late = c.claimLate ? " <span class='tag warn' title='This league holds dropped players on waivers for "+WAIVER_HOURS+"h; a claim filed now processes after his game, so he scores nothing for you this week. Only worth it as an instant add if he has already cleared waivers.'>⚠ kicks "+esc(kickText(c.game))+" — a waiver claim lands after his game</span>" : "";
           h += "<div class='suggest'><b>Priority "+pri+"</b> · ➕ Add "+wkCand(c)+" &nbsp;➖ Drop "+dropHtml+" <span class='tag good'>weekly "+s.pos+"</span>"+late+"<br><span class='muted'>"+note+"</span></div>";
         });
-        h += "<div class='muted' style='margin:-2px 0 8px'>"+s.pos+" chain order: every claim here beats your "+s.pos+" by at least "+STREAM_BAR+" this week on its own (a backup that doesn't is left out); this-week projection first; projections within "+STREAM_TIE+" are a coin flip, so ties go to a kicker/defense whose bye is already behind him when the season ranks are close, otherwise to the better season rank. Anyone on bye next week is left out — you'd be streaming again in seven days.</div>";
+        h += "<div class='muted' style='margin:-2px 0 8px'>"+s.pos+" chain order: every claim here beats your "+s.pos+" by at least "+swapBar(s.drop)+" this week on its own"+(isEliteUnit(s.drop)?" (he's a top-8 season unit, so only a real edge moves him)":" (he's not a top-8 season unit, so any edge beyond a coin flip counts)")+" — a backup that doesn't is left out; this-week projection first; projections within "+STREAM_TIE+" are a coin flip, so ties go to a kicker/defense whose bye is already behind him when the season ranks are close, otherwise to the better season rank. Anyone on bye next week is left out — you'd be streaming again in seven days.</div>";
       });
       streamHolds.forEach(st=>{ h += "<div class='suggest'>✋ <b>Hold "+esc(st.mine.name)+"</b> ("+st.pos+(st.mine.posRank?", "+esc(st.mine.posRank)+" for the season":"")+(st.mine.mu!=null?", "+st.mine.mu.toFixed(1)+" proj this week":"")+")<br><span class='muted'>"+esc(st.reason)+". Best available: "+esc(st.best.name)+" ("+(st.best.posRank||"unranked")+(st.best.mu!=null?", "+st.best.mu.toFixed(1)+" proj":"")+").</span></div>"; });
     }
