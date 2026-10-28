@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-10-27",
- "source": "ESPN league 882823976 sync 2026-10-27 19:57 CDT",
+ "updated": "2026-10-28",
+ "source": "ESPN league 882823976 sync 2026-10-28 02:00 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -206,7 +206,7 @@
     "name": "Tee Higgins",
     "pos": "WR",
     "team": "CIN",
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Davante Adams",
@@ -231,7 +231,7 @@
     "name": "Jalen Coker",
     "pos": "WR",
     "team": "CAR",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Brock Purdy",
@@ -249,13 +249,13 @@
     "name": "Javonte Williams",
     "pos": "RB",
     "team": "DAL",
-    "slot": "RB"
+    "slot": "FLEX"
    },
    {
     "name": "Matthew Golden",
     "pos": "WR",
     "team": "GB",
-    "slot": "FLEX"
+    "slot": "BN"
    },
    {
     "name": "Will Reichard",
@@ -267,7 +267,7 @@
     "name": "Josh Jacobs",
     "pos": "RB",
     "team": "GB",
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Tre Tucker",
