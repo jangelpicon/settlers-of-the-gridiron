@@ -708,6 +708,19 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(stSvgs.every(s => s.querySelectorAll("g.pkg text.pkt").length === 7), "each pack line names itself on hover");
   assert(/the pack/.test(stTab.textContent), "legend explains the pack context lines");
   assert(/Total/.test(stTab.textContent), "scores table view renders beside the charts");
+  // Jose 2026-10-27: G / Total / Avg per team from real matchups only; a sat week reads "sat" and is excluded.
+  { const tbl = stTab.querySelector(".scores-table"); const hdr = tbl ? [...tbl.children].map(c => c.textContent.trim()) : []; assert(tbl && hdr.includes("G") && hdr.includes("Total") && hdr.includes("Avg"), "scores table carries G, Total and Avg columns");
+    const cells = [...tbl.children].map(c => c.textContent.trim()); const wkN = cells.slice(1).findIndex(c => c === "G"); const perRow = wkN + 4; const body = cells.slice(perRow);
+    const AS = T.allScores(); const wkList = Object.keys(AS).map(Number).sort((a, b) => a - b);
+    assert(wkN === wkList.length, "scores table shows one column per completed week (" + wkN + ")");
+    const teams = Object.keys(rosters.teams); let prevAvg = Infinity, satSeen = 0;
+    for (let i = 0; i < body.length; i += perRow){ const row = body.slice(i, i + perRow); const t = teams.find(x => row[0] === x || row[0].startsWith(x)); assert(!!t, "scores table row maps to a team: " + row[0]);
+      const g = wkList.filter(w => AS[w][t] != null), tot = g.reduce((s, w) => s + AS[w][t], 0), avg = g.length ? tot / g.length : 0; satSeen += row.slice(1, 1 + wkN).filter(c => c === "sat").length;
+      assert(+row[1 + wkN] === g.length && Math.abs(+row[2 + wkN] - tot) < 0.06 && Math.abs(+row[3 + wkN] - avg) < 0.06, t + ": G=" + g.length + " Total=" + tot.toFixed(1) + " Avg=" + avg.toFixed(1) + " from matchup weeks only (row: " + row.slice(1 + wkN).join("/") + ")");
+      assert(Math.abs(avg - T.teamSeason(t).avg) < 0.06, t + ": table average equals the season-story average (both exclude sat weeks)");
+      assert(+row[3 + wkN] <= prevAvg + 1e-9, "scores table sorted by average, high to low"); prevAvg = +row[3 + wkN]; }
+    const satExpected = wkList.reduce((n, w) => n + teams.filter(t => AS[w][t] == null).length, 0);
+    assert(satSeen === satExpected, "every sat week renders as 'sat' and nothing else does (" + satSeen + "/" + satExpected + " cells)"); }
   // roster-vs-league chart: one diverging bar per non-K/DST starting slot (QB,RB1,RB2,WR1,WR2,TE,FLEX)
   const edgeSvg = stTab.querySelector("svg.lc[aria-label='Roster edges']");
   assert(edgeSvg && /Your roster vs the league/.test(stTab.textContent), "Strength tab renders a roster-vs-league edges chart");

@@ -2202,12 +2202,16 @@
       h += "<div class='panel'><h2>Scoring over time</h2>";
       h += lineChart("Points per week", "Weekly scores from real matchups — a week a team sat out is a gap and counts for nothing. Gold = you, blue = the best other roster on paper ("+esc(rival)+")."+pn, scoreSeries(rival, false), frame.wks);
       // table view of the completed-week scores (accessibility + exact numbers)
-      const totals = {}; teamNames.forEach(t=>{ totals[t] = wks.reduce((s,w)=>s+(scores[w][t]||0),0); });
-      const tg = "display:grid;grid-template-columns:minmax(110px,1.5fr) repeat("+(wks.length+1)+",minmax(44px,1fr));gap:4px;align-items:center";
-      h += "<div style='"+tg+";margin-top:10px'><span class='muted'>Scores</span>"+wks.map(w=>"<span class='muted' style='text-align:right'>Wk "+w+"</span>").join("")+"<span class='muted' style='text-align:right'><b>Total</b></span>"+
-        teamNames.slice().sort((a,b)=>totals[b]-totals[a]).map(t=>{
+      // Jose 2026-10-27: per-team games played, total and average per week — real matchups only. A sat week is
+      // shown as "sat" and counts for nothing in G, Total or Avg (same as ESPN's points-for). Sorted by average.
+      const totals = {}, games = {}, avgs = {};
+      teamNames.forEach(t=>{ const g = wks.filter(w=>scores[w][t]!=null); games[t] = g.length; totals[t] = g.reduce((s,w)=>s+scores[w][t],0); avgs[t] = g.length ? totals[t]/g.length : 0; });
+      const tg = "display:grid;grid-template-columns:minmax(110px,1.5fr) repeat("+(wks.length+3)+",minmax(44px,1fr));gap:4px;align-items:center";
+      h += "<div class='muted' style='margin-top:10px'>Completed weeks only. <b>G</b> = matchups played, <b>Avg</b> = total ÷ G; a week a team sat out shows as <i>sat</i> and counts for nothing.</div>";
+      h += "<div class='scores-table' style='"+tg+";margin-top:4px'><span class='muted'>Scores (by avg)</span>"+wks.map(w=>"<span class='muted' style='text-align:right'>Wk "+w+"</span>").join("")+"<span class='muted' style='text-align:right'><b>G</b></span><span class='muted' style='text-align:right'><b>Total</b></span><span class='muted' style='text-align:right'><b>Avg</b></span>"+
+        teamNames.slice().sort((a,b)=>avgs[b]-avgs[a] || totals[b]-totals[a]).map(t=>{
           const mine = t===R.me;
-          return "<span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>"+(mine?"<b class='hl'>":"")+esc(t)+(mine?"</b>":"")+"</span>"+wks.map(w=>"<span class='c num' style='text-align:right'>"+(scores[w][t]!=null?scores[w][t].toFixed(1):"–")+"</span>").join("")+"<span class='num' style='text-align:right'><b>"+totals[t].toFixed(1)+"</b></span>";
+          return "<span style='overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>"+(mine?"<b class='hl'>":"")+esc(t)+(mine?"</b>":"")+"</span>"+wks.map(w=>"<span class='c num' style='text-align:right'>"+(scores[w][t]!=null?scores[w][t].toFixed(1):"<i class='muted'>sat</i>")+"</span>").join("")+"<span class='num' style='text-align:right'>"+games[t]+"</span><span class='num' style='text-align:right'><b>"+totals[t].toFixed(1)+"</b></span><span class='num' style='text-align:right'><b>"+avgs[t].toFixed(1)+"</b></span>";
         }).join("")+"</div></div>";
     } else {
       h += "<div class='panel'><h2>Scoring over time</h2><div class='muted'>Charts appear once at least two weeks of real scores exist in the schedule data.</div></div>";
