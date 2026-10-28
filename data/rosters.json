@@ -1,7 +1,7 @@
 {
  "me": "ur done",
  "updated": "2026-10-27",
- "source": "ESPN league 882823976 sync 2026-10-27 18:00 CDT",
+ "source": "ESPN league 882823976 sync 2026-10-27 19:57 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -108,7 +108,7 @@
     "name": "Rashee Rice",
     "pos": "WR",
     "team": "KC",
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Breece Hall",
@@ -138,7 +138,7 @@
     "name": "DK Metcalf",
     "pos": "WR",
     "team": "PIT",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Emeka Egbuka",
@@ -162,7 +162,7 @@
     "name": "Jaylen Waddle",
     "pos": "WR",
     "team": "DEN",
-    "slot": "FLEX"
+    "slot": "BN"
    },
    {
     "name": "Trevor Lawrence",
@@ -174,7 +174,7 @@
     "name": "Luther Burden III",
     "pos": "WR",
     "team": "CHI",
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Dalton Kincaid",
@@ -719,13 +719,13 @@
     "name": "Christian McCaffrey",
     "pos": "RB",
     "team": "SF",
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "Nico Collins",
     "pos": "WR",
     "team": "HOU",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Kenneth Walker III",
@@ -755,7 +755,7 @@
     "name": "Christian Watson",
     "pos": "WR",
     "team": "GB",
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Minnesota Vikings",
@@ -767,7 +767,7 @@
     "name": "Tony Pollard",
     "pos": "RB",
     "team": "TEN",
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Cam Little",
