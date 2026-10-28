@@ -74,10 +74,17 @@ def main():
     if not weekly["FLEX"] or not weekly["QB"]: sys.exit("weekly feeds empty — refusing")
     inj = injuries()
     now = datetime.datetime.now(zoneinfo.ZoneInfo("America/Chicago"))
+    # FantasyPros consensus provenance (Jose 2026-10-27: the ROS sheet moved twice in one Tuesday). ecrData carries
+    # when the consensus was last recomputed and how many experts are in it; recorded so we can tell a fresh
+    # Tuesday consensus from a half-submitted one and learn when it actually settles each week.
+    fp_ts = ros_meta.get("last_updated_ts")
+    fp_src = {"lastUpdatedTs": int(fp_ts) if fp_ts else None,
+              "lastUpdated": datetime.datetime.fromtimestamp(int(fp_ts), zoneinfo.ZoneInfo("America/Chicago")).strftime("%Y-%m-%d %-I:%M %p CT") if fp_ts else None,
+              "experts": ros_meta.get("total_experts"), "count": ros_meta.get("count")}
     out = {"generated": now.strftime("%Y-%m-%d %-I:%M %p CT"), "week": int(week) if week else None,
-           "ros": ros, "weekly": weekly, "injuries": inj}
+           "fpRos": fp_src, "ros": ros, "weekly": weekly, "injuries": inj}
     (HERE / "data" / "season.json").write_text(json.dumps(out, separators=(",", ":")))
-    print(f"week {out['week']}: ROS {len(ros)}, weekly FLEX {len(weekly['FLEX'])} QB {len(weekly['QB'])} DST {len(weekly['DST'])} K {len(weekly['K'])}, injuries {len(inj)} -> data/season.json ({out['generated']})")
+    print(f"week {out['week']}: ROS {len(ros)}, weekly FLEX {len(weekly['FLEX'])} QB {len(weekly['QB'])} DST {len(weekly['DST'])} K {len(weekly['K'])}, injuries {len(inj)} -> data/season.json ({out['generated']}); FP ROS consensus updated {fp_src['lastUpdated']} by {fp_src['experts']} experts")
 
 if __name__ == "__main__":
     main()
