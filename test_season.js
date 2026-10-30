@@ -762,6 +762,34 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     const mine = sbPanels[0], mWp2 = (d.getElementById("tab-matchup").textContent.match(/Win probability\s*(\d+)%/) || [])[1];
     assert(mine.dataset.a === ME && mine.dataset.b === coSb.opp && mWp2 != null && sbWp(mine) === +mWp2, "real data: my game leads the Scoreboard and agrees with the Matchup tab (" + mWp2 + "%)");
   }
+  // Other teams' lineups mirror what their managers SET on ESPN (Jose 2026-10-30: SOW showed DK Metcalf, the
+  // optimizer's pick, while ESPN had him on the bench). Mine stays the Matchup-tab plan.
+  { const cleanName = t => t.replace(/(\s+(locked|Q|D|DTD|O|IR|SUSP|BYE))+\s*$/, "").trim(); // strips stacked suffixes ("Christian Watson Q locked")
+    const setStarters = team => rosters.teams[team].filter(p => p.slot && p.slot !== "BN" && p.slot !== "IR").map(p => p.name).sort();
+    const benchOf = team => rosters.teams[team].filter(p => p.slot === "BN").map(p => p.name);
+    let checked = 0;
+    sbPanels.forEach(pn => [["a", 1], ["b", 3]].forEach(([side, col]) => { const team = pn.dataset[side]; if (team === ME || !rosters.teams[team]) return;
+      const shown = [...pn.querySelectorAll(".gm .row.grid")].map(r => cleanName(r.children[col].textContent)).filter(n => n && !/— empty —|—$/.test(n)).sort();
+      const exp = setStarters(team); checked++;
+      assert(shown.length === exp.length && shown.every((n, i) => n === exp[i]), "Scoreboard shows " + team + " exactly as set on ESPN (" + shown.join(", ") + ")");
+      assert(!benchOf(team).some(b => shown.includes(b)), team + ": no benched player (" + benchOf(team).join(", ") + ") is shown as a starter"); }));
+    assert(checked >= 2, "checked at least two other teams against their ESPN slots (" + checked + ")");
+    const sow = Object.keys(rosters.teams).find(t => /SACK OF WHEAT/i.test(t));
+    if (sow && sow !== ME && rosters.teams[sow].some(p => /Metcalf/.test(p.name) && p.slot === "BN")){
+      const L = T.setLineup(rosters.teams[sow].map(T.info), "mu");
+      assert(L.actual && !L.slots.some(s => s.p && /Metcalf/.test(s.p.name)) && L.bench.some(p => /Metcalf/.test(p.name)), "regression: DK Metcalf (BN on ESPN) is not a SACK OF WHEAT starter anywhere on the page"); }
+    // synthetic: a benched stud stays benched when slots are known; without slot data the planner takes over
+    const mkS = (name, pos, slot, mu) => ({ n: name.toLowerCase(), name, pos, slot, mu, pPlay: 1, locked: false, onBye: false, wkRank: 10, ros: 50 });
+    const sy = [mkS("Set Qb","QB","QB",15), mkS("Set Rb1","RB","RB",8), mkS("Set Rb2","RB","RB",7), mkS("Set Wr1","WR","WR",9), mkS("Set Wr2","WR","WR",6), mkS("Set Te","TE","TE",5), mkS("Set Flex","WR","FLEX",4), mkS("Set Dst","DST","DST",6), mkS("Set K","K","K",7), mkS("Bench Stud","WR","BN",25)];
+    const Ls = T.setLineup(sy, "mu");
+    assert(Ls.actual && Ls.slots.every(x => x.p) && !Ls.slots.some(x => x.p.name === "Bench Stud") && Ls.slots.find(x => x.slot === "FLEX").p.name === "Set Flex", "synthetic: a 25-point bench player stays on the bench because that is how the manager set it");
+    const Lo = T.setLineup(sy.map((p, i) => i === 3 ? { ...p, slot: null } : p), "mu");
+    assert(!Lo.actual && Lo.slots.some(x => x.p && x.p.name === "Bench Stud"), "synthetic: with slot data missing for anyone, the planner fills the lineup instead");
+    const Le = T.setLineup(sy.map(p => p.name === "Set Te" ? { ...p, slot: "BN" } : p), "mu");
+    assert(Le.actual && !Le.slots.find(x => x.slot === "TE").p, "synthetic: a slot the manager left empty stays empty (not auto-filled)");
+    const mTheirs = [...d.querySelectorAll("#tab-matchup .gm .row.grid")].map(r => cleanName(r.children[3].textContent)).filter(n => n && !/— empty —|—$/.test(n)).sort();
+    if (coSb && coSb.opp && rosters.teams[coSb.opp]) assert(mTheirs.length === setStarters(coSb.opp).length && mTheirs.every((n, i) => n === setStarters(coSb.opp)[i]), "Matchup tab shows " + coSb.opp + " exactly as set on ESPN too");
+  }
   const sbWps = [...sbEl().querySelectorAll(".sb-sum")].map(r => [...r.querySelectorAll(".tag.edge")].map(x => parseInt(x.textContent)));
   assert(sbWps.length === realGames.length && sbWps.every(t => t[0] + t[1] === 100), "real data: overview odds sum to 100% in every game");
   console.log("\n--- SCOREBOARD (week " + (histReal.currentWeek || "?") + ") ---");

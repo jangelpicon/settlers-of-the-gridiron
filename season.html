@@ -720,6 +720,21 @@
     const bench = players.filter(p=>!used.has(p.n));
     return { slots: slots.map(s=>({slot:s.slot, p:s.p})), bench, used, pinned: pinned.length };
   }
+  // Another manager's lineup is whatever he has SET on ESPN — mirror it, don't re-plan it for him (Jose
+  // 2026-10-30: the Scoreboard showed SACK OF WHEAT with DK Metcalf, the optimizer's pick, while ESPN had him
+  // on the bench). Uses the live roster slots (sync_league.py / loadLiveRosters); an empty or bye slot stays
+  // as the manager left it. Only when slot data is missing for someone does this fall back to the planner.
+  function setLineup(players, key){
+    const active = players.filter(p=>!p.ir && p.slot!=="IR");
+    if (!active.length || active.some(p=>!p.slot)) return lockAwareLineup(players, key);
+    const slots = [];
+    ["QB","RB","WR","TE","DST","K"].forEach(pos=>{ for (let i=0;i<LINEUP[pos];i++) slots.push({slot:pos+(LINEUP[pos]>1?(i+1):""), base:pos, p:null}); });
+    for (let i=0;i<LINEUP.FLEX;i++) slots.push({slot:"FLEX", base:"FLEX", p:null});
+    const used = new Set();
+    active.filter(p=>p.slot!=="BN").forEach(p=>{ const sl = slots.find(x=>!x.p && x.base===p.slot); if (sl){ sl.p = p; used.add(p.n); } });
+    const bench = players.filter(p=>!used.has(p.n));
+    return { slots: slots.map(x=>({slot:x.slot, p:x.p})), bench, used, actual:true };
+  }
   function strength(players){ // ROS-based starter strength
     const { slots } = optimalLineup(players, "ros");
     return slots.reduce((s,x)=> s + (x.p ? rosVal(x.p) : 0), 0);
@@ -1141,7 +1156,7 @@
     const lev = P ? simLeverage() : null, cur = currentOpponent();
     let ctx = null;
     if (lev!=null && cur && cur.opp && R.teams[cur.opp]){
-      const th = lockAwareLineup(teamOf(cur.opp), "mu").slots;
+      const th = setLineup(teamOf(cur.opp), "mu").slots;
       const sum = (ss,f)=>ss.reduce((t,x)=>t+(x.p?f(x.p):0),0);
       ctx = { lev, myMu: sum(slots,effPts), myVar: sum(slots,p=>effSd(p)**2), opMu: sum(th,effPts), opVar: sum(th,p=>effSd(p)**2) };
       ctx.pw = simWinProb(ctx.myMu, ctx.myVar, ctx.opMu, ctx.opVar);
@@ -1255,7 +1270,7 @@
       document.getElementById("tab-matchup").innerHTML = h; return;
     }
     if (cur && cur.opp && R.teams[cur.opp]){
-      const mine = buildMyLineup(myTeam(), lineupKey()), theirs = lockAwareLineup(teamOf(cur.opp), lineupKey());
+      const mine = buildMyLineup(myTeam(), lineupKey()), theirs = setLineup(teamOf(cur.opp), lineupKey());
       const custom = Object.keys(myMatchupPick).some(s=>myMatchupPick[s]);
       h += "<div class='panel'><h2>Week "+cur.week+" — "+(cur.home?"":"at ")+esc(cur.opp)+(cur.home?" (they're at you)":"")+"</h2>";
       if (P){
@@ -1354,7 +1369,7 @@
   function sbTot(L){ return L.slots.reduce((t,x)=>t+effPts(x.p),0); }
   function sbVar(L){ return L.slots.reduce((t,x)=>t+effSd(x.p)**2,0); }
   function sbWinProb(LA, LB){ const sd = Math.sqrt(sbVar(LA)+sbVar(LB)), a = sbTot(LA), b = sbTot(LB); return sd>0 ? phi((a-b)/sd) : (a>b?1:a<b?0:.5); }
-  function sbLineup(team, key){ return team===R.me ? buildMyLineup(myTeam(), key) : lockAwareLineup(teamOf(team), key); }
+  function sbLineup(team, key){ return team===R.me ? buildMyLineup(myTeam(), key) : setLineup(teamOf(team), key); }
   function sbRecord(team){ const ts = teamSeason(team); return ts ? ts.wins+"–"+ts.losses+(ts.ties?"–"+ts.ties:"") : "0–0"; }
   function sbName(t){ return esc(t)+(t===R.me?" 🐑":""); }
   function sbPanel(A, B, home, key){
@@ -1420,7 +1435,7 @@
     games.sort((x,y)=>(isMine(y)?1:0)-(isMine(x)?1:0));
     const pairs = games.map(r=>{ const A = r.away===R.me ? R.me : r.home, B = A===r.home ? r.away : r.home; return { A, B, home:r.home }; });
     let h = "<div class='panel'><h2>Week "+wk+" — every matchup</h2>";
-    h += "<div class='muted' style='margin-bottom:6px'>"+(P ? "Projected totals and win odds for all "+pairs.length+" games this week; the first-named team owns the edge and the odds. Live points take over as games kick off." : "Live projections unavailable — lineups below by consensus rank, no odds.")+"</div>";
+    h += "<div class='muted' style='margin-bottom:6px'>"+(P ? "Projected totals and win odds for all "+pairs.length+" games this week; the first-named team owns the edge and the odds. Live points take over as games kick off. Every other team's lineup is exactly as its manager has it set on ESPN right now (yours is your plan from the Matchup tab)." : "Live projections unavailable — lineups below by consensus rank, no odds.")+"</div>";
     if (P){
       h += "<div class='tbl'><div class='gb'><div class='hrow'><span>Team</span><span class='num'>Proj</span><span class='ctr'>Win</span><span class='ctr'>Win</span><span class='num'>Proj</span><span>Team</span></div>";
       pairs.forEach(g=>{
@@ -2635,7 +2650,7 @@
     setHistory:(h)=>{ HIST=h||null; renderMatchup(); renderScoreboard(); },
     setSettings:(st)=>{ SETTINGS=st||null; SIMC=null; }, setTransactions:(tx)=>{ TX=tx||null; LOGF={team:"",kind:"all"}; renderLog(); }, setLogFilter:(f)=>{ LOGF=Object.assign({team:"",kind:"all"},f||{}); renderLog(); }, txNormalize, getTransactions:()=>TX, leagueSim, simDelta, simDeltaFast, simWinProb, waiverChamp, simLeverage, simScoringModel, simRun, simPlayoffs, simSeedOrder, simBracketOrder, simNormals, simWidth, talentSlope, SIM_N, SIM_SEED, historyFromLeague, teamSeason, currentOpponent, allScores, scoringRank, effPts, effSd, gameFrac, liveState, scoreFrame, currentWeekProj,
     rostersFromLeague, setRosters:(r)=>{ R = JSON.parse(JSON.stringify(r)); buildIndex(); renderAll(); },
-    logTrade, teamFloor, tradeTalent, tradeLineup, strippedPositions, replFill, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, lockAwareLineup, strength, findTrades, findSurplus, surplusDeals, allSurplusDeals, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M, teamNeeds,
+    setLineup, logTrade, teamFloor, tradeTalent, tradeLineup, strippedPositions, replFill, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, lockAwareLineup, strength, findTrades, findSurplus, surplusDeals, allSurplusDeals, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M, teamNeeds,
     waiverSuggestions:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,
     weeklyStreamClaims:()=>{ const me = myTeam(); return weeklyStreamClaims(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
     weeklyStreamStatus:()=>{ const me = myTeam(); return weeklyStreamStatus(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
