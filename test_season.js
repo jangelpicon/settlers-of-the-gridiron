@@ -104,6 +104,15 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     const agreeing = all.filter(p => { const fm = (p.espn + p.sleeper) / 2; return fm >= 5 && Math.abs(p.espn - p.sleeper) <= 0.15 * fm; });
     const dragged = agreeing.filter(p => { const fm = (p.espn + p.sleeper) / 2; return Math.abs(wavg(p) - fm) / fm > 0.25; });
     assert(agreeing.length > 50 && dragged.length === 0, "league-wide: of " + agreeing.length + " rostered players whose ESPN and Sleeper agree, none is pulled >25% off them by the rank (" + dragged.map(p => p.name + " " + wavg(p).toFixed(1) + " vs " + ((p.espn + p.sleeper) / 2).toFixed(1)).join(", ") + ")");
+    // The detail line's running numbers must be the blend predict() actually used (Jose 2026-10-30: "how does 9.4 turn into 11.7?")
+    { const meD = rosters.teams[rosters.me].map(T.info).filter(p => p.mu != null && p.srcs.length >= 2);
+      const rowsD = [...d.querySelectorAll("#tab-lineup .row")];
+      let checked = 0, bad = [];
+      meD.forEach(p => { const r = rowsD.find(x => rx(p.name).test(x.textContent) && /→ avg/.test(x.textContent)); if (!r) return;
+        const m = /avg\s*([\d.]+)/.exec(r.textContent); if (!m) return; checked++;
+        if (Math.abs(+m[1] - wavg(p)) > 0.06) bad.push(p.name + " shows avg " + m[1] + " vs blend " + wavg(p).toFixed(1));
+        if (p.injLive === "ACT" && p.pPlay === 1 && !p.onBye){ const nums = [...r.textContent.matchAll(/→\s*([\d.]+)/g)].map(x => +x[1]); const last = nums[nums.length - 1]; if (last != null && Math.abs(last - p.ifPlays) > 0.06) bad.push(p.name + " chain ends at " + last + " but projects " + p.ifPlays); } });
+      assert(checked >= 5 && bad.length === 0, "detail line: the shown 'avg' is the weighted blend and the chain lands on the projected number (" + checked + " checked" + (bad.length ? "; " + bad.join("; ") : "") + ")"); }
     const rice = all.find(p => p.n === "rasheerice");
     if (rice && rice.wkStd != null && rice.wkStd > 40) assert(rice.rankVote <= 0.2 && rice.ifPlays >= 11, "regression: Rashee Rice (ECR #" + rice.wkRank + ", std " + rice.wkStd + ") projects " + rice.ifPlays + " if he plays, not 9.2");
     const reduced = all.filter(p => p.rankVote < 1);

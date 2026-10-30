@@ -1140,7 +1140,9 @@
     if (ls0==="live") return "<span class='detail'><b>"+effPts(p).toFixed(1)+"</b> live projection <small class='muted'>("+(p.actual!=null?p.actual.toFixed(1):"0")+" so far"+(p.game&&p.game.status?", "+esc(p.game.status):"")+")</small></span>";
     const g = p.game;
     const f1 = v => (Math.round(v*10)/10).toFixed(1);
-    let run = p.srcs.reduce((a,s)=>a+s.v,0)/p.srcs.length;
+    // Running number must be the SAME weighted blend predict() used (Jose 2026-10-30: the line showed an equal-vote
+    // "avg 9.9" next to a final 11.7 because this recomputed a plain mean after the rank vote shrank).
+    let run = p.srcs.reduce((a,s)=>a+s.v*(s.w!=null?s.w:1),0)/p.srcs.reduce((a,s)=>a+(s.w!=null?s.w:1),0);
     let h = "<span class='detail'>"+p.srcs.map(s=>esc(s.k)+" "+s.v.toFixed(1)+(s.w!=null&&s.w<1?" <span class='muted' title='"+esc(rankVoteWhy(p))+"'>("+Math.round(s.w*100)+"% vote)</span>":"")).join(" · ")+" → avg <b>"+f1(run)+"</b>";
     if (p.matchup){
       const m = p.matchup;
