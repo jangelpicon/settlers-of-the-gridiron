@@ -75,6 +75,40 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const fake = T.predict({ name: "Nobody Real", n: "nobodyreal", pos: "WR", team: "CIN", wkRank: 5, inj: null });
   assert(fake.rankPts != null && fake.srcs.length === 1 && fake.mu > 10, "a player missing from both projection feeds still gets a rank-implied number from his consensus rank (" + fake.mu + ")");
   assert(T.rankPts("FLEX", 1) > T.rankPts("FLEX", 40) && T.rankPts("FLEX", 40) > T.rankPts("FLEX", 120), "rank→points curve is monotone (better rank, more points)");
+  // ---- Rank-implied vote (Jose 2026-10-30, Rashee Rice; "across the board, not just this player") ----
+  { const wavg = p => { const ws = p.srcs.reduce((t, x) => t + x.w, 0); return p.srcs.reduce((t, x) => t + x.v * x.w, 0) / ws; };
+    const mk = (n, espn, sleeper, wkRank, wkStd, pos) => { unlockedProjections.players[n] = { name: n, pos: pos || "WR", team: "KC", espn, sleeper, injE: "ACT", injS: "ACT" }; T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
+      return T.predict({ name: n, n, pos: pos || "WR", team: "KC", wkRank, wkStd, wkMin: 40, wkMax: 226, inj: null }); };
+    const split = mk("splitguy", 12.7, 12.6, 175, 61);
+    assert(split.rankVote === 0.1 && split.srcs.length === 3 && Math.abs(wavg(split) - 12.2) < 0.25, "experts split (std 61 at #175) + feeds agreeing: the rank vote drops to 10% and the blend stays with the feeds (" + wavg(split).toFixed(2) + ", was 9.7 under equal votes)");
+    assert(split.ifPlays > 11 && split.mu > 10.5, "that player now projects ~12, not ~9 (ifPlays " + split.ifPlays + ", mu " + split.mu + ")");
+    const agree = mk("agreeguy", 12.7, 12.6, 40, 5);
+    assert(agree.rankVote === 1 && Math.abs(wavg(agree) - (12.7 + 12.6 + agree.rankPts) / 3) < 1e-6, "experts agree and the rank sits near the feeds: full vote, plain three-way average as before");
+    const fight = mk("fightguy", 20, 19.5, 150, 12);
+    assert(fight.rankVote <= 0.2 && wavg(fight) > 18.5, "experts not split, but ESPN and Sleeper agree within 15% and the rank-implied number is far below them: the rank vote fades (" + fight.rankVote + ")");
+    const noisy = mk("noisyguy", 20, 10, 150, 12);
+    assert(noisy.rankVote === 1, "when ESPN and Sleeper disagree with each other, the rank keeps its full vote (no feed consensus to defer to)");
+    const typical = mk("typicalguy", 15, 14.5, 60, 14);
+    assert(typical.rankVote === 1, "a spread inside the normal range (std 14 at #60 ≈ 1.2× typical) keeps the full vote — only real splits count (" + typical.rankVote + ")");
+    const mild = mk("mildguy", 15, 14.5, 60, 24);
+    assert(mild.rankVote > 0.3 && mild.rankVote < 0.8, "a clearly split rank (std 24 at #60 = 2× typical) loses about half its vote (" + mild.rankVote + ")");
+    const nostd = mk("nostdguy", 12.7, 12.6, 175, null);
+    assert(nostd.rankVote <= 0.2, "without an expert spread on file, the feeds-agree rule alone still catches the case (" + nostd.rankVote + ")");
+    const solo = T.predict({ name: "Solo Rank", n: "solorank", pos: "WR", team: "CIN", wkRank: 175, wkStd: 61, inj: null });
+    assert(solo.srcs.length === 1 && solo.rankVote === 0.1 && Math.abs(solo.ifPlays - solo.rankPts * solo.vegasMult) < 0.06, "a player with only a rank-implied source keeps it whole — the vote only matters among several sources");
+    ["splitguy","agreeguy","fightguy","noisyguy","typicalguy","mildguy","nostdguy"].forEach(n => delete unlockedProjections.players[n]);
+    T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
+    assert(season.weekly.FLEX.every(r => r.std != null) && season.weekly.QB.every(r => r.std != null), "data/season.json carries the expert spread (std) on every weekly rank row");
+    // across the board: no rostered player whose two feeds agree is dragged >25% away from them by the rank any more
+    const all = Object.keys(rosters.teams).flatMap(t => rosters.teams[t].map(T.info)).filter(p => p.espn != null && p.sleeper != null && p.rankPts != null);
+    const agreeing = all.filter(p => { const fm = (p.espn + p.sleeper) / 2; return fm >= 5 && Math.abs(p.espn - p.sleeper) <= 0.15 * fm; });
+    const dragged = agreeing.filter(p => { const fm = (p.espn + p.sleeper) / 2; return Math.abs(wavg(p) - fm) / fm > 0.25; });
+    assert(agreeing.length > 50 && dragged.length === 0, "league-wide: of " + agreeing.length + " rostered players whose ESPN and Sleeper agree, none is pulled >25% off them by the rank (" + dragged.map(p => p.name + " " + wavg(p).toFixed(1) + " vs " + ((p.espn + p.sleeper) / 2).toFixed(1)).join(", ") + ")");
+    const rice = all.find(p => p.n === "rasheerice");
+    if (rice && rice.wkStd != null && rice.wkStd > 40) assert(rice.rankVote <= 0.2 && rice.ifPlays >= 11, "regression: Rashee Rice (ECR #" + rice.wkRank + ", std " + rice.wkStd + ") projects " + rice.ifPlays + " if he plays, not 9.2");
+    const reduced = all.filter(p => p.rankVote < 1);
+    console.log("  rank vote reduced this week for: " + (reduced.map(p => p.name + " (" + Math.round(p.rankVote * 100) + "%)").join(", ") || "nobody"));
+  }
   const outGuy = T.predict({ name: "Out Guy", n: "outguy", pos: "RB", team: "DET", wkRank: 10, inj: { code: "O", note: "knee" } });
   assert(outGuy.pPlay === 0 && outGuy.mu === 0, "an OUT player predicts 0 and is unusable");
   assert(Math.abs(T.pBeats({ mu: 10, sd: 5 }, { mu: 10, sd: 5 }) - 0.5) < 1e-6 && T.pBeats({ mu: 20, sd: 5 }, { mu: 10, sd: 5 }) > 0.9, "head-to-head probability: equal players 50%, big favorite >90%");
@@ -1271,6 +1305,11 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   // this league's ESPN pool, data/matchups.json (opponent-adjusted form) and the real league history.
   // Week 7 lesson: the printouts used to run consensus-only (no pool, no matchups) and told Jose "keep the
   // Steelers, add Bates" while the page said "Jets, Fitzgerald". Never print a number from a different model.
+  // Form view: a week he did not play is not a zero-point game (Jose 2026-10-30). Rice played wk 1-3 and sat 4/6/7.
+  { const f = matchups.playerForm.rasheerice;
+    if (f) assert(f.n <= 3 && f.actAvg >= 9, "Rashee Rice's form counts only weeks ESPN marks as played (n=" + f.n + ", avg " + f.actAvg + "; was n=5 avg 5.6 with two no-game weeks as zeros)");
+    const ach = matchups.playerForm.devonachane; // sat weeks 4/5/7 of 2026 with empty stat rows (no games-played flag)
+    if (ach && matchups.weeksSampled.length === 7) assert(ach.n <= 3, "De'Von Achane's three empty weeks are not counted as games (n=" + ach.n + ")"); }
   console.log("== Discord report feed ==");
   T.setSettings(settings);
   T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, histReal);

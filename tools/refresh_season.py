@@ -24,6 +24,13 @@ def norm(name):
     n = re.sub(r"\bd/st\b", "", n)
     return re.sub(r"[^a-z]", "", n)
 
+def _num(v):
+    try: return round(float(v), 2)
+    except (TypeError, ValueError): return None
+def _int(v):
+    try: return int(float(v))
+    except (TypeError, ValueError): return None
+
 def ecr(page):
     h = get(FP.format(page))
     m = re.search(r"var ecrData = (\{.*?\});\s*\n", h, re.S)
@@ -38,6 +45,9 @@ def ecr(page):
             "rank": p.get("rank_ecr"), "tier": p.get("tier"), "bye": int(p["player_bye_week"]) if str(p.get("player_bye_week") or "").isdigit() else None,
             "opp": p.get("player_opponent"), "grade": p.get("start_sit_grade"),
             "posRank": p.get("pos_rank"),
+            # Expert spread behind the consensus (Jose 2026-10-30, Rashee Rice): std / best / worst / mean of the
+            # individual expert ranks. season.html shrinks the rank's vote when the experts are split.
+            "std": _num(p.get("rank_std")), "rankMin": _int(p.get("rank_min")), "rankMax": _int(p.get("rank_max")), "rankAve": _num(p.get("rank_ave")),
         })
     return d, rows
 

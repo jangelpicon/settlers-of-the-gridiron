@@ -94,7 +94,7 @@
 <main>
   <details class="panel legend" id="legend"><summary>What the columns mean (tap to open)</summary>
     <dl>
-      <dt>Proj</dt><dd>Predicted fantasy points <b>this week</b>: the average of ESPN's projection, Sleeper's projection and what a player at his expert-consensus rank usually scores, blended (up to half weight) with the <b>matchup view</b> — his own per-game production scaled by how generous this week's defense really is to his position, from actual box scores — then nudged by the Vegas line and his chance of playing. The consensus is slow to reprice a broken or surging situation; the matchup view catches it.</dd>
+      <dt>Proj</dt><dd>Predicted fantasy points <b>this week</b>: the average of ESPN's projection, Sleeper's projection and what a player at his expert-consensus rank usually scores (the rank's vote shrinks, down to 10%, when the experts are split on him — typical for a player coming off injury — or when ESPN and Sleeper agree with each other and the rank number sits far from both; the detail line then shows "(x% vote)"), blended (up to half weight) with the <b>matchup view</b> — his own per-game production scaled by how generous this week's defense really is to his position, from actual box scores — then nudged by the Vegas line and his chance of playing. The consensus is slow to reprice a broken or surging situation; the matchup view catches it.</dd>
       <dt>Next 4</dt><dd>His team's next four opponents, each with the fantasy points that defense actually gives up per game to his position. <span class="good">Green</span> = soft matchup coming, <span class="bad">red</span> = stingy. Early season this runs on few games, so treat middling numbers as noise.</dd>
       <dt>Floor–Ceil</dt><dd>A bad week and a good week for him (20th and 80th percentile). Wide range = boom-or-bust. The width is refit every refresh from this season's logged results per position (a floor of a few points plus a share of his projection), so the band catches the real score about 60% of the time.</dd>
       <dt>Wk rank</dt><dd>FantasyPros expert consensus rank for this week. QB, K and DST are ranked within their position; RB/WR/TE are ranked together (that's the flex pool). Lower is better.</dd>
@@ -463,6 +463,32 @@
     let s = 0, n = 0; for (let i=lo;i<=hi;i++){ s += c[i]; n++; }
     return Math.round(s/n*100)/100;
   }
+  // How much say the rank-implied number gets next to ESPN and Sleeper (each always a full vote). Jose
+  // 2026-10-30, Rashee Rice: the FantasyPros weekly rank is a consensus of ~40 experts, and for a player coming
+  // off injury (or in a murky role) half of them leave him unranked — the "consensus" lands nowhere (Rice: best
+  // #40, worst #226, std 61 at ECR #175) and its 3.5 points pulled the blend 3 points off two feeds that agreed
+  // at 12.7. Applies to every player, every week. The vote shrinks (floor 10%) when either:
+  //  (a) the experts are split: std of their ranks vs what is typical at that rank. Measured 2026-10-30 across
+  //      the FLEX/QB/K/DST pages: median std ≈ 6 + 0.1×rank, 90th pct ≈ 1.4× that. Full vote up to 1.5× typical,
+  //      half at 2×, 10% from 2.4× (Rice: 2.6×). Needs data/season.json to carry std (refresh_season.py).
+  //  (b) ESPN and Sleeper agree within 15% and the rank number sits >35% away from them — two independent feeds
+  //      agreeing is stronger evidence than a rank position; half a vote at 50% away, 10% from 62% away.
+  // A player with only a rank-implied source keeps it whole (weights only matter among several sources).
+  function rankVoteWhy(p){
+    const bits = [];
+    if (p.wkStd!=null && p.wkRank!=null && p.wkStd/(6+0.1*p.wkRank) > 1.5) bits.push("experts are split on him"+(p.wkMin!=null&&p.wkMax!=null?" (ranked anywhere from #"+p.wkMin+" to #"+p.wkMax+")":"")+", so the consensus rank says little");
+    if (p.espn!=null && p.sleeper!=null && p.rankPts!=null){ const fm=(p.espn+p.sleeper)/2; if (fm>0 && Math.abs(p.espn-p.sleeper)<=0.15*fm && Math.abs(p.rankPts-fm)/fm>0.35) bits.push("ESPN and Sleeper agree with each other and the rank-implied number is far from both"); }
+    return "Rank-implied number gets a reduced vote: "+(bits.join("; ")||"see legend")+".";
+  }
+  function rankVote(p){
+    let w = 1;
+    if (p.wkStd!=null && p.wkRank!=null){ const z = p.wkStd / (6 + 0.1*p.wkRank); w = Math.min(w, Math.max(0.1, Math.min(1, 2.5 - z))); }
+    if (p.espn!=null && p.sleeper!=null && p.rankPts!=null){
+      const fm = (p.espn+p.sleeper)/2;
+      if (fm > 0 && Math.abs(p.espn-p.sleeper) <= 0.15*fm){ const dev = Math.abs(p.rankPts-fm)/fm; w = Math.min(w, Math.max(0.1, Math.min(1, (0.65-dev)/0.3))); }
+    }
+    return Math.round(w*100)/100;
+  }
   function predict(p){ // p = info() output; adds projection fields in place
     p.mu = null; p.sd = null; p.floor = null; p.ceil = null; p.pPlay = null; p.srcs = [];
     if (!P) return p;
@@ -484,10 +510,12 @@
     if (p.onBye) p.pPlay = 0;
     if (p.noTeam){ p.pPlay = 0; p.injNote = p.injNote || "no NFL team (released)"; } // unusable until someone signs him — never a stream, never a start
     const srcs = [];
-    if (p.espn!=null) srcs.push({k:"ESPN", v:p.espn}); if (p.sleeper!=null) srcs.push({k:"Sleeper", v:p.sleeper}); if (p.rankPts!=null) srcs.push({k:"rank #"+p.wkRank, v:p.rankPts});
+    p.rankVote = p.rankPts!=null ? rankVote(p) : null;
+    if (p.espn!=null) srcs.push({k:"ESPN", v:p.espn, w:1}); if (p.sleeper!=null) srcs.push({k:"Sleeper", v:p.sleeper, w:1}); if (p.rankPts!=null) srcs.push({k:"rank #"+p.wkRank, v:p.rankPts, w:p.rankVote});
     p.srcs = srcs;
     if (!srcs.length){ return p; }
-    const base = srcs.reduce((a,s)=>a+s.v,0)/srcs.length;
+    const wsum = srcs.reduce((a,s)=>a+s.w,0);
+    const base = srcs.reduce((a,s)=>a+s.v*s.w,0)/wsum;
     // Opponent-adjusted form (data/matchups.json): the player's own per-game production scaled by how
     // much softer/stingier this week's defense is than the ones he already faced. Blended with the
     // consensus at up to half weight — trust grows with games played (n/(n+3), so 3 games = 50%).
@@ -646,7 +674,7 @@
     const bye = ros ? ros.bye : null;
     const onBye = bye != null && S.week != null && bye === S.week;
     return roleCheck(predict({ ...p, n, ros: ros?ros.rank:null, tier: ros?ros.tier:null, posRank: ros?(ros.posRank||null):null, bye, onBye,
-      wkRank: wk?wk.rank:null, opp: wk?wk.opp:null, grade: wk?wk.grade:null, inj }));
+      wkRank: wk?wk.rank:null, wkStd: wk&&wk.std!=null?wk.std:null, wkMin: wk&&wk.rankMin!=null?wk.rankMin:null, wkMax: wk&&wk.rankMax!=null?wk.rankMax:null, opp: wk?wk.opp:null, grade: wk?wk.grade:null, inj }));
   }
   // FantasyPros overall rank held by the k-th player at a position (how FP itself interleaves positions).
   function fpOverallAtPosRank(pos, k){ const l = (idx.posList && idx.posList[pos]) || []; const e = l[k-1]; return e ? e.rank : ROS_MAX; }
@@ -1113,7 +1141,7 @@
     const g = p.game;
     const f1 = v => (Math.round(v*10)/10).toFixed(1);
     let run = p.srcs.reduce((a,s)=>a+s.v,0)/p.srcs.length;
-    let h = "<span class='detail'>"+p.srcs.map(s=>esc(s.k)+" "+s.v.toFixed(1)).join(" · ")+" → avg <b>"+f1(run)+"</b>";
+    let h = "<span class='detail'>"+p.srcs.map(s=>esc(s.k)+" "+s.v.toFixed(1)+(s.w!=null&&s.w<1?" <span class='muted' title='"+esc(rankVoteWhy(p))+"'>("+Math.round(s.w*100)+"% vote)</span>":"")).join(" · ")+" → avg <b>"+f1(run)+"</b>";
     if (p.matchup){
       const m = p.matchup;
       run = (1-m.w)*run + m.w*m.proj;
@@ -2650,7 +2678,7 @@
     setHistory:(h)=>{ HIST=h||null; renderMatchup(); renderScoreboard(); },
     setSettings:(st)=>{ SETTINGS=st||null; SIMC=null; }, setTransactions:(tx)=>{ TX=tx||null; LOGF={team:"",kind:"all"}; renderLog(); }, setLogFilter:(f)=>{ LOGF=Object.assign({team:"",kind:"all"},f||{}); renderLog(); }, txNormalize, getTransactions:()=>TX, leagueSim, simDelta, simDeltaFast, simWinProb, waiverChamp, simLeverage, simScoringModel, simRun, simPlayoffs, simSeedOrder, simBracketOrder, simNormals, simWidth, talentSlope, SIM_N, SIM_SEED, historyFromLeague, teamSeason, currentOpponent, allScores, scoringRank, effPts, effSd, gameFrac, liveState, scoreFrame, currentWeekProj,
     rostersFromLeague, setRosters:(r)=>{ R = JSON.parse(JSON.stringify(r)); buildIndex(); renderAll(); },
-    setLineup, logTrade, teamFloor, tradeTalent, tradeLineup, strippedPositions, replFill, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, lockAwareLineup, strength, findTrades, findSurplus, surplusDeals, allSurplusDeals, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M, teamNeeds,
+    setLineup, rankVote, logTrade, teamFloor, tradeTalent, tradeLineup, strippedPositions, replFill, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, lockAwareLineup, strength, findTrades, findSurplus, surplusDeals, allSurplusDeals, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M, teamNeeds,
     waiverSuggestions:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,
     weeklyStreamClaims:()=>{ const me = myTeam(); return weeklyStreamClaims(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
     weeklyStreamStatus:()=>{ const me = myTeam(); return weeklyStreamStatus(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },

@@ -80,7 +80,16 @@ def espn_week(week):
         actual = proj = None
         for s in p.get("stats", []):
             if s.get("scoringPeriodId") == week and s.get("statSplitTypeId") == 1:
-                if s.get("statSourceId") == 0: actual = s.get("appliedTotal")
+                if s.get("statSourceId") == 0:
+                    # A week he did not play comes back as appliedTotal 0.0 with an EMPTY stat dict (Rice 2026
+                    # wk 6/7, Achane wk 4/5/7: zero keys). ESPN stat 210 = games played (1.0 whenever he dressed,
+                    # even with zero production — Gesicki wk 2 {155,210}), so a played 0-point game keeps its 0 and
+                    # only a week with no 210 (and no stats at all) is "no game". Counting those as zeros dragged a
+                    # returning player's form average down and fed zero rows into the walk-forward fit (Jose
+                    # 2026-10-30). The length guard covers D/ST rows, which carry 45 keys and no 210.
+                    st = s.get("stats") or {}
+                    played = bool(st.get("210")) or len(st) > 3
+                    actual = None if (not s.get("appliedTotal") and not played) else s.get("appliedTotal")
                 elif s.get("statSourceId") == 1: proj = s.get("appliedTotal")
         if tm and (actual is not None or proj is not None):
             out[norm(name)] = {"pos": pos, "team": tm,
