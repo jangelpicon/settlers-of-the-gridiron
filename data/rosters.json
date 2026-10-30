@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-10-29",
- "source": "ESPN league 882823976 sync 2026-10-29 02:00 CDT",
+ "updated": "2026-10-30",
+ "source": "ESPN league 882823976 sync 2026-10-30 02:00 CDT",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -366,13 +366,13 @@
     "name": "Saquon Barkley",
     "pos": "RB",
     "team": "PHI",
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "Mike Evans",
     "pos": "WR",
     "team": "SF",
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Patrick Mahomes",
@@ -390,7 +390,7 @@
     "name": "Stefon Diggs",
     "pos": "WR",
     "team": "WAS",
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Caleb Williams",
@@ -402,13 +402,13 @@
     "name": "Isaiah Likely",
     "pos": "TE",
     "team": "NYG",
-    "slot": "TE"
+    "slot": "BN"
    },
    {
     "name": "Emanuel Wilson",
     "pos": "RB",
     "team": "SEA",
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Braelon Allen",
@@ -433,6 +433,12 @@
     "pos": "WR",
     "team": "NYJ",
     "slot": "FLEX"
+   },
+   {
+    "name": "Mason Taylor",
+    "pos": "TE",
+    "team": "NYJ",
+    "slot": "TE"
    }
   ],
   "BlitzAndGiggles": [
@@ -470,13 +476,13 @@
     "name": "Sam LaPorta",
     "pos": "TE",
     "team": "DET",
-    "slot": "FLEX"
+    "slot": "TE"
    },
    {
     "name": "Rhamondre Stevenson",
     "pos": "RB",
     "team": "NE",
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Eddy Pineiro",
@@ -500,7 +506,7 @@
     "name": "George Kittle",
     "pos": "TE",
     "team": "SF",
-    "slot": "TE"
+    "slot": "BN"
    },
    {
     "name": "Kansas City Chiefs",
@@ -701,9 +707,9 @@
     "slot": "DST"
    },
    {
-    "name": "Tyler Bass",
+    "name": "Cam Little",
     "pos": "K",
-    "team": "BUF",
+    "team": "JAX",
     "slot": "K"
    }
   ],
