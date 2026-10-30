@@ -10,7 +10,7 @@
 #   tools/refresh_and_deploy.sh            regenerate -> test gate -> scoped commit -> push -> verify live
 #   tools/refresh_and_deploy.sh --dry-run  regenerate -> test gate only (no commit, no push, no network to origin)
 #
-# Exit codes: 0 ok | 2 bad usage/preflight | 10 sync_league | 11 refresh_season | 12 refresh_projections
+# Exit codes: 0 ok | 2 bad usage/preflight | 10 sync_league | 11 refresh_season | 12 refresh_projections (sync_transactions is non-blocking)
 #             20 test gate | 30 git commit/push | 40 live site still stale after the poll window | 75 another run holds the lock
 #
 # Log:    logs/refresh_and_deploy.log   (one timestamped line per step; full child output in logs/refresh_and_deploy.out)
@@ -102,6 +102,11 @@ elif echo "$SYNC_OUT" | grep -q "ESPN refused (40[13])"; then
 else
   log "sync_league FAILED rc=$SYNC_RC: $(echo "$SYNC_OUT" | tail -1)"; exit 10
 fi
+# Waiver log feed — soft-fail: a dead transaction feed must not hold the lineup/projection deploy (the tab keeps its last snapshot)
+echo "===== $(date '+%F %T %Z') sync_transactions" >> "$OUT"
+set +e; TX_OUT="$(python3 tools/sync_transactions.py 2>&1)"; TX_RC=$?; set -e
+echo "$TX_OUT" >> "$OUT"
+if [ "$TX_RC" = 0 ]; then log "sync_transactions ok — $(echo "$TX_OUT" | grep -m1 -oE '[0-9]+ transactions kept' || echo 'synced')"; else log "sync_transactions FAILED rc=$TX_RC (non-blocking, tab keeps the last snapshot): $(echo "$TX_OUT" | tail -1)"; fi
 run refresh_season 11 python3 tools/refresh_season.py || exit $?
 run refresh_projections 12 python3 tools/refresh_projections.py || exit $?
 STAMP="$(stamp_of data/season.json)"

@@ -55,6 +55,9 @@
   .tbl .gh .row.grid,.tbl .gh .hrow{grid-template-columns:44px 36px 110px minmax(140px,1fr) 64px;min-width:430px;}
   .tbl .gb .row.grid,.tbl .gb .hrow{grid-template-columns:minmax(130px,1.2fr) 56px 54px 54px 56px minmax(130px,1.2fr);min-width:560px;}
   .tbl .gm .hrow .tn{overflow:hidden;text-overflow:ellipsis;min-width:0;}
+  .tbl .gx .row.grid,.tbl .gx .hrow{grid-template-columns:104px minmax(120px,1fr) 92px minmax(230px,2.2fr);min-width:580px;} .gx .row.grid .tag{text-align:center;} .gx .mv{white-space:normal;line-height:1.35;} .gx .mv .add{color:var(--sheep);} .gx .mv .drop{color:#e08272;} .gx.mine .row.grid{background:#1a2a1e;}
+  .logf{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px;} .logf .tb.on{border-color:var(--wheat);color:var(--wheat);}
+  .wkh{margin:12px 0 4px;font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;font-weight:700;}
   .legend{font-size:.8rem;color:var(--muted);} .legend dl{display:grid;grid-template-columns:max-content 1fr;gap:3px 12px;margin:6px 0 0;} .legend dt{color:var(--text);font-weight:700;} .legend dd{margin:0;}
   details summary{cursor:pointer;color:var(--wheat);font-weight:600;}
   @media (max-width:700px){ .row b{min-width:100px;} .detail{padding-left:0;} .row.grid .detail,.row.grid .sub{padding-left:0;} }
@@ -83,6 +86,7 @@
   <button data-tab="scoreboard">Scoreboard</button>
   <button data-tab="waivers">Waivers</button>
   <button data-tab="trades">Trades</button>
+  <button data-tab="log">Waiver log</button>
   <button data-tab="strength">Strength</button>
   <button data-tab="byes">Byes</button>
   <button data-tab="league">League</button>
@@ -106,6 +110,7 @@
       <dt>Roster talent (ROS)</dt><dd>Paper strength: sum over a team's 9 best starters of (420 − rest-of-season rank), so +10 ≈ upgrading one starter by 10 rank spots. It is an <b>input</b> to the scoring rate — it ignores record and real scoring, so it never ranks teams on its own. "This week" = that team's projected points with its best lineup.</dd>
       <dt>Title Δ (trades, waivers, start/sit)</dt><dd>How much a move changes <b>your</b> title %, re-simulated with both rosters' talent updated (same random seasons, so the difference is the move itself). Shown in percentage points (pp). Talent you / them = the roster-talent change on each side — the other manager judges the offer on that, so it drives the odds they accept.</dd>
       <dt>EV (trades)</dt><dd>Title Δ × the chance they say yes. The one number to sort trades by.</dd>
+      <dt>Waiver log</dt><dd>Every add, drop and waiver claim in the league this season, straight from ESPN's transaction feed (lineup shuffles and the draft left out). <b>Claimed</b> = waiver claim went through; <b>lost claim</b> = someone with better waiver priority took the player first (the row says who); <b>drop gone</b> = the player you meant to drop was already off your roster when the claim ran; <b>canceled</b> = the manager pulled the claim before it processed; <b>FA add</b> = picked up as a free agent (no waiver wait). Your rows are shaded.</dd>
       <dt>Scoreboard</dt><dd>Every matchup in the league this week, laid out like the Matchup tab: the first-named team is the one the edge, win odds and gold bars belong to (you, in your own game). Projections for games not started, actual points once they kick off.</dd>
       <dt>Win odds (matchup)</dt><dd>Chance your best lineup outscores theirs this week, from both teams' predicted totals and the usual week-to-week swing of every player involved.</dd>
       <dt>All-play (matchup)</dt><dd>What a team's record would be if it played <b>everyone</b> every week (sat weeks excluded on both sides). Strips the schedule out: a 1-2 team with a 12-4 all-play has been good and unlucky.</dd>
@@ -117,6 +122,7 @@
   <div id="tab-scoreboard" class="hidden"></div>
   <div id="tab-waivers" class="hidden"></div>
   <div id="tab-trades" class="hidden"></div>
+  <div id="tab-log" class="hidden"></div>
   <div id="tab-strength" class="hidden"></div>
   <div id="tab-byes" class="hidden"></div>
   <div id="tab-league" class="hidden"></div>
@@ -144,6 +150,7 @@
   let MU = null; // data/matchups.json — defense-vs-position + player form + next-4 outlook (weekly refresh); null = consensus-only
   let HIST = null; // league schedule + weekly scores (ESPN mMatchup; live fetch with data/league_history.json as fallback); null = Matchup tab degrades
   let LG = null, POOL = null; // data/league.json (ESPN league link), data/espn_pool.json (this league's ESPN player universe)
+  let TX = null; // data/transactions.json (ESPN mTransactions2 adds/drops/claims; live fetch when the league is public) — Waiver log tab; null = tab says so
   let PSTAMP = { text:"–", cls:"" }, RSTAMP = { text:"–", cls:"" };
 
   // ================= Live projections (ESPN + Sleeper + Vegas) =================
@@ -278,6 +285,98 @@
         if (h.schedule.length >= 2){ HIST = { ...h, live:true, generated:"LIVE" }; return; }
       } catch(e){ /* fall through to the repo snapshot already loaded (or null) */ }
     }
+  }
+
+  // ================= League transactions (ESPN mTransactions2) =================
+  // Same raw shape tools/sync_transactions.py snapshots to data/transactions.json: ESPN's rows (WAIVER /
+  // FREEAGENT only, fields pruned) + an id -> {name,pos,team} map. The view is per scoring period and
+  // bleeds a few next-week rows into each week, so every week 1..current is fetched and deduped by id.
+  const TX_KEEP = { WAIVER:1, FREEAGENT:1 };
+  async function loadLiveTransactions(){
+    if (!(LG && LG.leagueId && LG.public)) return;
+    try {
+      const base = "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/"+(LG.season||SEASON)+"/segments/0/leagues/"+LG.leagueId;
+      const cur = (HIST && HIST.currentWeek) || (TX && TX.currentWeek) || (S && S.week) || 1;
+      const weeks = []; for (let w = 1; w <= cur; w++) weeks.push(w);
+      const [tm, ...per] = await Promise.all([fetchJson(base+"?view=mTeam")].concat(weeks.map(w=>fetchJson(base+"?view=mTransactions2&scoringPeriodId="+w))));
+      const teams = {}; (tm.teams||[]).forEach(t=>{ if (t.id!=null) teams[String(t.id)] = (t.name || ((t.location||"")+" "+(t.nickname||""))).trim(); });
+      const seen = {}, rows = [];
+      per.forEach(d=>(d.transactions||[]).forEach(t=>{ if (seen[t.id] || !TX_KEEP[t.type]) return; seen[t.id] = 1; rows.push(t); }));
+      const players = Object.assign({}, (TX && TX.players) || {});
+      const need = []; rows.forEach(t=>(t.items||[]).forEach(i=>{ if (i.playerId!=null && !players[String(i.playerId)] && !need.includes(i.playerId)) need.push(i.playerId); }));
+      for (let k = 0; k < need.length; k += 150){
+        const flt = JSON.stringify({players:{filterIds:{value:need.slice(k, k+150)}}});
+        const kp = await fetchJson(base+"?view=kona_player_info", {"x-fantasy-filter": flt, "Accept":"application/json"});
+        (kp.players||[]).forEach(x=>{ const p = x.player||{}; const pos = ESPN_POS[p.defaultPositionId]; if (!pos) return; const tmc = ESPN_TEAM[p.proTeamId]; players[String(x.id)] = { name: pos==="DST" ? (TEAM_NAME[tmc] || p.fullName) : p.fullName, pos, team: tmc }; });
+      }
+      if (Object.keys(teams).length < 2) throw new Error("no teams");
+      TX = { generated:"LIVE", generatedMs: Date.now(), live:true, leagueId: LG.leagueId, currentWeek: cur, teams, players, transactions: rows };
+    } catch(e){ /* keep the repo snapshot (or null) */ }
+  }
+  // One normalized row per ESPN transaction. kind: claimed | lost | dropgone | canceled | fa | drop | other.
+  // "lost" = FAILED_INVALIDPLAYERSOURCE (another claim with better priority took him): winner = the team whose
+  // EXECUTED claim for the same player ran in the same waiver batch (processDate within 10 minutes).
+  function txNormalize(tx){
+    if (!tx || !Array.isArray(tx.transactions)) return [];
+    const teams = tx.teams || {}, players = tx.players || {};
+    const pname = id => { const p = players[String(id)]; return p ? { id, name: p.name, pos: p.pos, team: p.team } : { id, name: "player #"+id, pos: "", team: "" }; };
+    const tname = id => teams[String(id)] || ("team "+id);
+    const rows = tx.transactions.map(t=>{
+      const items = t.items || [];
+      const adds = items.filter(i=>i.type==="ADD").map(i=>pname(i.playerId)), drops = items.filter(i=>i.type==="DROP").map(i=>pname(i.playerId));
+      let kind = "other";
+      if (t.type==="WAIVER") kind = t.status==="EXECUTED" ? "claimed" : t.status==="FAILED_INVALIDPLAYERSOURCE" ? "lost" : t.status==="FAILED_PLAYERALREADYDROPPED" ? "dropgone" : t.status==="CANCELED" ? "canceled" : "other";
+      else if (t.type==="FREEAGENT") kind = t.status==="EXECUTED" ? (adds.length ? "fa" : "drop") : "other";
+      if (kind==="claimed" && !adds.length) kind = "drop";
+      const ms = t.processDate || t.proposedDate || 0;
+      return { id: t.id, kind, week: t.scoringPeriodId, ms, teamId: t.teamId, team: tname(t.teamId), adds, drops, bid: t.bidAmount||0, status: t.status||"", winner: null };
+    });
+    rows.forEach(r=>{ if (r.kind!=="lost" || !r.adds.length) return;
+      const w = rows.find(o=>o.kind==="claimed" && o.teamId!==r.teamId && Math.abs(o.ms - r.ms) < 600000 && o.adds.some(a=>a.id===r.adds[0].id));
+      if (w) r.winner = w.team; });
+    return rows.sort((a,b)=> b.ms - a.ms);
+  }
+  let LOGF = { team:"", kind:"all" }; // Waiver log filters (team name or "", kind: all | mine | moves | lost | canceled)
+  const TX_KIND = { claimed:["Claimed","good"], lost:["Lost claim","bad"], dropgone:["Drop gone","warn"], canceled:["Canceled",""], fa:["FA add","good"], drop:["Drop","warn"], other:["Other",""] };
+  function txDate(ms){ return ms ? new Date(ms).toLocaleString("en-US",{timeZone:"America/Chicago",month:"numeric",day:"numeric",hour:"numeric",minute:"2-digit"}).replace(",", "") : "–"; }
+  function renderLog(){
+    const el = document.getElementById("tab-log");
+    const rows = txNormalize(TX);
+    if (!rows.length){ el.innerHTML = "<div class='panel'><h2>Waiver log</h2><div class='muted'>No transaction history yet. "+(TX ? "ESPN returned no adds, drops or claims for this league." : "The league feed has not been synced (data/transactions.json missing) and the live ESPN read did not run.")+"</div></div>"; return; }
+    const me = R.me;
+    const teams = Object.values(TX.teams||{}).sort((a,b)=>a.localeCompare(b));
+    const fk = r => LOGF.kind==="all" ? true : LOGF.kind==="mine" ? r.team===me : LOGF.kind==="moves" ? (r.kind==="claimed"||r.kind==="fa"||r.kind==="drop") : LOGF.kind==="lost" ? (r.kind==="lost"||r.kind==="dropgone") : LOGF.kind==="canceled" ? r.kind==="canceled" : true;
+    const shown = rows.filter(r=> fk(r) && (!LOGF.team || r.team===LOGF.team));
+    // Season summary per team: successful adds (claims + FA), lost claims
+    const per = {}; teams.forEach(t=>{ per[t] = { adds:0, claims:0, lost:0, drops:0 }; });
+    rows.forEach(r=>{ const q = per[r.team] || (per[r.team] = { adds:0, claims:0, lost:0, drops:0 }); if (r.kind==="claimed"){ q.adds++; q.claims++; } else if (r.kind==="fa") q.adds++; else if (r.kind==="lost") q.lost++; if (r.kind==="claimed"||r.kind==="fa"||r.kind==="drop") q.drops += r.drops.length; });
+    const mine = per[me] || { adds:0, claims:0, lost:0, drops:0 };
+    const tot = rows.reduce((a,r)=>{ if (r.kind==="claimed"||r.kind==="fa") a.adds++; if (r.kind==="lost") a.lost++; return a; }, { adds:0, lost:0 });
+    let h = "<div class='panel'><h2>Waiver log</h2>";
+    h += "<div class='muted' style='margin-bottom:8px'>"+(TX.live ? "LIVE from ESPN" : "Repo snapshot "+esc(TX.generated||""))+" · weeks 1–"+(TX.currentWeek||"?")+" · "+tot.adds+" pickups league-wide, "+tot.lost+" lost claims · you: <b>"+mine.adds+"</b> pickups ("+mine.claims+" via waivers), "+mine.lost+" lost claim"+(mine.lost===1?"":"s")+", "+mine.drops+" drops</div>";
+    h += "<div class='tbl'><div class='gb'><div class='hrow'><span>Team</span><span class='num' title='Players picked up (waiver claims that went through + free-agent adds)'>Pickups</span><span class='num' title='Of those, how many came through a waiver claim'>Claims</span><span class='num' title='Waiver claims that failed because another team had better priority'>Lost</span><span class='num'>Drops</span><span></span></div>";
+    teams.slice().sort((a,b)=> per[b].adds - per[a].adds || per[a].lost - per[b].lost || a.localeCompare(b)).forEach(t=>{ const q = per[t]; h += "<div class='row grid"+(t===me?" start":"")+"'><b class='c'>"+esc(t)+(t===me?" <span class='tag good'>you</span>":"")+"</b><span class='num'>"+q.adds+"</span><span class='num'>"+q.claims+"</span><span class='num"+(q.lost?" bad":"")+"'>"+q.lost+"</span><span class='num'>"+q.drops+"</span><span></span></div>"; });
+    h += "</div></div></div>";
+    h += "<div class='panel'><h2>Every move</h2><div class='logf'>";
+    [["all","All"],["mine","Mine"],["moves","Pickups & drops"],["lost","Failed claims"],["canceled","Canceled"]].forEach(([k,l])=>{ h += "<button class='tb logk"+(LOGF.kind===k?" on":"")+"' data-k='"+k+"'>"+l+"</button>"; });
+    h += "<select class='pick' id='logTeam'><option value=''>All teams</option>"+teams.map(t=>"<option value='"+esc(t)+"'"+(LOGF.team===t?" selected":"")+">"+esc(t)+"</option>").join("")+"</select><span class='muted'>"+shown.length+" of "+rows.length+"</span></div>";
+    if (!shown.length) h += "<div class='muted'>Nothing matches these filters.</div>";
+    else {
+      h += "<div class='tbl'><div class='gx'><div class='hrow'><span>When (CT)</span><span>Team</span><span class='ctr'>Result</span><span>Move</span></div>";
+      let wk = null;
+      shown.forEach(r=>{
+        if (r.week!==wk){ wk = r.week; h += "<div class='wkh'>Week "+wk+"</div>"; }
+        const [lbl, cls] = TX_KIND[r.kind] || TX_KIND.other;
+        const mv = r.adds.map(a=>"<span class='add'>+ "+esc(a.name)+"</span> <span class='muted'>"+esc(a.pos)+(a.team?" "+esc(a.team):"")+"</span>").concat(r.drops.map(a=>"<span class='drop'>− "+esc(a.name)+"</span> <span class='muted'>"+esc(a.pos)+(a.team?" "+esc(a.team):"")+"</span>")).join(" · ");
+        const note = r.kind==="lost" ? (r.winner ? " <span class='muted'>· went to "+esc(r.winner)+"</span>" : " <span class='muted'>· taken by a higher claim</span>") : r.bid ? " <span class='muted'>· bid $"+r.bid+"</span>" : "";
+        h += "<div class='row grid"+(r.team===me?" start":"")+"'><span class='c muted'>"+esc(txDate(r.ms))+"</span><b class='c'>"+esc(r.team)+"</b><span class='tag "+cls+"'>"+lbl+"</span><span class='mv'>"+mv+note+"</span></div>";
+      });
+      h += "</div></div>";
+    }
+    h += "</div>";
+    el.innerHTML = h;
+    el.querySelectorAll(".logk").forEach(b=>b.addEventListener("click", ()=>{ LOGF.kind = b.dataset.k; renderLog(); }));
+    const ts = document.getElementById("logTeam"); if (ts) ts.addEventListener("change", ()=>{ LOGF.team = ts.value; renderLog(); });
   }
 
   // Everything the Matchup tab derives from the schedule. Completed = a decided matchup, or any score ESPN
@@ -2462,11 +2561,11 @@
     document.getElementById("stamp").textContent = S.generated;
     const rs = document.getElementById("rosterStamp"); rs.textContent = RSTAMP.text; rs.className = RSTAMP.cls;
     const ps = document.getElementById("pstamp"); ps.textContent = PSTAMP.text; ps.className = PSTAMP.cls;
-    renderLineup(); renderMatchup(); renderScoreboard(); renderWaivers(); renderTrades(); renderStrength(); renderByes(); renderLeague();
+    renderLineup(); renderMatchup(); renderScoreboard(); renderWaivers(); renderTrades(); renderLog(); renderStrength(); renderByes(); renderLeague();
   }
   document.querySelectorAll("nav button").forEach(b=>b.addEventListener("click", ()=>{
     document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active")); b.classList.add("active");
-    ["lineup","matchup","scoreboard","waivers","trades","strength","byes","league"].forEach(t=>document.getElementById("tab-"+t).classList.toggle("hidden", t!==b.dataset.tab));
+    ["lineup","matchup","scoreboard","waivers","trades","log","strength","byes","league"].forEach(t=>document.getElementById("tab-"+t).classList.toggle("hidden", t!==b.dataset.tab));
   }));
 
   async function loadProjections(){
@@ -2515,15 +2614,15 @@
   }
   async function load(){
     try {
-      const [s, r, x, tl, lg, pool, mu, hist, settings] = await Promise.all([fetch("data/season.json?v="+Date.now()).then(x=>x.json()), fetch("data/rosters.json?v="+Date.now()).then(x=>x.json()), fetch("data/exclusions.json?v="+Date.now()).then(x=>x.json()).catch(()=>({players:[]})), fetch("data/trades.json?v="+Date.now()).then(x=>x.json()).catch(()=>({entries:[]})),
+      const [s, r, x, tl, lg, pool, mu, hist, settings, tx] = await Promise.all([fetch("data/season.json?v="+Date.now()).then(x=>x.json()), fetch("data/rosters.json?v="+Date.now()).then(x=>x.json()), fetch("data/exclusions.json?v="+Date.now()).then(x=>x.json()).catch(()=>({players:[]})), fetch("data/trades.json?v="+Date.now()).then(x=>x.json()).catch(()=>({entries:[]})),
         fetch("data/league.json?v="+Date.now()).then(x=>x.json()).catch(()=>null), fetch("data/espn_pool.json?v="+Date.now()).then(x=>x.json()).catch(()=>null),
         fetch("data/matchups.json?v="+Date.now()).then(x=>x.json()).catch(()=>null), fetch("data/league_history.json?v="+Date.now()).then(x=>x.json()).catch(()=>null),
-        fetch("data/settings.json?v="+Date.now()).then(x=>x.json()).catch(()=>null)]);
-      S = s; R = r; X = x || {players:[]}; LG = lg; POOL = pool; MU = mu; HIST = hist; SETTINGS = settings; mergeLog((tl||{}).entries);
+        fetch("data/settings.json?v="+Date.now()).then(x=>x.json()).catch(()=>null), fetch("data/transactions.json?v="+Date.now()).then(x=>x.json()).catch(()=>null)]);
+      S = s; R = r; X = x || {players:[]}; LG = lg; POOL = pool; MU = mu; HIST = hist; SETTINGS = settings; TX = tx; mergeLog((tl||{}).entries);
       applyTeamParam();
       PSTAMP = { text:"fetching live…", cls:"" }; RSTAMP = { text:(R.updated||"–")+" (checking ESPN…)", cls:"" };
       buildIndex(); renderAll();
-      await Promise.all([loadProjections(), loadLiveRosters(), loadHistory()]);
+      await Promise.all([loadProjections(), loadLiveRosters(), loadHistory(), loadLiveTransactions()]);
       applyAcceptedTrades();
       buildIndex(); renderAll();
       scheduleLive();
@@ -2534,7 +2633,7 @@
   document.getElementById("refreshLive").addEventListener("click", async ()=>{ if (!S) return; PSTAMP = { text:"fetching live…", cls:"" }; renderAll(); await liveRefresh(); scheduleLive(); });
   window.__seasonTest = { inject:(s,r,x,tl,pj,pool,mu,hist)=>{ S=s; R=JSON.parse(JSON.stringify(r)); X=x||{players:[]}; P=pj||null; POOL=pool||null; MU=mu||null; HIST=hist||null; LG=null; PSTAMP = pj ? {text:"snapshot "+pj.generated, cls:"stale"} : {text:"none", cls:""}; RSTAMP = {text:R.updated||"–", cls:""}; mergeLog((tl||{}).entries); applyAcceptedTrades(); buildIndex(); renderAll(); },
     setHistory:(h)=>{ HIST=h||null; renderMatchup(); renderScoreboard(); },
-    setSettings:(st)=>{ SETTINGS=st||null; SIMC=null; }, leagueSim, simDelta, simDeltaFast, simWinProb, waiverChamp, simLeverage, simScoringModel, simRun, simPlayoffs, simSeedOrder, simBracketOrder, simNormals, simWidth, talentSlope, SIM_N, SIM_SEED, historyFromLeague, teamSeason, currentOpponent, allScores, scoringRank, effPts, effSd, gameFrac, liveState, scoreFrame, currentWeekProj,
+    setSettings:(st)=>{ SETTINGS=st||null; SIMC=null; }, setTransactions:(tx)=>{ TX=tx||null; LOGF={team:"",kind:"all"}; renderLog(); }, setLogFilter:(f)=>{ LOGF=Object.assign({team:"",kind:"all"},f||{}); renderLog(); }, txNormalize, getTransactions:()=>TX, leagueSim, simDelta, simDeltaFast, simWinProb, waiverChamp, simLeverage, simScoringModel, simRun, simPlayoffs, simSeedOrder, simBracketOrder, simNormals, simWidth, talentSlope, SIM_N, SIM_SEED, historyFromLeague, teamSeason, currentOpponent, allScores, scoringRank, effPts, effSd, gameFrac, liveState, scoreFrame, currentWeekProj,
     rostersFromLeague, setRosters:(r)=>{ R = JSON.parse(JSON.stringify(r)); buildIndex(); renderAll(); },
     logTrade, teamFloor, tradeTalent, tradeLineup, strippedPositions, replFill, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, lockAwareLineup, strength, findTrades, findSurplus, surplusDeals, allSurplusDeals, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M, teamNeeds,
     waiverSuggestions:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,

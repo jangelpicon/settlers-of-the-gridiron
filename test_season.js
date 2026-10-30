@@ -1182,6 +1182,61 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     assert(T.streamStatusRaw(rosters.teams[rosters.me].map(T.info), T.freeAgents(), "mu").every(st => st.verdict !== "sat"), "with a real matchup the K/DST stream logic is back (no sat verdicts)");
     T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
   }
+  // ======================= Waiver log tab (Jose 2026-10-30: "a tab that shows waiver log") =======================
+  // Fed the repo snapshot tools/sync_transactions.py writes (raw ESPN mTransactions2 rows + id->name map); the
+  // page's live fetch produces the identical shape, so one normalizer serves both.
+  {
+    const txSnap = (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, "data/transactions.json"), "utf8")); } catch (e) { return null; } })();
+    assert(txSnap && Array.isArray(txSnap.transactions) && txSnap.transactions.length > 0, "data/transactions.json snapshot present with rows (" + (txSnap ? txSnap.transactions.length : 0) + ")");
+    assert(txSnap && txSnap.transactions.every(t => t.type === "WAIVER" || t.type === "FREEAGENT"), "snapshot holds only WAIVER / FREEAGENT rows (lineup moves and the draft stay out)");
+    assert(txSnap && new Set(txSnap.transactions.map(t => t.id)).size === txSnap.transactions.length, "snapshot rows are deduped by id across the per-week fetches");
+    assert(d.querySelector("nav button[data-tab='log']") && d.getElementById("tab-log"), "nav has a Waiver log button and its tab container");
+    T.setTransactions(txSnap);
+    const rows = T.txNormalize(txSnap);
+    assert(rows.length === txSnap.transactions.length, "one normalized row per transaction (" + rows.length + ")");
+    assert(rows.every((r, i) => i === 0 || rows[i-1].ms >= r.ms), "rows sorted newest first");
+    assert(rows.every(r => r.adds.concat(r.drops).every(p => !/^player #/.test(p.name))), "every player id in the snapshot resolves to a name (" + rows.flatMap(r => r.adds.concat(r.drops)).filter(p => /^player #/.test(p.name)).map(p => p.name).join(", ") + ")");
+    assert(rows.every(r => !/^team \d/.test(r.team)), "every team id resolves to a league team name");
+    const byKind = rows.reduce((a, r) => { a[r.kind] = (a[r.kind] || 0) + 1; return a; }, {});
+    assert(!byKind.other, "every WAIVER / FREEAGENT status maps to a known outcome (" + JSON.stringify(byKind) + ")");
+    assert(rows.filter(r => r.kind === "lost").length > 0 && rows.filter(r => r.kind === "lost" && r.winner).length > 0, "lost claims name the team whose claim won the same batch (" + rows.filter(r => r.kind === "lost" && r.winner).length + " of " + rows.filter(r => r.kind === "lost").length + ")");
+    assert(rows.filter(r => r.kind === "lost" && r.winner).every(r => r.winner !== r.team), "a lost claim never names the losing team as its own winner");
+    const logEl = d.getElementById("tab-log");
+    const gridRows = [...logEl.querySelectorAll(".gx .row.grid")];
+    assert(gridRows.length === rows.length, "'All' filter renders every row (" + gridRows.length + ")");
+    assert([...logEl.querySelectorAll(".wkh")].length === new Set(rows.map(r => r.week)).size, "one week header per fantasy week with activity");
+    assert(gridRows.filter(r => /start/.test(r.className)).length === rows.filter(r => r.team === rosters.me).length, "my rows are shaded (" + rows.filter(r => r.team === rosters.me).length + ")");
+    const summaryRows = [...logEl.querySelectorAll(".gb .row.grid")];
+    assert(summaryRows.length === Object.keys(txSnap.teams).length && summaryRows.some(r => /you/.test(r.textContent)), "season summary lists every league team and marks mine");
+    { const first = rows[0]; const r0 = gridRows[0];
+      assert(rx(first.team).test(r0.textContent) && first.adds.concat(first.drops).every(p => rx(p.name).test(r0.textContent)), "newest row shows its team and every player moved (" + first.team + ": " + first.adds.map(p => "+" + p.name).concat(first.drops.map(p => "−" + p.name)).join(" ") + ")"); }
+    T.setLogFilter({ kind: "mine" });
+    const mineRows = [...logEl.querySelectorAll(".gx .row.grid")];
+    assert(mineRows.length === rows.filter(r => r.team === rosters.me).length && mineRows.every(r => rx(rosters.me).test(r.textContent)), "'Mine' filter keeps only my moves (" + mineRows.length + ")");
+    T.setLogFilter({ kind: "lost" });
+    assert([...logEl.querySelectorAll(".gx .row.grid")].every(r => /Lost claim|Drop gone/.test(r.textContent)), "'Failed claims' filter shows only lost / drop-gone rows");
+    const other = Object.values(txSnap.teams).find(t => t !== rosters.me);
+    T.setLogFilter({ kind: "all", team: other });
+    assert([...logEl.querySelectorAll(".gx .row.grid")].length === rows.filter(r => r.team === other).length, "team dropdown filters to that team (" + other + ")");
+    // Synthetic edge cases: unknown ids, pure drop, canceled claim, unknown status
+    const fake = { generated: "t", currentWeek: 3, teams: { "1": "A", "2": "B" }, players: { "10": { name: "Ten Guy", pos: "RB", team: "DAL" } }, transactions: [
+      { id: "a", type: "FREEAGENT", status: "EXECUTED", teamId: 1, scoringPeriodId: 3, processDate: 3000, items: [{ type: "DROP", playerId: 10 }] },
+      { id: "b", type: "WAIVER", status: "CANCELED", teamId: 2, scoringPeriodId: 3, proposedDate: 2000, items: [{ type: "ADD", playerId: 99 }] },
+      { id: "c", type: "WAIVER", status: "FAILED_INVALIDPLAYERSOURCE", teamId: 2, scoringPeriodId: 2, processDate: 1000, items: [{ type: "ADD", playerId: 10 }] },
+      { id: "d", type: "WAIVER", status: "EXECUTED", teamId: 1, scoringPeriodId: 2, processDate: 1000, items: [{ type: "ADD", playerId: 10 }] },
+      { id: "e", type: "WAIVER", status: "SOMETHING_NEW", teamId: 7, scoringPeriodId: 2, processDate: 500, items: [] } ] };
+    const fr = T.txNormalize(fake);
+    assert(fr.find(r => r.id === "a").kind === "drop" && fr.find(r => r.id === "b").kind === "canceled" && fr.find(r => r.id === "e").kind === "other", "pure drop / canceled / unknown status classify as drop / canceled / other");
+    assert(fr.find(r => r.id === "c").winner === "A", "lost claim in the same batch names the winning team");
+    assert(fr.find(r => r.id === "b").adds[0].name === "player #99" && fr.find(r => r.id === "e").team === "team 7", "unknown player / team ids render as placeholders instead of crashing");
+    T.setTransactions(fake);
+    assert([...logEl.querySelectorAll(".gx .row.grid")].length === 5 && /Ten Guy/.test(logEl.textContent), "synthetic feed renders every row");
+    T.setTransactions(null);
+    assert(/No transaction history yet/.test(logEl.textContent) && /not been synced/.test(logEl.textContent), "missing feed renders a plain explanation, not an error");
+    T.setTransactions({ transactions: [] });
+    assert(/No transaction history yet/.test(logEl.textContent) && /returned no adds/.test(logEl.textContent), "empty feed says ESPN returned nothing");
+    T.setTransactions(txSnap);
+  }
   // ======================= Printouts for the weekly Discord report =======================
   // The report must say what the dashboard says (Jose, 2026-10-20: "the dashboard is the source of truth").
   // So this block is fed EXACTLY what season.html loads in the browser: the snapshot projections (real kicks),
