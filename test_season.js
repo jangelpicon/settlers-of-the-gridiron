@@ -694,6 +694,78 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     }
   }
   assert(/Win odds \(matchup\)/.test(d.getElementById("legend").textContent) && /All-play/.test(d.getElementById("legend").textContent), "legend explains win odds, all-play and luck");
+
+  // ======================= Scoreboard tab (every league matchup, Matchup-tab layout) =======================
+  // Jose 2026-10-29: "a tab that shows the rest of league matchups just like the matchup tab".
+  console.log("== Scoreboard tab ==");
+  const sbEl = () => d.getElementById("tab-scoreboard");
+  const sbWp = el => { const b = el.querySelector(".sb-wp"); return b ? +b.dataset.wp : null; };
+  assert(!!d.querySelector("nav button[data-tab='scoreboard']") && !!sbEl(), "Scoreboard tab button + container exist");
+  T.inject(season, rosters, exclusions, tradeLog, projections, null, null, null);
+  assert(/No league schedule data yet/.test(sbEl().textContent), "without schedule data the Scoreboard says so instead of crashing");
+  // fixture: week 3 = OPP vs ME (I'm away), T2 vs T3, and a ninth team sitting
+  const SAT = "BlitzAndGiggles";
+  const hxSb = { currentWeek: 3, standings: {}, schedule: hx.schedule.concat([{ w: 3, home: T2, away: T3, hp: 0, ap: 0, winner: "UNDECIDED" }, { w: 3, home: SAT, away: null, hp: 0, ap: null, winner: "UNDECIDED" }]) };
+  T.inject(season, rosters, exclusions, tradeLog, projections, null, null, hxSb);
+  let sbPanels = [...sbEl().querySelectorAll(".panel.sb-game")];
+  assert(sbPanels.length === 2, "fixture: one panel per matchup this week (" + sbPanels.length + ")");
+  assert(sbPanels[0].dataset.a === ME && sbPanels[0].dataset.b === OPP, "fixture: my game comes first with me as side A even though I'm the away team");
+  assert(sbPanels[1].dataset.a === T2 && sbPanels[1].dataset.b === T3, "fixture: other games put the home team as side A");
+  assert(/Week 3 — every matchup/.test(sbEl().textContent), "fixture: header names the week");
+  assert(new RegExp(SAT + " sits this week").test(sbEl().textContent) && /count for nothing/.test(sbEl().textContent), "fixture: the sitting team is named and its points marked as not counting");
+  assert([...sbEl().querySelectorAll(".sb-sum")].length === 2, "fixture: overview table lists both games");
+  sbPanels.forEach(pn => {
+    const rows = [...pn.querySelectorAll(".gm .row.grid")];
+    assert(rows.length === 9, pn.dataset.a + " vs " + pn.dataset.b + ": all 9 slots compared");
+    const both = rows.filter(r => !/— empty —/.test(r.children[1].textContent) && !/— empty —/.test(r.children[3].textContent)).length;
+    const ed = rows.map(r => r.querySelector(".tag.edge")).filter(Boolean).map(x => parseInt(x.textContent));
+    assert(both >= 1 && ed.length === both && ed.every(v => v >= 0 && v <= 100), pn.dataset.a + " vs " + pn.dataset.b + ": per-slot edge is a probability on every two-sided slot (" + ed.length + "/" + both + ")");
+    const wp = sbWp(pn);
+    assert(wp != null && wp >= 0 && wp <= 100 && /edge ·/.test(pn.textContent) && /Projected score|Score — live/.test(pn.textContent), pn.dataset.a + " vs " + pn.dataset.b + ": headline edge, win probability (" + wp + "%) and score strip render");
+    assert(!!pn.querySelector("svg.lc[aria-label='Projected edge by slot']") && new RegExp("gold = " + pn.dataset.a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(pn.textContent), pn.dataset.a + " vs " + pn.dataset.b + ": slot-edge chart renders with the team names in its legend");
+    assert(!pn.querySelector("select.pick"), pn.dataset.a + " vs " + pn.dataset.b + ": no what-if dropdowns on the Scoreboard (that editor lives on the Matchup tab)");
+  });
+  assert(/Head-to-head this season:/.test(sbPanels[0].textContent) && /Week 1/.test(sbPanels[0].textContent), "fixture: my game lists the Week 1 meeting with " + OPP);
+  assert(/Head-to-head this season:/.test(sbPanels[1].textContent) && /Week 1/.test(sbPanels[1].textContent) && !/First meeting/.test(sbPanels[1].textContent), "fixture: " + T2 + " vs " + T3 + " lists their Week 1 meeting (met once already)");
+  // the two tabs must agree on my game: same win probability, same lineup
+  const mWp = (() => { const m = d.getElementById("tab-matchup").textContent.match(/Win probability\s*(\d+)%/); return m ? +m[1] : null; })();
+  assert(mWp != null && sbWp(sbPanels[0]) === mWp, "my game's win probability matches the Matchup tab (" + mWp + "%)");
+  const names = pn => [...pn.querySelectorAll(".gm .row.grid")].map(r => r.children[1].textContent.replace(/\s*(locked|Q|D|DTD|O|IR|SUSP)\s*$/, "").trim());
+  const mNames = [...d.querySelectorAll("#tab-matchup .gm .row.grid")].map(r => { const s = r.querySelector("select.pick"); return (s ? s.value : (r.querySelector("b") || {}).textContent || "").trim(); });
+  assert(names(sbPanels[0]).every((n, i) => n === mNames[i]), "my game's lineup on the Scoreboard is the Matchup tab's lineup, slot for slot");
+  // overview odds are complementary and sum to 100 for every game
+  assert([...sbEl().querySelectorAll(".sb-sum")].every(r => { const t = [...r.querySelectorAll(".tag.edge")].map(x => parseInt(x.textContent)); return t.length === 2 && t[0] + t[1] === 100; }), "overview: each game's two win odds sum to 100%");
+  // what-if picks on the Matchup tab carry over to my Scoreboard panel
+  const sbPick = [...d.querySelectorAll("#tab-matchup select.pick")].find(s => [...s.options].some(o => !o.selected));
+  if (sbPick){
+    const alt = [...sbPick.options].find(o => !o.selected); sbPick.value = alt.value; sbPick.dispatchEvent(new w.Event("change"));
+    const slotRow = [...sbEl().querySelectorAll(".panel.sb-game")][0].querySelectorAll(".gm .row.grid");
+    assert([...slotRow].some(r => rx(alt.value).test(r.children[1].textContent)), "a Matchup-tab what-if pick (" + alt.value + ") shows up in my Scoreboard panel too");
+    d.getElementById("resetLineup").dispatchEvent(new w.Event("click"));
+  }
+  // my sat week: my game is absent, the others still render, I'm named as sitting
+  T.setHistory({ currentWeek: 3, standings: {}, schedule: hx.schedule.slice(0, 4).concat([{ w: 3, home: ME, away: null, hp: 0, ap: null, winner: "UNDECIDED" }, { w: 3, home: T2, away: T3, hp: 0, ap: 0, winner: "UNDECIDED" }]) });
+  assert([...sbEl().querySelectorAll(".panel.sb-game")].length === 1 && new RegExp(ME.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + " 🐑 sits this week").test(sbEl().textContent), "when I sit, the Scoreboard still shows the other games and names me as the odd team out");
+  // fallback mode (no projections): lineups by consensus rank, no odds, no crash
+  T.inject(season, rosters, exclusions, tradeLog, null, null, null, hxSb);
+  assert([...sbEl().querySelectorAll(".panel.sb-game")].length === 2 && /consensus rank/.test(sbEl().textContent) && !sbEl().querySelector(".sb-wp") && [...sbEl().querySelectorAll(".gm .row.grid")].length === 18, "fallback: every game still renders by consensus rank, with no win odds");
+  // real data: every two-team row of the current week gets a panel, nothing else does
+  T.inject(season, rosters, exclusions, tradeLog, projections, null, matchups, histReal);
+  const realGames = histReal.schedule.filter(r => r.w === histReal.currentWeek && r.home && r.away);
+  const realSat = histReal.schedule.filter(r => r.w === histReal.currentWeek && r.home && !r.away).map(r => r.home);
+  sbPanels = [...sbEl().querySelectorAll(".panel.sb-game")];
+  assert(sbPanels.length === realGames.length && realGames.every(g => sbPanels.some(p => (p.dataset.a === g.home && p.dataset.b === g.away) || (p.dataset.a === g.away && p.dataset.b === g.home))), "real data: one panel per week-" + histReal.currentWeek + " matchup (" + sbPanels.length + "), each pairing the scheduled teams");
+  assert(realSat.every(t => new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "( 🐑)? sits this week").test(sbEl().textContent)), "real data: the sitting team is named (" + (realSat.join(", ") || "none") + ")");
+  assert(sbPanels.every(p => p.querySelectorAll(".gm .row.grid").length === 9 && sbWp(p) != null), "real data: every panel compares 9 slots and carries a win probability");
+  const coSb = T.currentOpponent();
+  if (coSb && coSb.opp){
+    const mine = sbPanels[0], mWp2 = (d.getElementById("tab-matchup").textContent.match(/Win probability\s*(\d+)%/) || [])[1];
+    assert(mine.dataset.a === ME && mine.dataset.b === coSb.opp && mWp2 != null && sbWp(mine) === +mWp2, "real data: my game leads the Scoreboard and agrees with the Matchup tab (" + mWp2 + "%)");
+  }
+  const sbWps = [...sbEl().querySelectorAll(".sb-sum")].map(r => [...r.querySelectorAll(".tag.edge")].map(x => parseInt(x.textContent)));
+  assert(sbWps.length === realGames.length && sbWps.every(t => t[0] + t[1] === 100), "real data: overview odds sum to 100% in every game");
+  console.log("\n--- SCOREBOARD (week " + (histReal.currentWeek || "?") + ") ---");
+  [...sbEl().querySelectorAll(".sb-sum")].forEach(r => console.log("  " + r.textContent.replace(/\s+/g, " ").trim()));
   console.log("\n--- MATCHUP (week " + (histReal.currentWeek || "?") + ") ---");
   console.log(d.getElementById("tab-matchup").textContent.replace(/\s+/g, " ").slice(0, 700));
   T.inject(season, rosters, exclusions, tradeLog, projections, null, matchups, histReal);

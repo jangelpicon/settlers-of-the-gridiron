@@ -53,6 +53,8 @@
   .tbl .gm .row.grid,.tbl .gm .hrow{grid-template-columns:44px minmax(124px,1.2fr) 82px minmax(124px,1.2fr) 82px 70px;min-width:600px;}
   .tbl .gm .num small{font-size:.62rem;}
   .tbl .gh .row.grid,.tbl .gh .hrow{grid-template-columns:44px 36px 110px minmax(140px,1fr) 64px;min-width:430px;}
+  .tbl .gb .row.grid,.tbl .gb .hrow{grid-template-columns:minmax(130px,1.2fr) 56px 54px 54px 56px minmax(130px,1.2fr);min-width:560px;}
+  .tbl .gm .hrow .tn{overflow:hidden;text-overflow:ellipsis;min-width:0;}
   .legend{font-size:.8rem;color:var(--muted);} .legend dl{display:grid;grid-template-columns:max-content 1fr;gap:3px 12px;margin:6px 0 0;} .legend dt{color:var(--text);font-weight:700;} .legend dd{margin:0;}
   details summary{cursor:pointer;color:var(--wheat);font-weight:600;}
   @media (max-width:700px){ .row b{min-width:100px;} .detail{padding-left:0;} .row.grid .detail,.row.grid .sub{padding-left:0;} }
@@ -78,6 +80,7 @@
 <nav>
   <button data-tab="lineup" class="active">Lineup</button>
   <button data-tab="matchup">Matchup</button>
+  <button data-tab="scoreboard">Scoreboard</button>
   <button data-tab="waivers">Waivers</button>
   <button data-tab="trades">Trades</button>
   <button data-tab="strength">Strength</button>
@@ -103,6 +106,7 @@
       <dt>Roster talent (ROS)</dt><dd>Paper strength: sum over a team's 9 best starters of (420 − rest-of-season rank), so +10 ≈ upgrading one starter by 10 rank spots. It is an <b>input</b> to the scoring rate — it ignores record and real scoring, so it never ranks teams on its own. "This week" = that team's projected points with its best lineup.</dd>
       <dt>Title Δ (trades, waivers, start/sit)</dt><dd>How much a move changes <b>your</b> title %, re-simulated with both rosters' talent updated (same random seasons, so the difference is the move itself). Shown in percentage points (pp). Talent you / them = the roster-talent change on each side — the other manager judges the offer on that, so it drives the odds they accept.</dd>
       <dt>EV (trades)</dt><dd>Title Δ × the chance they say yes. The one number to sort trades by.</dd>
+      <dt>Scoreboard</dt><dd>Every matchup in the league this week, laid out like the Matchup tab: the first-named team is the one the edge, win odds and gold bars belong to (you, in your own game). Projections for games not started, actual points once they kick off.</dd>
       <dt>Win odds (matchup)</dt><dd>Chance your best lineup outscores theirs this week, from both teams' predicted totals and the usual week-to-week swing of every player involved.</dd>
       <dt>All-play (matchup)</dt><dd>What a team's record would be if it played <b>everyone</b> every week (sat weeks excluded on both sides). Strips the schedule out: a 1-2 team with a 12-4 all-play has been good and unlucky.</dd>
       <dt>Luck (matchup)</dt><dd>Actual wins minus the wins the all-play record says the scores deserved. Positive = the schedule has been kind; negative = better than the record shows.</dd>
@@ -110,6 +114,7 @@
   </details>
   <div id="tab-lineup"></div>
   <div id="tab-matchup" class="hidden"></div>
+  <div id="tab-scoreboard" class="hidden"></div>
   <div id="tab-waivers" class="hidden"></div>
   <div id="tab-trades" class="hidden"></div>
   <div id="tab-strength" class="hidden"></div>
@@ -1235,10 +1240,100 @@
       const slot = sel.dataset.slot, name = sel.value;
       Object.keys(myMatchupPick).forEach(s=>{ if (s!==slot && myMatchupPick[s]===name) delete myMatchupPick[s]; });
       myMatchupPick[slot] = name;
-      renderMatchup();
+      renderMatchup(); renderScoreboard(); // the Scoreboard shows my game too — keep its lineup in step with the pick
     }));
     const rl = document.getElementById("resetLineup");
-    if (rl) rl.addEventListener("click", ()=>{ myMatchupPick = {}; renderMatchup(); });
+    if (rl) rl.addEventListener("click", ()=>{ myMatchupPick = {}; renderMatchup(); renderScoreboard(); });
+  }
+
+  // ---------- Scoreboard tab ----------
+  // Every matchup in the league this fantasy week, each laid out like the Matchup tab (headline edge + win
+  // odds + projected score, slot-by-slot table with per-slot edge, edge chart, live win-probability line).
+  // Jose 2026-10-29: "a tab that shows the rest of league matchups just like the matchup tab". My game goes
+  // first (and honors the Matchup tab's what-if picks); the sitting team is named at the bottom. Side A is
+  // the team the edge/odds/gold belong to: me in my game, the home team elsewhere.
+  function sbTot(L){ return L.slots.reduce((t,x)=>t+effPts(x.p),0); }
+  function sbVar(L){ return L.slots.reduce((t,x)=>t+effSd(x.p)**2,0); }
+  function sbWinProb(LA, LB){ const sd = Math.sqrt(sbVar(LA)+sbVar(LB)), a = sbTot(LA), b = sbTot(LB); return sd>0 ? phi((a-b)/sd) : (a>b?1:a<b?0:.5); }
+  function sbLineup(team, key){ return team===R.me ? buildMyLineup(myTeam(), key) : lockAwareLineup(teamOf(team), key); }
+  function sbRecord(team){ const ts = teamSeason(team); return ts ? ts.wins+"–"+ts.losses+(ts.ties?"–"+ts.ties:"") : "0–0"; }
+  function sbName(t){ return esc(t)+(t===R.me?" 🐑":""); }
+  function sbPanel(A, B, home, key){
+    const LA = sbLineup(A, key), LB = sbLineup(B, key);
+    const away = home===A ? B : A;
+    let h = "<div class='panel sb-game' data-a='"+esc(A)+"' data-b='"+esc(B)+"'><h2>"+sbName(A)+" vs "+sbName(B)+"</h2>";
+    h += "<div class='muted' style='margin-bottom:6px'>"+esc(away)+" at "+esc(home)+" · "+esc(A)+" <b>"+sbRecord(A)+"</b> · "+esc(B)+" <b>"+sbRecord(B)+"</b>"+(A===R.me||B===R.me ? " · your game — the what-if editor is on the Matchup tab" : "")+"</div>";
+    if (P){
+      const aTot = sbTot(LA), bTot = sbTot(LB), pw = sbWinProb(LA, LB), pct = Math.round(pw*100);
+      const anyLive = LA.slots.concat(LB.slots).some(x=>played(x.p));
+      const edge = aTot - bTot, ecls = edge>=0?"good":"bad", lab = "font-size:.66rem;text-transform:uppercase;letter-spacing:.3px";
+      h += "<div class='suggest'><div style='display:flex;gap:24px;align-items:baseline;flex-wrap:wrap;margin-bottom:5px'>"
+        + "<span><div class='muted' style='"+lab+"'>"+(anyLive?"Live ":"")+"edge · "+esc(A)+"</div><b class='"+ecls+"' style='font-size:1.6rem'>"+(edge>=0?"+":"−")+Math.abs(edge).toFixed(1)+"</b></span>"
+        + "<span><div class='muted' style='"+lab+"'>Win probability · "+esc(A)+"</div><b class='sb-wp "+(pct>=55?"good":pct<=45?"bad":"warn")+"' data-wp='"+pct+"' style='font-size:1.6rem'>"+pct+"%</b></span>"
+        + "<span><div class='muted' style='"+lab+"'>"+(anyLive?"Score — live + proj":"Projected score")+"</div><b style='font-size:1.1rem'>"+aTot.toFixed(1)+"</b> <span class='muted'>"+esc(A)+"</span> <span class='muted'>–</span> <b style='font-size:1.1rem'>"+bTot.toFixed(1)+"</b> <span class='muted'>"+esc(B)+"</span></span>"
+        + "</div>"
+        + "<div class='row' style='border:0;padding:2px 0 0'><span class='bar' style='max-width:300px'><i style='width:"+pct+"%'></i></span></div>"
+        + "<span class='muted'>"+(anyLive?"Actual points for games already started, projections for the rest — the edge and odds tighten as games finish.":"From both lineups' predicted totals and every player's usual week-to-week swing. "+(pct>=60||pct<=40?"A clear edge, not a lock.":"A genuine coin flip."))+"</span></div>";
+      h += "<div class='tbl'><div class='gm'><div class='hrow'><span>Slot</span><span class='tn' title='"+esc(A)+"'>"+esc(A)+"</span><span class='num'>Pts</span><span class='tn' title='"+esc(B)+"'>"+esc(B)+"</span><span class='num'>Pts</span><span class='ctr' title='Chance "+esc(A)+"&#39;s player outscores "+esc(B)+"&#39;s at this slot'>Edge</span></div>";
+      const ptCell = p => { if (!p) return ""; const ls = liveState(p); if (!ls) return p.mu!=null?p.mu.toFixed(1):"";
+        const tip = ls==="live" && p.actual!=null ? " title='"+p.actual.toFixed(1)+" so far — projected to finish "+effPts(p).toFixed(1)+"'" : "";
+        return "<span class='proj'"+tip+">"+effPts(p).toFixed(1)+"</span> <small class='muted'>"+(ls==="final"?"final":"live proj")+"</small>"; };
+      const nameCell = p => !p ? "<span class='muted'>— empty —</span>" : "<b>"+esc(p.name)+"</b>"+(p.injLive&&p.injLive!=="ACT"?" <span class='bad'>"+esc(p.injLive)+"</span>":"")+(p.locked?" <span class='tag warn'>locked</span>":"");
+      LA.slots.forEach((s1,i)=>{
+        const s2 = LB.slots[i]||{p:null};
+        const pb = s1.p&&s2.p ? pBeatsEff(s1.p,s2.p) : null;
+        const epct = pb==null ? "" : Math.round(pb*100);
+        const cls = pb==null ? "" : pb>=0.55 ? "good" : pb<=0.45 ? "bad" : "warn";
+        h += "<div class='row grid'><span class='slot'>"+esc(s1.slot)+"</span>"
+          + "<span class='c'>"+nameCell(s1.p)+"</span><span class='c num'>"+ptCell(s1.p)+"</span>"
+          + "<span class='c'>"+nameCell(s2.p)+"</span><span class='c num'>"+ptCell(s2.p)+"</span>"
+          + "<span class='c' style='text-align:center'>"+(epct===""?"":"<span class='tag edge "+cls+"'>"+epct+"%</span>")+"</span></div>";
+      });
+      h += "</div></div><div class='muted' style='margin-top:6px'>Players whose games have started are locked to their real lineup and show actual points; every unstarted slot shows that team's <b>best possible</b> option. Edge = chance "+esc(A)+"'s player outscores "+esc(B)+"'s at that slot.</div>";
+      h += "<details class='sb-charts' style='margin-top:8px'><summary>Edge by slot + live win probability charts</summary>";
+      h += slotEdgeChart(LA, LB, {a:A, b:B});
+      const wps = winProbSeries(LA, LB);
+      if (wps.length >= 2) h += winProbChart(wps, {a:A, b:B});
+      h += "</details>";
+    } else {
+      h += "<div class='muted'>Live projections unavailable — win odds need them. Rosters below by this week's consensus rank.</div>";
+      h += "<div class='tbl'><div class='gm'><div class='hrow'><span>Slot</span><span class='tn'>"+esc(A)+"</span><span class='num'>Wk rank</span><span class='tn'>"+esc(B)+"</span><span class='num'>Wk rank</span><span></span></div>";
+      LA.slots.forEach((s1,i)=>{ const s2 = LB.slots[i]||{p:null};
+        h += "<div class='row grid'><span class='slot'>"+esc(s1.slot)+"</span><b class='c'>"+(s1.p?esc(s1.p.name):"—")+"</b><span class='c num'>"+(s1.p&&s1.p.wkRank!=null?"#"+s1.p.wkRank:"")+"</span><span class='c'>"+(s2.p?esc(s2.p.name):"—")+"</span><span class='c num'>"+(s2.p&&s2.p.wkRank!=null?"#"+s2.p.wkRank:"")+"</span><span></span></div>"; });
+      h += "</div></div>";
+    }
+    const tsA = teamSeason(A), met = (tsA?tsA.rows:[]).filter(r=>r.opp===B);
+    if (met.length) h += "<div class='muted' style='margin-top:8px'><b>Head-to-head this season:</b> "+met.map(r=>"Week "+r.w+" "+resTag(r.res)+" "+f1(r.pf)+" – "+f1(r.pa)+" ("+esc(A)+" "+(r.home?"vs":"at")+" "+esc(B)+")").join(" · ")+"</div>";
+    else h += "<div class='muted' style='margin-top:8px'>First meeting of the season.</div>";
+    return h + "</div>";
+  }
+  function renderScoreboard(){
+    const el = document.getElementById("tab-scoreboard");
+    if (!HIST || HIST.currentWeek==null){
+      el.innerHTML = "<div class='panel'><h2>Scoreboard</h2><div class='muted'>No league schedule data yet — it loads live from ESPN when the league is public, or from the weekly sync (data/league_history.json). Check the connection or run tools/sync_league.py.</div></div>"; return;
+    }
+    const wk = HIST.currentWeek, key = lineupKey();
+    const rows = HIST.schedule.filter(r=>r.w===wk);
+    const games = rows.filter(r=>r.home!=null && r.away!=null && R.teams[r.home] && R.teams[r.away]);
+    const sat = rows.filter(r=>r.home!=null && r.away==null).map(r=>r.home);
+    if (!games.length){ el.innerHTML = "<div class='panel'><h2>Scoreboard</h2><div class='muted'>No matchups found for week "+wk+" in the schedule.</div></div>"; return; }
+    const isMine = r => r.home===R.me || r.away===R.me;
+    games.sort((x,y)=>(isMine(y)?1:0)-(isMine(x)?1:0));
+    const pairs = games.map(r=>{ const A = r.away===R.me ? R.me : r.home, B = A===r.home ? r.away : r.home; return { A, B, home:r.home }; });
+    let h = "<div class='panel'><h2>Week "+wk+" — every matchup</h2>";
+    h += "<div class='muted' style='margin-bottom:6px'>"+(P ? "Projected totals and win odds for all "+pairs.length+" games this week; the first-named team owns the edge and the odds. Live points take over as games kick off." : "Live projections unavailable — lineups below by consensus rank, no odds.")+"</div>";
+    if (P){
+      h += "<div class='tbl'><div class='gb'><div class='hrow'><span>Team</span><span class='num'>Proj</span><span class='ctr'>Win</span><span class='ctr'>Win</span><span class='num'>Proj</span><span>Team</span></div>";
+      pairs.forEach(g=>{
+        const LA = sbLineup(g.A, key), LB = sbLineup(g.B, key), pct = Math.round(sbWinProb(LA, LB)*100);
+        h += "<div class='row grid sb-sum' data-a='"+esc(g.A)+"' data-b='"+esc(g.B)+"'><b class='c'>"+sbName(g.A)+"</b><span class='c num'>"+sbTot(LA).toFixed(1)+"</span><span class='c' style='text-align:center'><span class='tag edge "+(pct>=55?"good":pct<=45?"bad":"warn")+"'>"+pct+"%</span></span><span class='c' style='text-align:center'><span class='tag edge "+(100-pct>=55?"good":100-pct<=45?"bad":"warn")+"'>"+(100-pct)+"%</span></span><span class='c num'>"+sbTot(LB).toFixed(1)+"</span><b class='c'>"+sbName(g.B)+"</b></div>";
+      });
+      h += "</div></div>";
+    }
+    if (sat.length) h += "<div class='muted' style='margin-top:8px'><b>"+sat.map(sbName).join(", ")+"</b> sit"+(sat.length>1?"":"s")+" this week (9 teams, one is the odd team out) — no head-to-head, and the points scored count for nothing.</div>";
+    h += "</div>";
+    pairs.forEach(g=>{ h += sbPanel(g.A, g.B, g.home, key); });
+    el.innerHTML = h;
   }
 
   // ---------- Waivers tab ----------
@@ -2100,7 +2195,8 @@
   }
   // This week's matchup as a diverging bar per lineup slot: your projected points minus theirs.
   // Gold bar right = your edge at that slot, blue bar left = theirs; the note carries the net margin.
-  function slotEdgeChart(mine, theirs){
+  // lab = {a, b} names the two sides (Scoreboard); without it the copy reads you/them (Matchup tab).
+  function slotEdgeChart(mine, theirs, lab){
     const cut = s => s && s.length>15 ? s.slice(0,14)+"…" : (s||"—");
     const mk = s => s==="live" ? " <tspan fill='#e5b94e' font-size='8'>●live proj</tspan>" : s==="final" ? " <tspan fill='var(--muted)' font-size='8'>final</tspan>" : "";
     const rows = mine.slots.map((s1,i)=>{ const s2 = theirs.slots[i]||{p:null};
@@ -2119,7 +2215,8 @@
       g += "<text x='"+(W-Rm+56)+"' y='"+(y+rh/2+1).toFixed(1)+"' font-size='10' fill='var(--muted)'>"+esc(cut(r.you))+" <tspan fill='"+CH.me+"'>"+r.me.toFixed(1)+"</tspan>"+mk(r.ys)+" · "+esc(cut(r.them2))+" <tspan fill='"+CH.rival+"'>"+r.them.toFixed(1)+"</tspan>"+mk(r.ts)+"</text>";
     });
     const nm = net>=0?"ahead by":"behind by", basis = anyLive ? "Live: actual points for games that have started, projections for the rest" : "On projections";
-    return "<h3>"+(anyLive?"Live":"Projected")+" edge by slot</h3><div class='muted' style='margin-bottom:4px'>Your points minus theirs at each starting slot — <span style='color:"+CH.me+"'>gold = your edge</span>, <span style='color:"+CH.rival+"'>blue = theirs</span>. "+basis+", you're <b>"+nm+" "+Math.abs(net).toFixed(1)+"</b>.</div><svg class='lc' viewBox='0 0 "+W+" "+H+"' role='img' aria-label='Projected edge by slot'>"+g+"</svg>";
+    const who = lab ? esc(lab.a)+"'s points minus "+esc(lab.b)+"'s" : "Your points minus theirs", gold = lab ? "gold = "+esc(lab.a) : "gold = your edge", blue = lab ? "blue = "+esc(lab.b) : "blue = theirs", subj = lab ? esc(lab.a)+" is" : "you're";
+    return "<h3>"+(anyLive?"Live":"Projected")+" edge by slot</h3><div class='muted' style='margin-bottom:4px'>"+who+" at each starting slot — <span style='color:"+CH.me+"'>"+gold+"</span>, <span style='color:"+CH.rival+"'>"+blue+"</span>. "+basis+", "+subj+" <b>"+nm+" "+Math.abs(net).toFixed(1)+"</b>.</div><svg class='lc' viewBox='0 0 "+W+" "+H+"' role='img' aria-label='Projected edge by slot'>"+g+"</svg>";
   }
   // Win probability as a function of which games are already in the books. At a given cutoff time, a player
   // whose game kicked by then counts at his actual score with no uncertainty; everyone else is still a
@@ -2139,7 +2236,7 @@
     return cps.map(c=>({ label:c.label, p: winProbAt(mine, theirs, c.t) }));
   }
   // Single gold line, 0–100%, with a 50% coin-flip guide; the end point is the current live win probability.
-  function winProbChart(series){
+  function winProbChart(series, lab){
     const W=760, H=208, L=40, Rm=56, T=12, B=28, pw=W-L-Rm, ph=H-T-B, n=series.length;
     const X = i => n>1 ? L+i/(n-1)*pw : L+pw/2, Y = p => T+(1-p)*ph;
     let g = "";
@@ -2151,7 +2248,7 @@
       g += "<text x='"+X(i).toFixed(1)+"' y='"+(H-10)+"' text-anchor='middle' font-size='9' fill='var(--muted)'>"+esc(d.label)+"</text>"; });
     const cur = series[n-1];
     g += "<text x='"+(W-Rm+6)+"' y='"+(Y(cur.p)+4).toFixed(1)+"' font-size='13' font-weight='700' fill='"+(cur.p>=0.5?CH.me:CH.rival)+"'>"+Math.round(cur.p*100)+"%</text>";
-    return "<h3>Live win probability</h3><div class='muted' style='margin-bottom:4px'>Your chance to win this matchup, re-figured as each game goes final. 50% is a coin flip; above the dashed line you're favored.</div><svg class='lc' viewBox='0 0 "+W+" "+H+"' role='img' aria-label='Live win probability'>"+g+"</svg>";
+    return "<h3>Live win probability</h3><div class='muted' style='margin-bottom:4px'>"+(lab ? esc(lab.a)+"'s chance" : "Your chance")+" to win this matchup, re-figured as each game goes final. 50% is a coin flip; above the dashed line you're favored.</div><svg class='lc' viewBox='0 0 "+W+" "+H+"' role='img' aria-label='Live win probability'>"+g+"</svg>";
   }
   function renderStrength(){
     let h = "";
@@ -2365,11 +2462,11 @@
     document.getElementById("stamp").textContent = S.generated;
     const rs = document.getElementById("rosterStamp"); rs.textContent = RSTAMP.text; rs.className = RSTAMP.cls;
     const ps = document.getElementById("pstamp"); ps.textContent = PSTAMP.text; ps.className = PSTAMP.cls;
-    renderLineup(); renderMatchup(); renderWaivers(); renderTrades(); renderStrength(); renderByes(); renderLeague();
+    renderLineup(); renderMatchup(); renderScoreboard(); renderWaivers(); renderTrades(); renderStrength(); renderByes(); renderLeague();
   }
   document.querySelectorAll("nav button").forEach(b=>b.addEventListener("click", ()=>{
     document.querySelectorAll("nav button").forEach(x=>x.classList.remove("active")); b.classList.add("active");
-    ["lineup","matchup","waivers","trades","strength","byes","league"].forEach(t=>document.getElementById("tab-"+t).classList.toggle("hidden", t!==b.dataset.tab));
+    ["lineup","matchup","scoreboard","waivers","trades","strength","byes","league"].forEach(t=>document.getElementById("tab-"+t).classList.toggle("hidden", t!==b.dataset.tab));
   }));
 
   async function loadProjections(){
@@ -2436,7 +2533,7 @@
   }
   document.getElementById("refreshLive").addEventListener("click", async ()=>{ if (!S) return; PSTAMP = { text:"fetching live…", cls:"" }; renderAll(); await liveRefresh(); scheduleLive(); });
   window.__seasonTest = { inject:(s,r,x,tl,pj,pool,mu,hist)=>{ S=s; R=JSON.parse(JSON.stringify(r)); X=x||{players:[]}; P=pj||null; POOL=pool||null; MU=mu||null; HIST=hist||null; LG=null; PSTAMP = pj ? {text:"snapshot "+pj.generated, cls:"stale"} : {text:"none", cls:""}; RSTAMP = {text:R.updated||"–", cls:""}; mergeLog((tl||{}).entries); applyAcceptedTrades(); buildIndex(); renderAll(); },
-    setHistory:(h)=>{ HIST=h||null; renderMatchup(); },
+    setHistory:(h)=>{ HIST=h||null; renderMatchup(); renderScoreboard(); },
     setSettings:(st)=>{ SETTINGS=st||null; SIMC=null; }, leagueSim, simDelta, simDeltaFast, simWinProb, waiverChamp, simLeverage, simScoringModel, simRun, simPlayoffs, simSeedOrder, simBracketOrder, simNormals, simWidth, talentSlope, SIM_N, SIM_SEED, historyFromLeague, teamSeason, currentOpponent, allScores, scoringRank, effPts, effSd, gameFrac, liveState, scoreFrame, currentWeekProj,
     rostersFromLeague, setRosters:(r)=>{ R = JSON.parse(JSON.stringify(r)); buildIndex(); renderAll(); },
     logTrade, teamFloor, tradeTalent, tradeLineup, strippedPositions, replFill, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, lockAwareLineup, strength, findTrades, findSurplus, surplusDeals, allSurplusDeals, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M, teamNeeds,
