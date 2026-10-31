@@ -137,7 +137,20 @@
   // players for one and sat at 13/14; every waiver row still read "pass — worse than <bench player>" because the
   // page assumed every add is a drop. With a spot open the first claim is free: nobody has to go.)
   const activeCount = team => team.filter(p=>!p.ir && p.slot!=="IR").length;
-  const openSpots = team => Math.max(0, ROSTER_ACTIVE - activeCount(team));
+  const IR_SLOTS = 1; // ESPN lineupSlotCounts slot 21 = 1
+  // Out-this-week players ARE usable roster spots (Jose 2026-10-30: SACK OF WHEAT had Egbuka and Tate out, the page
+  // said 14/14 and "every add is a drop"). ESPN lets an OUT/IR-designated player sit in the IR slot, so with the IR
+  // slot empty one of them can be PARKED there — a real roster spot opens with no drop. The claim sheet counts it
+  // (step 0: make the IR move). Any further OUT player scores zero this week; he is the natural spot for a one-week
+  // rental and the Waivers tab says so, but he is NOT silently pushed up the drop ladder — dropping a season-long
+  // asset for a rental is Jose's call, shown with the numbers. Longest absence parks first.
+  const isOut = p => { const c = P ? p.injLive : (p.inj ? p.inj.code : null); return c==="O" || c==="IR"; };
+  function backDate(p){ const m = /back ~(\d{1,2})\/(\d{1,2})/.exec(p.injNote || (p.inj && p.inj.note) || ""); if (!m) return null; const now = new Date(); let d = new Date(now.getFullYear(), +m[1]-1, +m[2]); if (d.getTime() < now.getTime() - 120*86400000) d = new Date(now.getFullYear()+1, +m[1]-1, +m[2]); return d.getTime(); }
+  const onActive = p => !p.ir && p.slot!=="IR";
+  function parkable(team){ return team.filter(p=>onActive(p) && isOut(p) && p.irOk!==false).sort((a,b)=>(backDate(b)||0)-(backDate(a)||0)); }
+  function irMoves(team){ const free = IR_SLOTS - team.filter(p=>!onActive(p)).length; return free > 0 ? parkable(team).slice(0, free) : []; }
+  function outSpots(team){ const ir = irMoves(team); return team.filter(p=>onActive(p) && isOut(p) && !ir.includes(p)); }
+  const openSpots = team => Math.max(0, ROSTER_ACTIVE - activeCount(team)) + irMoves(team).length;
   const FLEX = ["RB","WR","TE"];
   const ROS_MAX = 420; // value = ROS_MAX - rank
   // Role check (2026-10-20, Cam Skattebo lesson): FantasyPros' rest-of-season rank reprices a lost starting job
@@ -236,6 +249,7 @@
         const row = { name: pos==="DST" ? (TEAM_NAME[tm] || p.fullName) : p.fullName, pos, team: tm };
         if (e.lineupSlotId===IR_SLOT) row.ir = true;
         const sl = ESPN_SLOT_NAME[e.lineupSlotId]; if (sl) row.slot = sl;
+        if (Array.isArray(p.eligibleSlots)) row.irOk = p.eligibleSlots.includes(IR_SLOT); // may he sit in the IR slot (same as sync_league.py)
         rows.push(row);
       });
       teams[name] = rows;
@@ -505,7 +519,9 @@
     const codes = []; if (q && q.injE) codes.push(q.injE); if (q && q.injS) codes.push(q.injS);
     if (!codes.length && p.inj) codes.push(p.inj.code);
     p.injLive = codes.length ? codes.sort((a,b)=>(INJ_RANK[b]||0)-(INJ_RANK[a]||0))[0] : "ACT";
-    p.injNote = (q && q.injNote) || (p.inj && p.inj.note) || "";
+    { // live body part from the feeds, plus the injury file's expected return ("back ~11/8") when the live note lacks one
+      const live = (q && q.injNote) || "", file = (p.inj && p.inj.note) || "", back = /back ~\d{1,2}\/\d{1,2}/.exec(file);
+      p.injNote = live ? (back && !/back ~/.test(live) && p.injLive!=="ACT" ? live+" · "+back[0] : live) : file; }
     p.pPlay = PPLAY[p.injLive]!=null ? PPLAY[p.injLive] : 1;
     if (p.onBye) p.pPlay = 0;
     if (p.noTeam){ p.pPlay = 0; p.injNote = p.injNote || "no NFL team (released)"; } // unusable until someone signs him — never a stream, never a start
@@ -1816,6 +1832,24 @@
     let h = "<div class='panel'><h2>Waiver moves that beat your bench — season-long only</h2><div class='muted' style='margin-bottom:6px'>An add/drop is suggested only when the free agent is better for the <b>rest of the season</b>, judged two ways at once: FantasyPros rest-of-season rank (refreshed Tuesdays) must be at least "+ROS_MARGIN+" spots better, and ESPN's live full-season projection must agree. This week's matchup is never a reason to drop a player. Smaller edges are listed as marginal so you don't churn.</div>";
     const { sugg, marginal, needs: N } = waiverSuggestions(me, bench, fa);
     h += needsStrip(N);
+    // Out this week = roster spots scoring zero. One can be parked in the IR slot (free spot, counted below); the rest
+    // are rental spots — shown with the best free agent who would actually START this week, and the cost of the drop.
+    const outs = me.filter(p=>onActive(p) && isOut(p));
+    if (outs.length){
+      const moves = irMoves(me), irFreeLeft = IR_SLOTS - me.filter(p=>!onActive(p)).length - moves.length;
+      const healthy = me.filter(p=>!isOut(p));
+      const fmtBack = p => { const t = backDate(p); return t ? "~"+new Date(t).toLocaleDateString("en-US",{month:"numeric",day:"numeric"}) : "his return"; };
+      h += "<div class='suggest' id='outSpots'>🩹 <b>Out this week: "+outs.map(p=>esc(p.name)).join(", ")+"</b> — "+outs.length+" roster spot"+(outs.length>1?"s":"")+" scoring zero.";
+      outs.forEach(p=>{
+        const note = p.injNote ? " <span class='muted'>("+esc(p.injNote)+")</span>" : "";
+        if (moves.includes(p)){ h += "<br>• <b>"+esc(p.name)+"</b>"+note+" → <b>move him to your IR slot</b> (empty; ESPN allows an OUT player there). That opens a real roster spot with no drop — the claim sheet below already counts it as open, so make this move first."; return; }
+        const rentals = fa.filter(f=>FLEX.includes(f.pos) && f.mu!=null && f.pPlay>0 && !f.onBye).map(f=>({ f, L: optimalLineup(healthy.concat([f]), lineupKey()) })).filter(x=>x.L.used.has(x.f.n)).sort((a,b)=>b.f.mu-a.f.mu).slice(0,3);
+        h += "<br>• <b>"+esc(p.name)+"</b>"+note+" → "+(irFreeLeft>0 ? "" : "IR slot "+(moves.length?"goes to "+esc(moves[0].name):"is taken")+", so he stays on the active roster. ")
+          + (rentals.length ? "a <b>one-week rental</b> would start for you: "+rentals.map(x=>"<b>"+esc(x.f.name)+"</b> ("+x.f.pos+" "+esc(x.f.team||"")+", "+x.f.mu.toFixed(1)+" proj)").join(", ")+". Dropping "+esc(p.name)+" (ROS #"+(p.ros!=null?p.ros:"–")+(p.seasonProj!=null?", "+p.seasonProj.toFixed(0)+" season pts":"")+") is permanent — only if the points this week matter more than him from "+fmtBack(p)+" on."
+                           : "no free agent would start for you this week even with him out — nothing to gain from the spot, keep him.");
+      });
+      h += "</div>";
+    }
     // Weekly K/DST streamer claims belong on the claim sheet too. A kicker/defense on a bye (empty slot) or a
     // clearly better matchup this week is a real waiver move even when nothing is a season-long add — otherwise
     // the order looks empty when there's actually a stream to make. Straight same-position swap (drop your own).
@@ -1837,7 +1871,8 @@
       const claimInj = p => { const code = P ? p.injLive : (p.inj ? p.inj.code : null); if (!code || code==="ACT") return ""; const note = p.injNote || (p.inj && p.inj.note) || ""; const pct = (P && p.pPlay>0 && p.pPlay<1) ? " "+Math.round(p.pPlay*100)+"%" : ""; return ", "+esc(code==="O"?"OUT":code)+pct+(note?" · "+esc(note):""); };
       const player = (p, dropSide) => "<b"+(dropSide?"":" class='hl'")+">"+esc(p.name)+"</b>, "+esc(p.team||"?")+" "+p.pos+" <span class='muted'>(ROS "+(p.ros!=null?"#"+p.ros:"unranked")+(p.seasonProj!=null?", "+p.seasonProj.toFixed(0)+" season pts":"")+claimInj(p)+")</span>";
       const openN = openSpots(me);
-      if (openN>0) h += "<div class='suggest'>🟢 <b>You have "+openN+" open roster spot"+(openN>1?"s":"")+"</b> ("+activeCount(me)+" of "+ROSTER_ACTIVE+" filled) — the first claim is free, nobody has to be dropped. Priority 1 is the best player on the wire for the rest of the season; the backups below it fire only if he's taken. Fill the spot: an empty slot scores zero.</div>";
+      if (openN>0){ const mv = irMoves(me);
+        h += "<div class='suggest'>🟢 <b>You have "+openN+" open roster spot"+(openN>1?"s":"")+"</b> ("+activeCount(me)+" of "+ROSTER_ACTIVE+" filled"+(mv.length?", IR slot empty":"")+") — the first claim is free, nobody has to be dropped."+(mv.length?" <b>Step 0: move "+mv.map(p=>esc(p.name)+" (OUT"+(p.injNote?", "+esc(p.injNote):"")+")").join(" and ")+" to your IR slot</b> — that is what opens "+(mv.length>1?"these spots":"this spot")+"; ESPN rejects a no-drop claim until it's done.":"")+" Priority 1 is the best player on the wire for the rest of the season; the backups below it fire only if he's taken. Fill the spot: an empty slot scores zero.</div>"; }
       let freeShown = 0, firstFree = 0;
       sugg.filter(s=>!s.free || freeShown++ < 3).slice(0,6+Math.min(freeShown,3)).forEach(s=>{
         pri++;
@@ -1881,7 +1916,7 @@
     if (dorder.length){
       h += "<h3>Your drop order</h3><div class='muted' style='margin-bottom:6px'>Least season-long value first — when a claim needs a roster spot, this is the sequence. Claim 1 costs #1; land a second add and it costs #2, and so on. Your kicker and defense only ever swap for another K/DST, your QB for a QB. A <b>starter</b> is the drop only when a free agent at his position would start over him and he's worth less for the season than anyone on your bench (the Kincaid/Juwan Johnson case) — otherwise he just slides to the bench and the drop comes from this ladder. <b>Scarcity guard:</b> your only bench player at a position never drops for a different position — depth you can't replace beats a player who'd never crack your lineup.</div>";
       const dcounts = {}; dorder.forEach(p=>{ dcounts[p.pos]=(dcounts[p.pos]||0)+1; });
-      dorder.forEach((p,i)=>{ h += "<div class='suggest'>➖ <b>#"+(i+1)+" "+esc(p.name)+"</b> <span class='muted'>"+p.pos+" · ROS "+(p.ros!=null?"#"+p.ros:"unranked")+(p.seasonProj!=null?" · "+p.seasonProj.toFixed(0)+" season pts":"")+(p.inj?" · "+esc(p.inj.code):"")+(p.bye!=null?" · bye "+p.bye:"")+"</span>"+(dcounts[p.pos]===1?" <span class='tag warn'>only "+p.pos+" on your bench — drops only for another "+p.pos+"</span>":"")+"</div>"; });
+      dorder.forEach((p,i)=>{ h += "<div class='suggest'>➖ <b>#"+(i+1)+" "+esc(p.name)+"</b> <span class='muted'>"+p.pos+" · ROS "+(p.ros!=null?"#"+p.ros:"unranked")+(p.seasonProj!=null?" · "+p.seasonProj.toFixed(0)+" season pts":"")+(p.inj?" · "+esc(p.inj.code):"")+(p.bye!=null?" · bye "+p.bye:"")+"</span>"+(dcounts[p.pos]===1?" <span class='tag warn'>only "+p.pos+" on your bench — drops only for another "+p.pos+"</span>":"")+(isOut(p)?" <span class='tag warn'>OUT"+(p.injNote?" · "+esc(p.injNote):"")+" — zero this week"+(irMoves(me).includes(p)?"; park him on IR instead of dropping":"")+"</span>":"")+"</div>"; });
     }
     h += "<h3>One-week streamers (Week "+S.week+", by "+(P?"predicted points":"rank")+")"+(satThisWeek()?" — you sit this week, informational only":"")+"</h3><div class='muted' style='margin-bottom:6px'>"+(satThisWeek()?"<b>No claim to make this week:</b> you have no matchup, so a Week "+S.week+" streamer scores for nobody. Re-check after Tuesday's refresh for next week. ":"")+"Kickers and defenses are meant to be streamed. A quarterback listed here is a one-week rental only — worth it when your QB is on bye or out, never as a reason to drop him.</div>";
     ["QB","DST","K"].forEach(pos=>{
@@ -2684,7 +2719,7 @@
     waiverSuggestions:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,
     weeklyStreamClaims:()=>{ const me = myTeam(); return weeklyStreamClaims(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
     weeklyStreamStatus:()=>{ const me = myTeam(); return weeklyStreamStatus(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
-    streamStatusRaw:(me,fa,wkey)=>weeklyStreamStatus(me, fa, wkey||"mu"), ROSTER_ACTIVE, STREAM_BAR, openSpots, activeCount,
+    streamStatusRaw:(me,fa,wkey)=>weeklyStreamStatus(me, fa, wkey||"mu"), ROSTER_ACTIVE, STREAM_BAR, openSpots, activeCount, IR_SLOTS, isOut, irMoves, outSpots, parkable, backDate,
     dropOrder:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return dropOrder(me, bench); }, fitNote, scarcityPool, lineupImpact, dropCandidate,
     setTeamParam:(qs)=>{ applyTeamParam(qs); buildIndex(); renderAll(); },
     benchSkill:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return bench.filter(p=>!["K","DST"].includes(p.pos)); },

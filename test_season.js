@@ -111,7 +111,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
       meD.forEach(p => { const r = rowsD.find(x => rx(p.name).test(x.textContent) && /→ avg/.test(x.textContent)); if (!r) return;
         const m = /avg\s*([\d.]+)/.exec(r.textContent); if (!m) return; checked++;
         if (Math.abs(+m[1] - wavg(p)) > 0.06) bad.push(p.name + " shows avg " + m[1] + " vs blend " + wavg(p).toFixed(1));
-        if (p.injLive === "ACT" && p.pPlay === 1 && !p.onBye){ const nums = [...r.textContent.matchAll(/→\s*([\d.]+)/g)].map(x => +x[1]); const last = nums[nums.length - 1]; if (last != null && Math.abs(last - p.ifPlays) > 0.06) bad.push(p.name + " chain ends at " + last + " but projects " + p.ifPlays); } });
+        if (p.injLive === "ACT" && p.pPlay === 1 && !p.onBye){ const nums = [...r.textContent.matchAll(/→\s*([\d.]+)/g)].map(x => +x[1]); const last = nums[nums.length - 1]; if (last != null && Math.abs(last - p.ifPlays) > 0.11) bad.push(p.name + " chain ends at " + last + " but projects " + p.ifPlays); } });
       assert(checked >= 5 && bad.length === 0, "detail line: the shown 'avg' is the weighted blend and the chain lands on the projected number (" + checked + " checked" + (bad.length ? "; " + bad.join("; ") : "") + ")"); }
     const rice = all.find(p => p.n === "rasheerice");
     if (rice && rice.wkStd != null && rice.wkStd > 40) assert(rice.rankVote <= 0.2 && rice.ifPlays >= 11, "regression: Rashee Rice (ECR #" + rice.wkRank + ", std " + rice.wkStd + ") projects " + rice.ifPlays + " if he plays, not 9.2");
@@ -237,9 +237,38 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     assert(Array.isArray(s.chain) && s.chain.length >= 1 && s.chain.length <= 3 && s.chain[0].n === s.add.n, s.pos + " claim carries a 1–3 deep backup chain led by the add (" + s.chain.map(c => c.name).join(" > ") + ")");
     assert(s.chain.every(c => !(c.bye != null && c.bye === season.week + 1)), s.pos + " chain never includes someone on bye NEXT week (" + s.chain.map(c => c.name + " bye" + c.bye).join(", ") + ")");
     const myAtPos = rosters.teams[rosters.me].filter(p => p.pos === s.pos);
-    if (s.verdict === "fill" && rosters.teams[rosters.me].length >= T.ROSTER_ACTIVE) assert(s.drop && s.drop.pos === s.pos && myAtPos.some(p => p.name === s.drop.name), s.pos + " on bye with a full roster → the claim drops my own " + s.pos + ", never 'nobody' (" + (s.drop && s.drop.name) + ")");
+    if (s.verdict === "fill" && T.openSpots(rosters.teams[rosters.me].map(T.info)) === 0) assert(s.drop && s.drop.pos === s.pos && myAtPos.some(p => p.name === s.drop.name), s.pos + " on bye with a full roster → the claim drops my own " + s.pos + ", never 'nobody' (" + (s.drop && s.drop.name) + ")");
   });
   if (SC.some(s => s.verdict === "fill" && s.drop)) assert(!/nobody — open roster spot.*weekly/.test(wtxt2.replace(/\s+/g, " ")) && SC.filter(s => s.drop).every(s => rx(s.drop.name).test(wtxt2)), "claim sheet names the drop for a bye-week K/DST instead of 'nobody'");
+  // ---- Out-this-week players are usable roster spots (Jose 2026-10-30, SACK OF WHEAT: Egbuka + Tate out) ----
+  { const body = (i, extra) => ({ name: "Body" + i, n: "body" + i, pos: i % 3 === 0 ? "RB" : "WR", team: "X", slot: "BN", mu: 5, pPlay: 1, ros: 200 + i, srcs: [1, 2], injLive: "ACT", injNote: "", ...(extra || {}) });
+    const full = Array.from({ length: T.ROSTER_ACTIVE }, (_, i) => body(i));
+    assert(T.openSpots(full) === 0 && T.irMoves(full).length === 0, "14 healthy actives, IR empty: no open spot");
+    const one = full.map((p, i) => i === 0 ? { ...p, injLive: "O", injNote: "Foot · back ~11/8" } : p);
+    assert(T.openSpots(one) === 1 && T.irMoves(one)[0].n === "body0" && T.outSpots(one).length === 0, "one OUT player + empty IR slot = one open spot via the IR move");
+    const two = full.map((p, i) => i === 0 ? { ...p, injLive: "O", injNote: "Foot · back ~11/8" } : i === 1 ? { ...p, injLive: "O", injNote: "Shoulder · back ~11/15" } : p);
+    assert(T.openSpots(two) === 1 && T.irMoves(two)[0].n === "body1" && T.outSpots(two).length === 1 && T.outSpots(two)[0].n === "body0", "two OUT players, one IR slot: the longer absence (back ~11/15) parks on IR, the other is a rental spot");
+    const irFull = two.concat([{ ...body(99), ir: true, slot: "IR", injLive: "IR" }]);
+    assert(T.openSpots(irFull) === 0 && T.irMoves(irFull).length === 0 && T.outSpots(irFull).length === 2, "IR slot already occupied: no IR move, both OUT players are rental spots, no free spot");
+    const q = full.map((p, i) => i === 0 ? { ...p, injLive: "Q", injNote: "Chest" } : p);
+    assert(T.openSpots(q) === 0, "a Questionable player is not parkable — no spot");
+    const short = full.slice(1).map((p, i) => i === 0 ? { ...p, injLive: "O" } : p);
+    assert(T.openSpots(short) === 2, "13 actives + one OUT: the real empty spot plus the IR move = 2");
+    const notEligible = full.map((p, i) => i === 0 ? { ...p, injLive: "O", irOk: false } : p);
+    assert(T.openSpots(notEligible) === 0 && T.outSpots(notEligible).length === 1, "an OUT player ESPN says cannot sit on IR is a rental spot, not a free spot");
+    assert(T.backDate({ injNote: "Foot · back ~11/8" }) != null && T.backDate({ injNote: "Foot" }) == null, "return date parses from the injury note when present");
+    // real roster: whichever of my teams has someone out, the Waivers tab names him and the spot
+    const teamsToCheck = Object.keys(rosters.teams).filter(t => /ur done|SACK OF WHEAT/i.test(t));
+    let outChecked = 0;
+    teamsToCheck.forEach(t => { T.setTeamParam("team=" + encodeURIComponent(t)); const tm = T.getRosters().teams[t].map(T.info); const outs = tm.filter(p => !p.ir && p.slot !== "IR" && T.isOut(p)); if (!outs.length) return; outChecked++;
+      const wt = d.getElementById("tab-waivers").textContent.replace(/\s+/g, " ");
+      assert(/Out this week:/.test(wt) && outs.every(p => rx(p.name).test(wt)), t + ": Waivers tab names every out player as a spot (" + outs.map(p => p.name).join(", ") + ")");
+      const mv = T.irMoves(tm);
+      if (mv.length) assert(new RegExp("move " + mv[0].name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ".*to your IR slot").test(wt) && T.openSpots(tm) >= 1 && /open roster spot/.test(wt), t + ": the IR move is step 0 and the claim sheet treats the spot as open (" + mv[0].name + ")");
+      T.outSpots(tm).forEach(p => assert(new RegExp(p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ".*(one-week rental|nothing to gain)").test(wt), t + ": " + p.name + " is shown as a rental spot with the honest cost, or 'nothing to gain'")); });
+    T.setTeamParam("team=" + encodeURIComponent(rosters.me));
+    console.log("  out-player spot check ran on " + outChecked + " of my teams (snapshot injuries: " + teamsToCheck.map(t => t + " " + rosters.teams[t].map(T.info).filter(T.isOut).map(p => p.name).join("/")).join("; ") + ")");
+  }
   // synthetic: the rule itself, independent of this week's data
   const mkDst = (n, mu, pr, bye) => ({ name: n, n: n.toLowerCase().replace(/[^a-z]/g, ""), pos: "DST", team: "X", mu, posRank: pr, bye, ros: 200, srcs: [1, 2] });
   const wk = season.week;

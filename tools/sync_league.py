@@ -53,7 +53,9 @@ def player_row(pp):
     pos = ESPN_POS.get(p.get("defaultPositionId")); tm = ESPN_TEAM.get(p.get("proTeamId"))
     if not pos: return None
     name = TEAM_NAME.get(tm, p.get("fullName")) if pos == "DST" else p.get("fullName")
-    return {"name": name, "pos": pos, "team": tm}
+    r = {"name": name, "pos": pos, "team": tm}
+    if isinstance(p.get("eligibleSlots"), list): r["irOk"] = IR_SLOT in p["eligibleSlots"]  # may he sit in the IR slot (Waivers tab: out players as usable spots)
+    return r
 
 def team_name_of(t):
     return (t.get("name") or ((t.get("location") or "") + " " + (t.get("nickname") or ""))).strip()
