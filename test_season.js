@@ -177,6 +177,27 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(/season-long only/.test(wtxt) && /never a reason to drop/.test(wtxt), "waiver tab states the season-long rule in plain language");
   const qbBlock = wtxt.slice(wtxt.indexOf("QB — yours:"), wtxt.indexOf("DST — yours:"));
   assert(qbBlock.length > 0 && !/better than yours this week/.test(qbBlock), "a QB streamer is a rental or a season swap — never a one-week 'better than yours'");
+  console.log("== Matchup: win-probability log (Jose 2026-11-01: game-day points every 15 min) ==");
+  { const cur = T.currentOpponent();
+    if (cur && cur.opp){
+      const home = cur.home ? rosters.me : cur.opp, away = cur.home ? cur.opp : rosters.me, keyM = { home, away, meIsHome: !!cur.home };
+      const mine = T.lockAwareLineup(me, "mu"), theirs = T.setLineup(rosters.teams[cur.opp].map(T.info), "mu");
+      const base = T.winProbSeries(mine, theirs, keyM);
+      assert(base.length >= 1 && base[0].label === "Pre", "no log → the chart is the kickoff walk, starting at Pre");
+      const t0 = Date.now() - 3 * 3600e3, wk = String(T.currentOpponent().week);
+      const log = { weeks: { [wk]: { [home + "|" + away]: [ { t: t0 + 2 * 900e3, p: 0.4 }, { t: t0, p: 0.3 }, { t: t0 + 900e3, p: 0.35 } ] } } };
+      T.setWinLog(log);
+      const ser = T.winProbSeries(mine, theirs, keyM);
+      const mineP = v => keyM.meIsHome ? v : 1 - v;
+      assert(ser.length === 5 && ser[0].label === "Pre" && ser[4].label === "now", "with a log the series is Pre → logged points → now (" + ser.map(d => d.label).join(" → ") + ")");
+      assert(Math.abs(ser[1].p - mineP(0.3)) < 1e-9 && Math.abs(ser[2].p - mineP(0.35)) < 1e-9 && Math.abs(ser[3].p - mineP(0.4)) < 1e-9, "logged points are sorted by time and flipped to MY side when I am the away team");
+      assert(/\d{1,2}:\d{2}[ap]$/.test(ser[1].label) && /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) /.test(ser[1].label), "a logged point is labelled by clock time, with the weekday on the first point of a day (" + ser[1].label + ")");
+      T.setWinLog({ weeks: { [wk]: { [home + "|" + away]: Array.from({ length: 40 }, (_, i) => ({ t: t0 + i * 900e3, p: 0.5 })) } } });
+      const dense = T.winProbSeries(mine, theirs, keyM);
+      assert(dense.length >= 41, "a full game day of 15-min points all make the series (" + dense.length + ")");
+      T.setWinLog(null);
+      assert(T.winProbSeries(mine, theirs, keyM).length === base.length, "clearing the log restores the kickoff walk");
+    } else console.log("  (sat week — log merge test skipped)"); }
   console.log("== Waivers: one-week rentals at every position (Jose 2026-11-01, SACK OF WHEAT: Hall questionable) ==");
   // live: RB / WR / TE each get a streamer table, best this-week projection first, startable players only
   ["RB","WR","TE"].forEach(pos => {

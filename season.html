@@ -163,6 +163,8 @@
   let MU = null; // data/matchups.json — defense-vs-position + player form + next-4 outlook (weekly refresh); null = consensus-only
   let HIST = null; // league schedule + weekly scores (ESPN mMatchup; live fetch with data/league_history.json as fallback); null = Matchup tab degrades
   let LG = null, POOL = null; // data/league.json (ESPN league link), data/espn_pool.json (this league's ESPN player universe)
+  let WPL = null; // data/winprob_log.json — win-probability points logged every 15 min on game days by tools/winprob_log.sh (Jose 2026-11-01: "broken down more on game days"); null = kickoff-only chart
+  async function loadWinLog(){ try { WPL = await fetch("data/winprob_log.json?v="+Date.now()).then(x=>x.json()); } catch(e){} }
   let TX = null; // data/transactions.json (ESPN mTransactions2 adds/drops/claims; live fetch when the league is public) — Waiver log tab; null = tab says so
   let PSTAMP = { text:"–", cls:"" }, RSTAMP = { text:"–", cls:"" };
 
@@ -1360,7 +1362,7 @@
         });
         h += "</div></div><div class='muted' style='margin-top:6px'>Players whose games have started are locked to their real lineup and show actual points; every unstarted slot shows their <b>best possible</b> option. Edge = chance your player outscores theirs at that slot.</div>";
         h += slotEdgeChart(mine, theirs);
-        const wps = winProbSeries(mine, theirs);
+        const wps = winProbSeries(mine, theirs, { home: cur.home ? R.me : cur.opp, away: cur.home ? cur.opp : R.me, meIsHome: !!cur.home });
         if (wps.length >= 2) h += winProbChart(wps);
       } else {
         h += "<div class='muted'>Live projections unavailable — win odds need them. Rosters below by this week's consensus rank.</div>";
@@ -2518,7 +2520,27 @@
     const s = Math.sqrt(v); return s>0 ? phi((my-op)/s) : (my>op?1:my<op?0:.5);
   }
   function gameLabel(k){ const d=new Date(k); return d.toLocaleString("en-US",{timeZone:"America/Chicago",weekday:"short"})+" "+d.toLocaleString("en-US",{timeZone:"America/Chicago",hour:"numeric"}).replace(/\s/g,""); }
-  function winProbSeries(mine, theirs){
+  // Logged points (tools/winprob_log.sh, every 15 min while games are live) for one matchup this week, as the
+  // HOME side's win probability. Key is "home|away" exactly as HIST.schedule names them.
+  function winLogPoints(home, away){
+    const wk = HIST && HIST.currentWeek != null ? String(HIST.currentWeek) : null;
+    const rows = wk && WPL && WPL.weeks && WPL.weeks[wk] && WPL.weeks[wk][home+"|"+away];
+    return Array.isArray(rows) ? rows.filter(r=>r && r.t!=null && r.p!=null).slice().sort((a,b)=>a.t-b.t) : [];
+  }
+  const clockLabel = t => new Date(t).toLocaleString("en-US",{timeZone:"America/Chicago",hour:"numeric",minute:"2-digit"}).replace(" ","").replace(/([AP])M$/,"$1").toLowerCase();
+  const dayLabel = t => new Date(t).toLocaleString("en-US",{timeZone:"America/Chicago",weekday:"short"});
+  // Pre → every logged point (15-min cadence on game days; the first point of each day carries the weekday) → now.
+  // Without a log (older weeks, logger down) it is the old kickoff-checkpoint walk.
+  function winProbSeries(mine, theirs, key){
+    const logged = key ? winLogPoints(key.home, key.away) : [];
+    if (logged.length){
+      const pre = { label:"Pre", p: winProbAt(mine, theirs, 0), t:0 };
+      let lastDay = null;
+      const pts = logged.map(r=>{ const d = dayLabel(r.t), lab = (d!==lastDay ? d+" " : "")+clockLabel(r.t); lastDay = d; return { label: lab, p: key.meIsHome ? r.p : 1-r.p, t: r.t }; });
+      const now = { label:"now", p: winProbAt(mine, theirs, Date.now()), t: Date.now() };
+      const tail = (now.t - pts[pts.length-1].t > 5*60000) ? [now] : [];
+      return [pre].concat(pts, tail);
+    }
     const kicks = [...new Set(mine.slots.concat(theirs.slots).map(x=>x.p).filter(p=>p && played(p) && p.game && p.game.kick).map(p=>Date.parse(p.game.kick)))].sort((a,b)=>a-b);
     const cps = [{ label:"Pre", t:0 }].concat(kicks.map(k=>({ label:gameLabel(k), t:k })));
     return cps.map(c=>({ label:c.label, p: winProbAt(mine, theirs, c.t) }));
@@ -2532,8 +2554,10 @@
     const path = series.map((d,i)=>(i?"L":"M")+X(i).toFixed(1)+" "+Y(d.p).toFixed(1)).join(" ");
     g += "<path d='"+path+" L"+X(n-1).toFixed(1)+" "+Y(0).toFixed(1)+" L"+X(0).toFixed(1)+" "+Y(0).toFixed(1)+" Z' fill='"+CH.me+"' opacity='0.08'/>";
     g += "<path d='"+path+"' fill='none' stroke='"+CH.me+"' stroke-width='2.6' stroke-linejoin='round' stroke-linecap='round'/>";
-    series.forEach((d,i)=>{ const last=i===n-1; g += "<circle cx='"+X(i).toFixed(1)+"' cy='"+Y(d.p).toFixed(1)+"' r='"+(last?4.6:3.2)+"' fill='"+(d.p>=0.5?CH.me:CH.rival)+"' stroke='var(--panel)' stroke-width='1.5'><title>"+esc(d.label)+" · "+Math.round(d.p*100)+"%</title></circle>";
-      g += "<text x='"+X(i).toFixed(1)+"' y='"+(H-10)+"' text-anchor='middle' font-size='9' fill='var(--muted)'>"+esc(d.label)+"</text>"; });
+    // Dense series (15-min log on game days): small dots, and only every k-th label so they don't pile up.
+    const stride = Math.max(1, Math.ceil(n/8)), dense = n > 12;
+    series.forEach((d,i)=>{ const last=i===n-1; g += "<circle cx='"+X(i).toFixed(1)+"' cy='"+Y(d.p).toFixed(1)+"' r='"+(last?4.6:dense?2:3.2)+"' fill='"+(d.p>=0.5?CH.me:CH.rival)+"' stroke='var(--panel)' stroke-width='1.5'><title>"+esc(d.label)+" · "+Math.round(d.p*100)+"%</title></circle>";
+      if (i%stride===0 || last) g += "<text x='"+X(i).toFixed(1)+"' y='"+(H-10)+"' text-anchor='middle' font-size='9' fill='var(--muted)'>"+esc(d.label)+"</text>"; });
     const cur = series[n-1];
     g += "<text x='"+(W-Rm+6)+"' y='"+(Y(cur.p)+4).toFixed(1)+"' font-size='13' font-weight='700' fill='"+(cur.p>=0.5?CH.me:CH.rival)+"'>"+Math.round(cur.p*100)+"%</text>";
     return "<h3>Live win probability</h3><div class='muted' style='margin-bottom:4px'>"+(lab ? esc(lab.a)+"'s chance" : "Your chance")+" to win this matchup, re-figured as each game goes final. 50% is a coin flip; above the dashed line you're favored.</div><svg class='lc' viewBox='0 0 "+W+" "+H+"' role='img' aria-label='Live win probability'>"+g+"</svg>";
@@ -2791,7 +2815,7 @@
     Object.values(P.games).forEach(g=>{ if (g.state==="in") live=true; else if (g.state==="pre" && g.kick){ const dt=Date.parse(g.kick)-now; if (dt>-6*3600e3 && dt<4*3600e3) soon=true; } });
     return live ? "live" : soon ? "soon" : null;
   }
-  async function liveRefresh(){ await Promise.all([loadProjections(), loadLiveRosters(), loadHistory()]); applyAcceptedTrades(); buildIndex(); renderAll(); }
+  async function liveRefresh(){ await Promise.all([loadProjections(), loadLiveRosters(), loadHistory(), loadWinLog()]); applyAcceptedTrades(); buildIndex(); renderAll(); }
   function scheduleLive(){
     if (liveTimer) clearTimeout(liveTimer);
     const w = liveWindow(), ms = w==="live" ? 60000 : w==="soon" ? 300000 : 900000; // games 60s · about to start 5m · idle 15m
@@ -2811,7 +2835,7 @@
       applyTeamParam();
       PSTAMP = { text:"fetching live…", cls:"" }; RSTAMP = { text:(R.updated||"–")+" (checking ESPN…)", cls:"" };
       buildIndex(); renderAll();
-      await Promise.all([loadProjections(), loadLiveRosters(), loadHistory(), loadLiveTransactions()]);
+      await Promise.all([loadProjections(), loadLiveRosters(), loadHistory(), loadLiveTransactions(), loadWinLog()]);
       applyAcceptedTrades();
       buildIndex(); renderAll();
       scheduleLive();
@@ -2830,7 +2854,7 @@
     weeklyStreamStatus:()=>{ const me = myTeam(); return weeklyStreamStatus(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
     streamStatusRaw:(me,fa,wkey)=>weeklyStreamStatus(me, fa, wkey||"mu"), ROSTER_ACTIVE, STREAM_BAR, openSpots, activeCount, IR_SLOTS, isOut, irMoves, outSpots, parkable, backDate,
     dropOrder:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return dropOrder(me, bench); }, fitNote, scarcityPool, lineupImpact, dropCandidate,
-    wouldStartHealthy, rentalImpact, rentalRows:(pos)=>rentalRows(myTeam(), freeAgents().filter(p=>!undraftable(p)), pos, lineupKey()), shakyStarters:()=>weekStarters(myTeam(), lineupKey()).filter(s=>shaky(s.p) && !["K","DST"].includes(s.p.pos)), STREAM_ROWS,
+    winProbAt, winProbSeries, winLogPoints, setWinLog:(w)=>{ WPL=w||null; }, wouldStartHealthy, rentalImpact, rentalRows:(pos)=>rentalRows(myTeam(), freeAgents().filter(p=>!undraftable(p)), pos, lineupKey()), shakyStarters:()=>weekStarters(myTeam(), lineupKey()).filter(s=>shaky(s.p) && !["K","DST"].includes(s.p.pos)), STREAM_ROWS,
     setTeamParam:(qs)=>{ applyTeamParam(qs); buildIndex(); renderAll(); },
     benchSkill:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return bench.filter(p=>!["K","DST"].includes(p.pos)); },
     waiverBoard:(list)=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverBoard(me, bench, list || freeAgents().filter(p=>!undraftable(p))); } };
