@@ -189,6 +189,11 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   { const r0 = T.rentalRows("RB")[0]; const row = [...d.querySelectorAll("#tab-waivers .row.grid")].find(x => rx(r0.name).test(x.textContent)); const det = row && row.querySelector(".detail");
     assert(det && /→ avg/.test(det.textContent) && new RegExp(r0.mu.toFixed(1)).test(det.textContent), "a pickup row prints the same projection chain as the Lineup tab (sources → avg → … = " + r0.mu.toFixed(1) + ")"); }
   assert(wtxt.indexOf("RB — yours:") < wtxt.indexOf("WR — yours:") && wtxt.indexOf("TE — yours:") < wtxt.indexOf("QB — yours:"), "skill positions list first, then QB / DST / K");
+  { const mkw = (n, ros, extra) => ({ name: n, n: n.toLowerCase().replace(/[^a-z]/g, ""), pos: "WR", team: "X", mu: 8, pPlay: 1, ros, srcs: [1, 2], injLive: "ACT", injNote: "", slot: "BN", ...(extra || {}) });
+    const sq = [mkw("Wide One", 10), mkw("Wide Two", 20), mkw("Wide Three", 30), mkw("Wide Four", 40), mkw("Wide Five", 80, { injLive: "O", pPlay: 0, mu: 0 }), mkw("Wide Six", 90)];
+    assert(!T.wouldStartHealthy(sq, sq[4]), "an out WR5 behind four better WRs would not start healthy → no replacement strip");
+    const star = sq.map((p, i) => i === 4 ? { ...p, ros: 5 } : p);
+    assert(T.wouldStartHealthy(star, star[4]), "the same man at ROS #5 would start healthy → he is a real hole"); }
   // synthetic: the rule itself — now vs. if-he-sits, independent of this week's data
   { const mk = (n, pos, mu, extra) => ({ name: n, n: n.toLowerCase().replace(/[^a-z]/g, ""), pos, team: "X", mu, pPlay: 1, ros: 150, srcs: [1, 2], injLive: "ACT", injNote: "", ...(extra || {}) });
     const sq = [mk("Q Back", "QB", 20), mk("Star Back", "RB", 20), mk("Shaky Back", "RB", 5, { pPlay: .75, injLive: "Q" }), mk("Wide One", "WR", 12), mk("Wide Two", "WR", 11), mk("Wide Three", "WR", 10), mk("Tight", "TE", 9), mk("Kick", "K", 8), mk("Dee", "DST", 7)];
@@ -290,12 +295,16 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     // real roster: whichever of my teams has someone out, the Waivers tab names him and the spot
     const teamsToCheck = Object.keys(rosters.teams).filter(t => /ur done|SACK OF WHEAT/i.test(t));
     let outChecked = 0;
-    teamsToCheck.forEach(t => { T.setTeamParam("team=" + encodeURIComponent(t)); const tm = T.getRosters().teams[t].map(T.info); const outs = tm.filter(p => !p.ir && p.slot !== "IR" && T.isOut(p)); if (!outs.length) return; outChecked++;
+    teamsToCheck.forEach(t => { T.setTeamParam("team=" + encodeURIComponent(t)); const tm = T.getRosters().teams[t].map(T.info); const allOuts = tm.filter(p => !p.ir && p.slot !== "IR" && T.isOut(p)); if (!allOuts.length) return; outChecked++;
       const wt = d.getElementById("tab-waivers").textContent.replace(/\s+/g, " ");
+      // Jose 2026-11-01 (Egbuka): hurt bench depth gets no injury-replacement strip — only a would-be starter or an IR move does
+      const depth = allOuts.filter(p => !T.irMoves(tm).includes(p) && !T.wouldStartHealthy(tm, p));
+      depth.forEach(p => assert(!new RegExp("🩹 " + p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + " out").test(wt), t + ": " + p.name + " is out but wouldn't start healthy → no replacement strip"));
+      const outs = allOuts.filter(p => !depth.includes(p)); if (!outs.length) return;
       assert(/🩹/.test(wt) && outs.every(p => new RegExp("🩹 " + p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + " out").test(wt)), t + ": Waivers tab names every out player as a spot (" + outs.map(p => p.name).join(", ") + ")");
       const mv = T.irMoves(tm);
       if (mv.length) assert(new RegExp("move " + mv[0].name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ".*to your IR slot").test(wt) && T.openSpots(tm) >= 1 && /open roster spot/.test(wt), t + ": the IR move is step 0 and the claim sheet treats the spot as open (" + mv[0].name + ")");
-      T.outSpots(tm).forEach(p => assert(new RegExp(p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + " out.*(➕ Add|Nothing on the wire would start)").test(wt), t + ": " + p.name + " is shown as a rental spot with the honest cost, or 'nothing on the wire'")); });
+      T.outSpots(tm).filter(p => outs.includes(p)).forEach(p => assert(new RegExp(p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + " out.*(➕ Add|Nothing on the wire would start)").test(wt), t + ": " + p.name + " is shown as a rental spot with the honest cost, or 'nothing on the wire'")); });
     // questionable starters (Hall, 2026-11-01): the box names each one, says what happens if he sits, and who would start in his place
     let shakyChecked = 0;
     teamsToCheck.forEach(t => { T.setTeamParam("team=" + encodeURIComponent(t)); const sh = T.shakyStarters(); const wt = d.getElementById("tab-waivers").textContent.replace(/\s+/g, " ");
