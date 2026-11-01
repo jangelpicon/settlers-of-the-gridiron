@@ -177,6 +177,34 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(/season-long only/.test(wtxt) && /never a reason to drop/.test(wtxt), "waiver tab states the season-long rule in plain language");
   const qbBlock = wtxt.slice(wtxt.indexOf("QB — yours:"), wtxt.indexOf("DST — yours:"));
   assert(qbBlock.length > 0 && !/better than yours this week/.test(qbBlock), "a QB streamer is a rental or a season swap — never a one-week 'better than yours'");
+  console.log("== Waivers: one-week rentals at every position (Jose 2026-11-01, SACK OF WHEAT: Hall questionable) ==");
+  // live: RB / WR / TE each get a streamer table, best this-week projection first, startable players only
+  ["RB","WR","TE"].forEach(pos => {
+    const rows = T.rentalRows(pos);
+    assert(new RegExp(pos + " — yours:").test(wtxt), pos + " streamer table renders with my starters named");
+    assert(rows.length > 0 && rows.length <= T.STREAM_ROWS && rows.every(p => p.pos === pos && !p.onBye && p.pPlay > 0 && !T.liveState(p)), pos + " rental rows are startable " + pos + "s only (" + rows.length + " rows)");
+    assert(rows.every((p, i) => i === 0 || rows[i - 1].mu >= p.mu), pos + " rental rows are sorted by this week's projection, best first (" + rows.map(p => p.mu).join(" ≥ ") + ")");
+    assert(rows.every(p => rx(p.name).test(wtxt)), "every " + pos + " rental row is on the page");
+  });
+  assert(wtxt.indexOf("RB — yours:") < wtxt.indexOf("WR — yours:") && wtxt.indexOf("TE — yours:") < wtxt.indexOf("QB — yours:"), "skill positions list first, then QB / DST / K");
+  // synthetic: the rule itself — now vs. if-he-sits, independent of this week's data
+  { const mk = (n, pos, mu, extra) => ({ name: n, n: n.toLowerCase().replace(/[^a-z]/g, ""), pos, team: "X", mu, pPlay: 1, ros: 150, srcs: [1, 2], injLive: "ACT", injNote: "", ...(extra || {}) });
+    const sq = [mk("Q Back", "QB", 20), mk("Star Back", "RB", 20), mk("Shaky Back", "RB", 5, { pPlay: .75, injLive: "Q" }), mk("Wide One", "WR", 12), mk("Wide Two", "WR", 11), mk("Wide Three", "WR", 10), mk("Tight", "TE", 9), mk("Kick", "K", 8), mk("Dee", "DST", 7)];
+    let r = T.rentalImpact(sq, mk("Wire Back", "RB", 9.8), "mu");
+    assert(r.now && r.now.displaced && r.now.displaced.name === "Shaky Back" && r.now.slot === "RB2" && Math.abs(r.now.gain - 4.8) < 1e-6, "a 9.8 RB starts in RB2 over the questionable 5.0 RB right now (+4.8)");
+    assert(r.ifSit && r.ifSit.fillsEmpty && r.ifSit.slot === "RB2" && r.ifSit.risky.length === 1 && r.ifSit.risky[0].name === "Shaky Back" && Math.abs(r.ifSit.gain - 9.8) < 1e-6, "…and if the questionable RB sits he fills an EMPTY RB2 (+9.8, no other RB on the roster)");
+    r = T.rentalImpact(sq, mk("Scrub Back", "RB", 3), "mu");
+    assert(!r.now && r.ifSit && r.ifSit.fillsEmpty && Math.abs(r.ifSit.gain - 3) < 1e-6, "a 3-point RB doesn't start now but still fills the empty RB2 if the questionable RB sits");
+    r = T.rentalImpact(sq, mk("Wire Wide", "WR", 9), "mu");
+    assert(!r.now && !r.ifSit && r.risky.length === 1, "a 9-point WR can't fill an RB hole: no start now, none if the RB sits (the RB is still flagged shaky)");
+    r = T.rentalImpact(sq, mk("Better Wide", "WR", 10.5), "mu");
+    assert(r.now && r.now.slot === "FLEX" && r.now.displaced && r.now.displaced.name === "Wide Three" && Math.abs(r.now.gain - 0.5) < 1e-6, "a WR who beats my WR3 starts in the FLEX now (+0.5)");
+    const fine = sq.map(p => p.name === "Shaky Back" ? { ...p, pPlay: 1, injLive: "ACT", mu: 12 } : p);
+    r = T.rentalImpact(fine, mk("Wire Back", "RB", 9.8), "mu");
+    assert(!r.now && !r.ifSit && r.risky.length === 0, "healthy roster: the same RB is bench depth — no start, nobody shaky");
+    r = T.rentalImpact(sq, mk("Wire Back", "RB", 9.8), "wkRank");
+    assert(r.now === null || r.now.gain === null, "without projections the gain is not a number");
+  }
   // 2026-10-27 (Bass/Ryland question): the One-week streamers table and the claim sheet are ONE rule. A K/DST row may
   // say "swap" only when it is a season upgrade (top-8 unit over a bottom-tier of mine) or clears STREAM_BAR against a
   // non-elite unit of mine; "season upgrade over yours" only when the simulator's season-upgrade path applies.
@@ -266,6 +294,15 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
       const mv = T.irMoves(tm);
       if (mv.length) assert(new RegExp("move " + mv[0].name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ".*to your IR slot").test(wt) && T.openSpots(tm) >= 1 && /open roster spot/.test(wt), t + ": the IR move is step 0 and the claim sheet treats the spot as open (" + mv[0].name + ")");
       T.outSpots(tm).forEach(p => assert(new RegExp(p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ".*(one-week rental|nothing to gain)").test(wt), t + ": " + p.name + " is shown as a rental spot with the honest cost, or 'nothing to gain'")); });
+    // questionable starters (Hall, 2026-11-01): the box names each one, says what happens if he sits, and who would start in his place
+    let shakyChecked = 0;
+    teamsToCheck.forEach(t => { T.setTeamParam("team=" + encodeURIComponent(t)); const sh = T.shakyStarters(); const wt = d.getElementById("tab-waivers").textContent.replace(/\s+/g, " ");
+      if (!sh.length){ assert(!/Questionable starters:/.test(wt), t + ": no questionable starter → no box"); return; } shakyChecked++;
+      assert(/Questionable starters:/.test(wt) && sh.every(s => new RegExp("• " + s.p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + " \\(" + s.p.pos + ", Q|D|DTD").test(wt) || rx(s.p.name).test(wt)), t + ": the box names every questionable starter (" + sh.map(s => s.p.name).join(", ") + ")");
+      assert(/if he sits, (your [A-Z0-9]+ is empty|.+ steps in from your bench|your lineup is unchanged)/.test(wt), t + ": the box says what happens if he sits");
+      assert(/(Free agents who would start in his place:|no free agent would start for you in his place)/.test(wt), t + ": the box names the free agents who would start in his place, or says none would"); });
+    T.setTeamParam("team=" + encodeURIComponent(rosters.me));
+    console.log("  questionable-starter box check ran on " + shakyChecked + " of my teams");
     T.setTeamParam("team=" + encodeURIComponent(rosters.me));
     console.log("  out-player spot check ran on " + outChecked + " of my teams (snapshot injuries: " + teamsToCheck.map(t => t + " " + rosters.teams[t].map(T.info).filter(T.isOut).map(p => p.name).join("/")).join("; ") + ")");
   }
