@@ -1859,6 +1859,14 @@
     const pool = POOL && POOL.players && POOL.players.length ? new Set(POOL.players) : null; // this league's ESPN universe, when synced
     return S.ros.filter(p=>!taken.has(p.n) && !ex.has(p.n) && (!pool || pool.has(p.n))).map(p=>info({name:p.name,pos:p.pos,team:p.team}));
   }
+  // One pickup per card (Jose 2026-11-01): rank · player · this-week projection · why · drop · timing. Shared by the
+  // out-this-week and questionable-starter strips so both read the same way.
+  function rentalCard(n, f, why, drop, outAlts){
+    const alts = (outAlts||[]).filter(o=>!drop || o.n!==drop.n);
+    const dropHtml = drop ? "<b>"+esc(drop.name)+"</b> <span class='muted'>(ROS #"+(drop.ros!=null?drop.ros:"–")+(isOut(drop)?", out":"")+")</span>"+(alts.length ? " or <b>"+alts.map(o=>esc(o.name)).join(" / ")+"</b> <span class='muted'>(out, 0 this week)</span>" : "") : "<span class='muted'>nobody — open roster spot</span>";
+    const when = f.game && f.game.kick ? "kicks "+esc(kickText(f.game))+" · instant add before then; a waiver claim lands after the game" : "";
+    return "<div class='suggest'><b>"+n+".</b> ➕ Add <b class='hl'>"+esc(f.name)+"</b> "+f.pos+" "+esc(f.team||"")+" · <b>"+(f.mu!=null?f.mu.toFixed(1):"–")+"</b> proj · "+why+"<br>Drop: "+dropHtml+(when?"<br><span class='muted'>"+when+"</span>":"")+"</div>";
+  }
   function renderWaivers(){
     const me = myTeam();
     const { bench } = optimalLineup(me, "ros");
@@ -1874,15 +1882,16 @@
       const moves = irMoves(me), irFreeLeft = IR_SLOTS - me.filter(p=>!onActive(p)).length - moves.length;
       const healthy = me.filter(p=>!isOut(p));
       const fmtBack = p => { const t = backDate(p); return t ? "~"+new Date(t).toLocaleDateString("en-US",{month:"numeric",day:"numeric"}) : "his return"; };
-      h += "<div class='suggest' id='outSpots'>";
-      outs.forEach((p,i)=>{
+      // One card per pickup, best lineup gain first (Jose 2026-11-01: "one player pickup per card, sorted by most optimal").
+      outs.forEach(p=>{
         const note = p.injNote ? " <span class='muted'>"+esc(p.injNote)+"</span>" : "";
-        if (i) h += "<br>";
-        if (moves.includes(p)){ h += "🩹 <b>"+esc(p.name)+"</b> out"+note+" → <b>move him to your IR slot</b> (opens a spot, no drop — do this first)"; return; }
-        const rentals = fa.filter(f=>FLEX.includes(f.pos) && f.mu!=null && f.pPlay>0 && !f.onBye).map(f=>({ f, L: optimalLineup(healthy.concat([f]), lineupKey()) })).filter(x=>x.L.used.has(x.f.n)).sort((a,b)=>b.f.mu-a.f.mu).slice(0,3);
-        h += "🩹 <b>"+esc(p.name)+"</b> out"+note+(irFreeLeft>0 ? "" : " · IR slot "+(moves.length?"goes to "+esc(moves[0].name):"taken"))
-          + (rentals.length ? "<br>Rental who'd start: "+rentals.map(x=>"<b>"+esc(x.f.name)+"</b> "+x.f.mu.toFixed(1)).join(" · ")+"<br><span class='muted'>Dropping him is permanent (ROS #"+(p.ros!=null?p.ros:"–")+(p.seasonProj!=null?", "+p.seasonProj.toFixed(0)+" season pts":"")+", back "+fmtBack(p)+").</span>"
-                           : "<br><span class='muted'>Nothing on the wire would start for you — keep him.</span>");
+        if (moves.includes(p)){ h += "<div class='suggest'>🩹 <b>"+esc(p.name)+"</b> out"+note+" → <b>move him to your IR slot</b> (opens a spot, no drop — do this first)</div>"; return; }
+        const L0 = optimalLineup(healthy, lineupKey());
+        const rentals = fa.filter(f=>FLEX.includes(f.pos) && f.mu!=null && f.pPlay>0 && !f.onBye && !liveState(f)).map(f=>({ f, L: optimalLineup(healthy.concat([f]), lineupKey()) })).filter(x=>x.L.used.has(x.f.n))
+          .map(x=>({ f:x.f, gain: Math.round((lineupPts(x.L)-lineupPts(L0))*10)/10, slot: (x.L.slots.find(y=>y.p && y.p.n===x.f.n)||{}).slot })).sort((a,b)=>b.gain-a.gain || b.f.mu-a.f.mu).slice(0,3);
+        h += "<div class='muted' style='margin:8px 0 2px'>🩹 <b>"+esc(p.name)+"</b> out"+note+(irFreeLeft>0 ? "" : " · IR slot "+(moves.length?"goes to "+esc(moves[0].name):"taken"))+" · his spot is a rental: dropping him is permanent (ROS #"+(p.ros!=null?p.ros:"–")+", back "+fmtBack(p)+")</div>";
+        if (!rentals.length){ h += "<div class='suggest'><span class='muted'>Nothing on the wire would start for you — keep him.</span></div>"; return; }
+        rentals.forEach((x,i)=>{ h += rentalCard(i+1, x.f, "+"+x.gain.toFixed(1)+" to your lineup · starts "+x.slot, p); });
       });
       h += "</div>";
     }
@@ -1893,7 +1902,6 @@
     const shakyStarters = satThisWeek() ? [] : weekStarters(me, wkey).filter(s=>shaky(s.p) && !["K","DST"].includes(s.p.pos));
     if (shakyStarters.length){
       const base = optimalLineup(me, wkey);
-      h += "<div class='suggest' id='shakySpots'>";
       shakyStarters.forEach(s=>{
         const p = s.p, pct = Math.round(p.pPlay*100);
         const rest = me.filter(x=>x!==p), L2 = optimalLineup(rest, wkey);
@@ -1906,14 +1914,16 @@
           .map(x=>({ f:x.f, gain: wkey==="mu" ? Math.round((lineupPts(x.L)-lineupPts(L2))*10)/10 : null, now: optimalLineup(me.concat([x.f]), wkey).used.has(x.f.n) }))
           .sort((a,b)=> wkey==="mu" ? b.f.mu-a.f.mu : a.f.wkRank-b.f.wkRank).slice(0,3);
         const drop = fills.length ? dropCandidate(bench, me, fills[0].f, lineupImpact(me, fills[0].f)) : null;
-        const allNow = fills.length && fills.every(x=>x.now), noneNow = fills.length && !fills.some(x=>x.now);
-        h += (shakyStarters[0]===s ? "" : "<br>")+"🤕 <b>"+esc(p.name)+"</b> <span class='muted'>"+esc(p.injLive)+" · "+pct+"%"+(p.injNote?" · "+esc(p.injNote.split(" · ")[0]):"")+(p.game && p.game.kick ? " · kicks "+esc(kickText(p.game)) : "")+"</span>"
-          + "<br>If he sits: "+(hole ? "<b>"+hole.slot+" empty — 0 pts</b>" : stepIn ? "<b>"+esc(stepIn.name)+"</b> steps in"+(stepIn.mu!=null?" ("+stepIn.mu.toFixed(1)+")":"") : "lineup unchanged")
-          + (fills.length ? "<br>Add: "+fills.map(x=>"<b>"+esc(x.f.name)+"</b> "+(x.f.mu!=null?x.f.mu.toFixed(1):"")+(!allNow && !noneNow && x.now ? " (starts now)" : "")).join(" · ")+(allNow ? " — all start over him even if he plays" : noneNow ? " — only if he sits" : "")
-              + (drop ? "<br>Drop: <b>"+esc(drop.name)+"</b> <span class='muted'>(ROS #"+(drop.ros!=null?drop.ros:"–")+")</span>"+(outSpots(me).length ? " or <b>"+outSpots(me).map(o=>esc(o.name)).join(" / ")+"</b> <span class='muted'>(out, 0 this week)</span>" : "") : "")
-            : "<br><span class='muted'>Nothing on the wire would start in his place.</span>");
+        // Rank by what he adds to the lineup: his gain now if he starts now, else his gain if the questionable man sits.
+        const ranked = fills.map(x=>({ ...x, gainNow: x.now ? rentalImpact(me, x.f, wkey).now.gain : null })).sort((a,b)=>((b.gainNow!=null?b.gainNow:b.gain)-(a.gainNow!=null?a.gainNow:a.gain)) || b.f.mu-a.f.mu);
+        h += "<div class='muted' style='margin:8px 0 2px'>🤕 <b>"+esc(p.name)+"</b> "+esc(p.injLive)+" · "+pct+"%"+(p.injNote?" · "+esc(p.injNote.split(" · ")[0]):"")+(p.game && p.game.kick ? " · kicks "+esc(kickText(p.game)) : "")
+          + " · If he sits: "+(hole ? "<b>"+hole.slot+" empty — 0 pts</b>" : stepIn ? "<b>"+esc(stepIn.name)+"</b> steps in"+(stepIn.mu!=null?" ("+stepIn.mu.toFixed(1)+")":"") : "lineup unchanged")+"</div>";
+        if (!ranked.length){ h += "<div class='suggest'><span class='muted'>Nothing on the wire would start in his place.</span></div>"; return; }
+        ranked.forEach((x,i)=>{
+          const why = x.gainNow!=null ? "+"+x.gainNow.toFixed(1)+" now (starts over him even if he plays)"+(x.gain!=null?" · +"+x.gain.toFixed(1)+" if he sits":"") : (x.gain!=null?"+"+x.gain.toFixed(1)+" if he sits":"only if he sits")+" · bench if he plays";
+          h += rentalCard(i+1, x.f, why, drop, outSpots(me));
+        });
       });
-      h += "<br><span class='muted'>Instant add before kickoff; a waiver claim lands after the game.</span></div>";
     }
     // Weekly K/DST streamer claims belong on the claim sheet too. A kicker/defense on a bye (empty slot) or a
     // clearly better matchup this week is a real waiver move even when nothing is a season-long add — otherwise
