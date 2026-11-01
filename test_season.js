@@ -186,6 +186,8 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     assert(rows.every((p, i) => i === 0 || rows[i - 1].mu >= p.mu), pos + " rental rows are sorted by this week's projection, best first (" + rows.map(p => p.mu).join(" ≥ ") + ")");
     assert(rows.every(p => rx(p.name).test(wtxt)), "every " + pos + " rental row is on the page");
   });
+  { const r0 = T.rentalRows("RB")[0]; const row = [...d.querySelectorAll("#tab-waivers .row.grid")].find(x => rx(r0.name).test(x.textContent)); const det = row && row.querySelector(".detail");
+    assert(det && /→ avg/.test(det.textContent) && new RegExp(r0.mu.toFixed(1)).test(det.textContent), "a pickup row prints the same projection chain as the Lineup tab (sources → avg → … = " + r0.mu.toFixed(1) + ")"); }
   assert(wtxt.indexOf("RB — yours:") < wtxt.indexOf("WR — yours:") && wtxt.indexOf("TE — yours:") < wtxt.indexOf("QB — yours:"), "skill positions list first, then QB / DST / K");
   // synthetic: the rule itself — now vs. if-he-sits, independent of this week's data
   { const mk = (n, pos, mu, extra) => ({ name: n, n: n.toLowerCase().replace(/[^a-z]/g, ""), pos, team: "X", mu, pPlay: 1, ros: 150, srcs: [1, 2], injLive: "ACT", injNote: "", ...(extra || {}) });

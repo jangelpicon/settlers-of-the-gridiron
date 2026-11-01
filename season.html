@@ -1849,7 +1849,9 @@
     const v = b.verdict; const cls = v.key==="add"?"good":v.key==="marginal"||v.key==="split"||v.key==="rental"?"warn":"";
     const wkly = ["K","DST"].includes(b.fa.pos);
     const drop = b.drop ? "<b>"+esc(b.drop.name)+"</b> <span class='muted'>"+b.drop.pos+" · ROS #"+(b.drop.ros!=null?b.drop.ros:"–")+(b.drop.seasonProj!=null?" · "+b.drop.seasonProj.toFixed(0)+" season pts":"")+(wkly && b.drop.mu!=null?" · "+b.drop.mu.toFixed(1)+" proj this week":"")+"</span>" : v.free ? "<span class='muted'>nobody — open roster spot</span>" : "<span class='muted'>nobody</span>";
-    return "<div class='row grid'>"+playerLine(b.fa, tag||"", "FA")+next4Detail(b.fa)+"<span class='sub'><span><span class='lbl' title='"+esc(WCOLS[0][1])+"'>"+WCOLS[0][0]+":</span> "+drop+"</span><span><span class='lbl' title='"+esc(WCOLS[1][1])+"'>"+WCOLS[1][0]+":</span> <span class='tag "+cls+"'>"+esc(v.text)+"</span>"+(v.dChamp!=null?" <span class='muted' title='Change in your title odds from this add/drop (championship simulator; estimate)'>title "+pp(v.dChamp)+"</span>":"")+"</span></span></div>";
+    // Same projection chain the Lineup tab prints (Jose 2026-11-01: "do these numbers include this same breakdown?") —
+    // a pickup's number comes from the same predict() as a starter's, so show the same working.
+    return "<div class='row grid'>"+playerLine(b.fa, tag||"", "FA")+projDetail(b.fa)+next4Detail(b.fa)+"<span class='sub'><span><span class='lbl' title='"+esc(WCOLS[0][1])+"'>"+WCOLS[0][0]+":</span> "+drop+"</span><span><span class='lbl' title='"+esc(WCOLS[1][1])+"'>"+WCOLS[1][0]+":</span> <span class='tag "+cls+"'>"+esc(v.text)+"</span>"+(v.dChamp!=null?" <span class='muted' title='Change in your title odds from this add/drop (championship simulator; estimate)'>title "+pp(v.dChamp)+"</span>":"")+"</span></span></div>";
   }
   function excluded(){ const s = new Set(); (X.players||[]).forEach(p=>s.add(norm(p.name))); return s; }
   function freeAgents(){
