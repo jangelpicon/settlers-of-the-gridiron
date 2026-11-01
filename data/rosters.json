@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-10-31",
- "source": "ESPN league 882823976 sync 2026-10-31 02:00 CDT",
+ "updated": "2026-11-01",
+ "source": "ESPN league 882823976 sync 2026-11-01 02:00 CST",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -878,7 +878,7 @@
     "pos": "QB",
     "team": "BAL",
     "irOk": true,
-    "slot": "BN"
+    "slot": "QB"
    },
    {
     "name": "Cam Skattebo",
@@ -913,7 +913,7 @@
     "pos": "QB",
     "team": "MIN",
     "irOk": true,
-    "slot": "QB"
+    "slot": "BN"
    },
    {
     "name": "DeMario Douglas",
