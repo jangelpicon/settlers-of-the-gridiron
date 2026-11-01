@@ -1889,9 +1889,13 @@
         const L0 = optimalLineup(healthy, lineupKey());
         const rentals = fa.filter(f=>FLEX.includes(f.pos) && f.mu!=null && f.pPlay>0 && !f.onBye && !liveState(f)).map(f=>({ f, L: optimalLineup(healthy.concat([f]), lineupKey()) })).filter(x=>x.L.used.has(x.f.n))
           .map(x=>({ f:x.f, gain: Math.round((lineupPts(x.L)-lineupPts(L0))*10)/10, slot: (x.L.slots.find(y=>y.p && y.p.n===x.f.n)||{}).slot })).sort((a,b)=>b.gain-a.gain || b.f.mu-a.f.mu).slice(0,3);
-        h += "<div class='muted' style='margin:8px 0 2px'>🩹 <b>"+esc(p.name)+"</b> out"+note+(irFreeLeft>0 ? "" : " · IR slot "+(moves.length?"goes to "+esc(moves[0].name):"taken"))+" · his spot is a rental: dropping him is permanent (ROS #"+(p.ros!=null?p.ros:"–")+", back "+fmtBack(p)+")</div>";
+        // The drop is still the ladder's cheapest spare (Jose 2026-11-01: "is dropping Egbuka more optimal than Odunze?" — no:
+        // the out man scores zero THIS week either way, so the drop is whoever is worth least for the season; he is only
+        // the alternative, shown as such). Same rule as the questionable strip — one answer on the page.
+        const ladder = rentals.length ? dropCandidate(bench, me, rentals[0].f, lineupImpact(me, rentals[0].f)) : null;
+        h += "<div class='muted' style='margin:8px 0 2px'>🩹 <b>"+esc(p.name)+"</b> out"+note+(irFreeLeft>0 ? "" : " · IR slot "+(moves.length?"goes to "+esc(moves[0].name):"taken"))+" · 0 pts this week (ROS #"+(p.ros!=null?p.ros:"–")+", back "+fmtBack(p)+")"+(ladder && ladder.n!==p.n ? " · cheaper drop for a rental: <b>"+esc(ladder.name)+"</b> (ROS #"+(ladder.ros!=null?ladder.ros:"–")+")" : "")+"</div>";
         if (!rentals.length){ h += "<div class='suggest'><span class='muted'>Nothing on the wire would start for you — keep him.</span></div>"; return; }
-        rentals.forEach((x,i)=>{ h += rentalCard(i+1, x.f, "+"+x.gain.toFixed(1)+" to your lineup · starts "+x.slot, p); });
+        rentals.forEach((x,i)=>{ h += rentalCard(i+1, x.f, "+"+x.gain.toFixed(1)+" to your lineup · starts "+x.slot, ladder || p, [p]); });
       });
       h += "</div>";
     }
