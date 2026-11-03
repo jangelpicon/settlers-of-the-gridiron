@@ -331,8 +331,16 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     teamsToCheck.forEach(t => { T.setTeamParam("team=" + encodeURIComponent(t)); const sh = T.shakyStarters(); const wt = d.getElementById("tab-waivers").textContent.replace(/\s+/g, " ");
       if (!sh.length){ assert(!/🤕/.test(wt), t + ": no questionable starter → no box"); return; } shakyChecked++;
       assert(/🤕/.test(wt) && sh.every(s => new RegExp("🤕 " + s.p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + " (Q|D|DTD) · \\d+%").test(wt)), t + ": the box names every questionable starter (" + sh.map(s => s.p.name).join(", ") + ")");
-      assert(/If he sits: ((QB|RB|WR|TE|FLEX)\d? empty — 0 pts|.+ steps in|lineup unchanged)/.test(wt) && (!/🤕[^]*➕ Add/.test(wt) || /1\. ➕ Add/.test(wt)), t + ": the box says what happens if he sits");
-      assert(/(➕ Add |Nothing on the wire would start in his place)/.test(wt), t + ": the box names the free agents who would start in his place, or says none would"); });
+      // scope every box assertion to the box itself — the claim sheet below it has its own "➕ Add" rows
+      const box = wt.slice(wt.indexOf("🤕"), wt.indexOf("Your claim sheet") > 0 ? wt.indexOf("Your claim sheet") : undefined);
+      assert(/If he sits: ((QB|RB|WR|TE|FLEX)\d? empty — 0 pts|.+ steps in|lineup unchanged)/.test(box) && (!/➕ Add/.test(box) || /1\. ➕ Add/.test(box)), t + ": the box says what happens if he sits");
+      assert(/(➕ Add |Nothing on the wire (would start in his place|beats .+ by enough))/.test(box), t + ": the box names the free agents who would start in his place, or says none would");
+      // Jose 2026-11-03 (London Q, Concepcion covers): no card is a straight "starts over him even if he plays" upgrade
+      // (those live on the claim sheet), and when a bench man covers, every card clears STREAM_BAR over him.
+      assert(!/starts over him even if he plays/.test(box), t + ": injury box never repeats a plain waiver upgrade");
+      box.split("🤕 ").slice(1).forEach(seg => { if (!/If he sits: .+ steps in/.test(seg)) return;
+        const gains = Array.from(seg.matchAll(/\+(\d+\.\d) if he sits/g)).map(m => +m[1]);
+        assert(gains.every(g => g >= T.STREAM_BAR), t + ": with a bench cover, every card beats the step-in by " + T.STREAM_BAR + "+ (" + seg.slice(0, 40) + "… gains " + gains.join("/") + ")"); }); });
     T.setTeamParam("team=" + encodeURIComponent(rosters.me));
     console.log("  questionable-starter box check ran on " + shakyChecked + " of my teams");
     T.setTeamParam("team=" + encodeURIComponent(rosters.me));

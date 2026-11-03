@@ -1927,15 +1927,20 @@
         const fills = fa.filter(f=>rentable(f, f.pos) && (FLEX.includes(p.pos) ? FLEX.includes(f.pos) : f.pos===p.pos))
           .map(f=>({ f, L: optimalLineup(rest.concat([f]), wkey) })).filter(x=>x.L.used.has(x.f.n) && (!hole || slotIn(x.L, x.f)===hole.slot))
           .map(x=>({ f:x.f, gain: wkey==="mu" ? Math.round((lineupPts(x.L)-lineupPts(L2))*10)/10 : null, now: optimalLineup(me.concat([x.f]), wkey).used.has(x.f.n) }))
-          .sort((a,b)=> wkey==="mu" ? b.f.mu-a.f.mu : a.f.wkRank-b.f.wkRank).slice(0,3);
+          // Jose 2026-11-03 (London Q, Concepcion covers): a free agent who starts over him EVEN IF HE PLAYS is a plain
+          // waiver upgrade — he's already on the claim sheet / streamer tables, so he doesn't repeat here. And when a
+          // bench man covers the slot, a card must beat that cover by the same STREAM_BAR the K/DST swaps use; +1 "if he
+          // sits" for a roster spot is a coin flip, and a coin flip is a hold everywhere else on this page. Only an
+          // EMPTY slot (Hall 2026-11-01, no other RB) makes any starter worth a card.
+          .filter(x=>!x.now && (hole || (x.gain!=null && x.gain>=STREAM_BAR)))
+          .sort((a,b)=> wkey==="mu" ? b.gain-a.gain || b.f.mu-a.f.mu : a.f.wkRank-b.f.wkRank).slice(0,3);
         const drop = fills.length ? dropCandidate(bench, me, fills[0].f, lineupImpact(me, fills[0].f)) : null;
-        // Rank by what he adds to the lineup: his gain now if he starts now, else his gain if the questionable man sits.
-        const ranked = fills.map(x=>({ ...x, gainNow: x.now ? rentalImpact(me, x.f, wkey).now.gain : null })).sort((a,b)=>((b.gainNow!=null?b.gainNow:b.gain)-(a.gainNow!=null?a.gainNow:a.gain)) || b.f.mu-a.f.mu);
+        const ranked = fills;
         h += "<div class='muted' style='margin:8px 0 2px'>🤕 <b>"+esc(p.name)+"</b> "+esc(p.injLive)+" · "+pct+"%"+(p.injNote?" · "+esc(p.injNote.split(" · ")[0]):"")+(p.game && p.game.kick ? " · kicks "+esc(kickText(p.game)) : "")
           + " · If he sits: "+(hole ? "<b>"+hole.slot+" empty — 0 pts</b>" : stepIn ? "<b>"+esc(stepIn.name)+"</b> steps in"+(stepIn.mu!=null?" ("+stepIn.mu.toFixed(1)+")":"") : "lineup unchanged")+"</div>";
-        if (!ranked.length){ h += "<div class='suggest'><span class='muted'>Nothing on the wire would start in his place.</span></div>"; return; }
+        if (!ranked.length){ h += "<div class='suggest'><span class='muted'>"+(hole || !stepIn ? "Nothing on the wire would start in his place." : "Nothing on the wire beats "+esc(stepIn.name)+" by enough ("+STREAM_BAR.toFixed(0)+"+ points) — no move.")+"</span></div>"; return; }
         ranked.forEach((x,i)=>{
-          const why = x.gainNow!=null ? "+"+x.gainNow.toFixed(1)+" now (starts over him even if he plays)"+(x.gain!=null?" · +"+x.gain.toFixed(1)+" if he sits":"") : (x.gain!=null?"+"+x.gain.toFixed(1)+" if he sits":"only if he sits")+" · bench if he plays";
+          const why = (x.gain!=null?"+"+x.gain.toFixed(1)+" if he sits":"only if he sits")+" · bench if he plays";
           h += rentalCard(i+1, x.f, why, drop);
         });
       });
