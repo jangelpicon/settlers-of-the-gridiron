@@ -1,7 +1,7 @@
 {
  "me": "ur done",
  "updated": "2026-11-03",
- "source": "ESPN league 882823976 sync 2026-11-03 09:13 CST",
+ "source": "ESPN league 882823976 sync 2026-11-03 13:49 CST",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -269,14 +269,14 @@
     "pos": "WR",
     "team": "CAR",
     "irOk": true,
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Brock Purdy",
     "pos": "QB",
     "team": "SF",
     "irOk": true,
-    "slot": "BN"
+    "slot": "QB"
    },
    {
     "name": "Travis Kelce",
@@ -290,14 +290,14 @@
     "pos": "RB",
     "team": "DAL",
     "irOk": true,
-    "slot": "FLEX"
+    "slot": "RB"
    },
    {
     "name": "Matthew Golden",
     "pos": "WR",
     "team": "GB",
     "irOk": true,
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Will Reichard",
@@ -311,14 +311,14 @@
     "pos": "RB",
     "team": "GB",
     "irOk": true,
-    "slot": "RB"
+    "slot": "FLEX"
    },
    {
     "name": "Jayden Daniels",
     "pos": "QB",
     "team": "WAS",
     "irOk": true,
-    "slot": "QB"
+    "slot": "BN"
    },
    {
     "name": "Minnesota Vikings",
@@ -362,14 +362,14 @@
     "pos": "DST",
     "team": "HOU",
     "irOk": true,
-    "slot": "BN"
+    "slot": "DST"
    },
    {
     "name": "Ka'imi Fairbairn",
     "pos": "K",
     "team": "HOU",
     "irOk": true,
-    "slot": "BN"
+    "slot": "K"
    },
    {
     "name": "Marvin Harrison Jr.",
@@ -404,14 +404,14 @@
     "pos": "K",
     "team": "LV",
     "irOk": true,
-    "slot": "K"
+    "slot": "BN"
    },
    {
     "name": "Washington Commanders",
     "pos": "DST",
     "team": "WAS",
     "irOk": true,
-    "slot": "DST"
+    "slot": "BN"
    },
    {
     "name": "Jordan Addison",
@@ -576,7 +576,7 @@
     "pos": "RB",
     "team": "NE",
     "irOk": true,
-    "slot": "FLEX"
+    "slot": "BN"
    },
    {
     "name": "Aaron Jones Sr.",
@@ -597,7 +597,7 @@
     "pos": "TE",
     "team": "SF",
     "irOk": true,
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Kansas City Chiefs",
@@ -763,7 +763,7 @@
     "pos": "QB",
     "team": "NE",
     "irOk": true,
-    "slot": "QB"
+    "slot": "BN"
    },
    {
     "name": "D'Andre Swift",
@@ -791,15 +791,7 @@
     "pos": "QB",
     "team": "DET",
     "irOk": true,
-    "slot": "BN"
-   },
-   {
-    "name": "Jeremiyah Love",
-    "pos": "RB",
-    "team": "ARI",
-    "irOk": true,
-    "ir": true,
-    "slot": "IR"
+    "slot": "QB"
    },
    {
     "name": "DJ Moore",
