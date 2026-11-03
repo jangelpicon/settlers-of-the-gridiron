@@ -100,7 +100,7 @@
       <dt>Wk rank</dt><dd>FantasyPros expert consensus rank for this week. QB, K and DST are ranked within their position; RB/WR/TE are ranked together (that's the flex pool). Lower is better.</dd>
       <dt>Opp</dt><dd>This week's opponent. "vs." = home, "at" = away.</dd>
       <dt>Grade</dt><dd>FantasyPros start/sit letter grade for this week (A = start with confidence, D/F = sit).</dd>
-      <dt>ROS rank</dt><dd>Rest-of-season rank across ALL positions (FantasyPros, refreshed Tuesdays). This is the season-long value number. Lower is better.</dd>
+      <dt>ROS rank</dt><dd>Rest-of-season rank across ALL positions (FantasyPros consensus; it rebuilds through Tuesday as experts submit, and the page picks it up at the 2 AM and Tuesday 6 PM refreshes — the header stamp shows the consensus time). This is the season-long value number. Lower is better.</dd>
       <dt>Season pts</dt><dd>ESPN's live projection of his total fantasy points for the whole season. Second season-long signal.</dd>
       <dt>Bye</dt><dd>The week his NFL team doesn't play.</dd>
       <dt>Status</dt><dd>Injury tag (Q = questionable, D = doubtful, OUT, IR) with his chance of playing; "locked" = his game already kicked off; BYE = off this week.</dd>
@@ -2779,7 +2779,11 @@
   function renderAll(){
     document.getElementById("teamTitle").textContent = R.me + (TEAMERR ? " ⚠️ " + TEAMERR : "");
     document.getElementById("wk").textContent = S.week!=null ? S.week : "–";
-    document.getElementById("stamp").textContent = S.generated;
+    // Jose 2026-11-03: the stamp names when FantasyPros last recomputed its consensus (and with how many experts), not
+    // when we fetched it — FP rebuilds the ROS sheet several times each Tuesday as experts submit, so "fetched 1:56 PM"
+    // read as fresh while the ranks inside were the 9:40 AM consensus. Fetch time stays as the fallback.
+    const fr = S.fpRos || {};
+    document.getElementById("stamp").textContent = fr.lastUpdated ? "FantasyPros consensus "+fr.lastUpdated+(fr.experts ? " ("+fr.experts+" experts)" : "")+" · fetched "+S.generated : S.generated;
     const rs = document.getElementById("rosterStamp"); rs.textContent = RSTAMP.text; rs.className = RSTAMP.cls;
     const ps = document.getElementById("pstamp"); ps.textContent = PSTAMP.text; ps.className = PSTAMP.cls;
     renderLineup(); renderMatchup(); renderScoreboard(); renderWaivers(); renderTrades(); renderLog(); renderStrength(); renderByes(); renderLeague();

@@ -683,6 +683,14 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     assert(T.getRosters().me === rosters.me, "no ?team= param: Jose's view, unchanged");
   }
 
+  // Header rankings stamp = FantasyPros consensus time + expert count, fetch time second (Jose 2026-11-03)
+  {
+    T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
+    const st = d.getElementById("stamp").textContent;
+    if (season.fpRos && season.fpRos.lastUpdated) assert(st.indexOf("FantasyPros consensus " + season.fpRos.lastUpdated) === 0 && st.indexOf("fetched " + season.generated) > 0 && (!season.fpRos.experts || new RegExp("\\(" + season.fpRos.experts + " experts\\)").test(st)), "rankings stamp leads with the FantasyPros consensus time + experts, fetch time after (" + st + ")");
+    else assert(st === season.generated, "rankings stamp falls back to fetch time when FP provenance is missing");
+  }
+
   // ======================= Matchup engine (opponent-adjusted form) =======================
   console.log("== Matchup engine ==");
   const matchups = JSON.parse(fs.readFileSync(path.join(__dirname, "data/matchups.json"), "utf8"));
