@@ -308,6 +308,9 @@
   // FREEAGENT only, fields pruned) + an id -> {name,pos,team} map. The view is per scoring period and
   // bleeds a few next-week rows into each week, so every week 1..current is fetched and deduped by id.
   const TX_KEEP = { WAIVER:1, FREEAGENT:1 };
+  // Same rule as tools/sync_transactions.py keep(): a ROSTER row counts only when it carries an ADD/DROP item (Jose
+  // 2026-11-03: a straight drop of Jeremiyah Love arrived as ROSTER + DROP, same type as lineup shuffles, and vanished).
+  const txKeep = t => !!TX_KEEP[t.type] || (t.type==="ROSTER" && (t.items||[]).some(i=>i.type==="ADD"||i.type==="DROP"));
   async function loadLiveTransactions(){
     if (!(LG && LG.leagueId && LG.public)) return;
     try {
@@ -317,7 +320,7 @@
       const [tm, ...per] = await Promise.all([fetchJson(base+"?view=mTeam")].concat(weeks.map(w=>fetchJson(base+"?view=mTransactions2&scoringPeriodId="+w))));
       const teams = {}; (tm.teams||[]).forEach(t=>{ if (t.id!=null) teams[String(t.id)] = (t.name || ((t.location||"")+" "+(t.nickname||""))).trim(); });
       const seen = {}, rows = [];
-      per.forEach(d=>(d.transactions||[]).forEach(t=>{ if (seen[t.id] || !TX_KEEP[t.type]) return; seen[t.id] = 1; rows.push(t); }));
+      per.forEach(d=>(d.transactions||[]).forEach(t=>{ if (seen[t.id] || !txKeep(t)) return; seen[t.id] = 1; rows.push(t); }));
       const players = Object.assign({}, (TX && TX.players) || {});
       const need = []; rows.forEach(t=>(t.items||[]).forEach(i=>{ if (i.playerId!=null && !players[String(i.playerId)] && !need.includes(i.playerId)) need.push(i.playerId); }));
       for (let k = 0; k < need.length; k += 150){
@@ -342,7 +345,7 @@
       const adds = items.filter(i=>i.type==="ADD").map(i=>pname(i.playerId)), drops = items.filter(i=>i.type==="DROP").map(i=>pname(i.playerId));
       let kind = "other";
       if (t.type==="WAIVER") kind = t.status==="EXECUTED" ? "claimed" : t.status==="FAILED_INVALIDPLAYERSOURCE" ? "lost" : t.status==="FAILED_PLAYERALREADYDROPPED" ? "dropgone" : t.status==="CANCELED" ? "canceled" : "other";
-      else if (t.type==="FREEAGENT") kind = t.status==="EXECUTED" ? (adds.length ? "fa" : "drop") : "other";
+      else if (t.type==="FREEAGENT" || t.type==="ROSTER") kind = t.status==="EXECUTED" ? (adds.length ? "fa" : "drop") : "other";
       if (kind==="claimed" && !adds.length) kind = "drop";
       const ms = t.processDate || t.proposedDate || 0;
       return { id: t.id, kind, week: t.scoringPeriodId, ms, teamId: t.teamId, team: tname(t.teamId), adds, drops, bid: t.bidAmount||0, status: t.status||"", winner: null };

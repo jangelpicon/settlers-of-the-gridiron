@@ -20,12 +20,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from sync_league import HERE, auth_headers, get, player_row, team_name_of  # noqa: E402
 
 KEEP = {"WAIVER", "FREEAGENT"}
+MOVE_ITEMS = {"ADD", "DROP"}
+
+def keep(t):
+    """A row is a roster move if ESPN types it WAIVER / FREEAGENT, OR if it's a ROSTER row that carries an ADD/DROP
+    item. Jose 2026-11-03: a straight drop from the roster page (Jeremiyah Love) arrives as type ROSTER with one DROP
+    item — the same type as lineup shuffles — so a type-only filter silently lost it. Pure LINEUP rows still stay out."""
+    if t.get("type") in KEEP: return True
+    return t.get("type") == "ROSTER" and any(i.get("type") in MOVE_ITEMS for i in t.get("items", []))
 TX_KEYS = ("id", "type", "status", "executionType", "teamId", "scoringPeriodId", "processDate", "proposedDate", "bidAmount")
 ITEM_KEYS = ("type", "playerId", "fromTeamId", "toTeamId")
 
 def prune(t):  # same ESPN field names, only the ones the page reads
     r = {k: t[k] for k in TX_KEYS if k in t}
-    r["items"] = [{k: i[k] for k in ITEM_KEYS if k in i} for i in t.get("items", [])]
+    r["items"] = [{k: i[k] for k in ITEM_KEYS if k in i} for i in t.get("items", []) if i.get("type") in MOVE_ITEMS or t.get("type") != "ROSTER"]
     return r
 
 def main():
@@ -41,7 +49,7 @@ def main():
     seen, rows = set(), []
     for w in range(1, cur + 1):
         for t in get(base + f"?view=mTransactions2&scoringPeriodId={w}", h).get("transactions", []):
-            if t.get("id") in seen or t.get("type") not in KEEP: continue
+            if t.get("id") in seen or not keep(t): continue
             seen.add(t["id"]); rows.append(prune(t))
     ids = sorted({i.get("playerId") for t in rows for i in t.get("items", []) if i.get("playerId") is not None})
     players = {}
@@ -52,7 +60,7 @@ def main():
             if r: players[str(x["id"])] = r
     missing = [i for i in ids if str(i) not in players]
     now = datetime.datetime.now(datetime.timezone.utc).astimezone()
-    out = {"note": "ESPN league transactions (view=mTransactions2, weeks 1..current, deduped, WAIVER + FREEAGENT only, fields pruned). Written by tools/sync_transactions.py — do not hand-edit. season.html normalizes these raw rows (and its own live fetch) with the same code.",
+    out = {"note": "ESPN league transactions (view=mTransactions2, weeks 1..current, deduped, WAIVER + FREEAGENT + ROSTER rows carrying an ADD/DROP, fields pruned). Written by tools/sync_transactions.py — do not hand-edit. season.html normalizes these raw rows (and its own live fetch) with the same code.",
            "generated": now.strftime("%Y-%m-%d %I:%M %p %Z"), "generatedMs": int(now.timestamp() * 1000), "leagueId": league, "season": season, "currentWeek": cur,
            "teams": {str(k): v for k, v in teams.items()}, "players": players, "transactions": sorted(rows, key=lambda t: t.get("processDate") or t.get("proposedDate") or 0)}
     kinds = {}

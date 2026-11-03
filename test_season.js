@@ -1374,7 +1374,9 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   {
     const txSnap = (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, "data/transactions.json"), "utf8")); } catch (e) { return null; } })();
     assert(txSnap && Array.isArray(txSnap.transactions) && txSnap.transactions.length > 0, "data/transactions.json snapshot present with rows (" + (txSnap ? txSnap.transactions.length : 0) + ")");
-    assert(txSnap && txSnap.transactions.every(t => t.type === "WAIVER" || t.type === "FREEAGENT"), "snapshot holds only WAIVER / FREEAGENT rows (lineup moves and the draft stay out)");
+    assert(txSnap && txSnap.transactions.every(t => t.type === "WAIVER" || t.type === "FREEAGENT" || (t.type === "ROSTER" && t.items.length > 0 && t.items.every(i => i.type === "ADD" || i.type === "DROP"))), "snapshot holds WAIVER / FREEAGENT rows and ROSTER rows that are real adds/drops (lineup shuffles and the draft stay out)");
+    // Jose 2026-11-03: a straight drop from the roster page is a ROSTER row with a DROP item — it must be in the log
+    assert(txSnap && txSnap.transactions.some(t => t.type === "ROSTER" && t.items.some(i => i.type === "DROP")), "snapshot carries at least one roster-page drop (ROSTER + DROP), the Love case");
     assert(txSnap && new Set(txSnap.transactions.map(t => t.id)).size === txSnap.transactions.length, "snapshot rows are deduped by id across the per-week fetches");
     assert(d.querySelector("nav button[data-tab='log']") && d.getElementById("tab-log"), "nav has a Waiver log button and its tab container");
     T.setTransactions(txSnap);
@@ -1384,7 +1386,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     assert(rows.every(r => r.adds.concat(r.drops).every(p => !/^player #/.test(p.name))), "every player id in the snapshot resolves to a name (" + rows.flatMap(r => r.adds.concat(r.drops)).filter(p => /^player #/.test(p.name)).map(p => p.name).join(", ") + ")");
     assert(rows.every(r => !/^team \d/.test(r.team)), "every team id resolves to a league team name");
     const byKind = rows.reduce((a, r) => { a[r.kind] = (a[r.kind] || 0) + 1; return a; }, {});
-    assert(!byKind.other, "every WAIVER / FREEAGENT status maps to a known outcome (" + JSON.stringify(byKind) + ")");
+    assert(!byKind.other, "every WAIVER / FREEAGENT / ROSTER-move status maps to a known outcome (" + JSON.stringify(byKind) + ")");
     assert(rows.filter(r => r.kind === "lost").length > 0 && rows.filter(r => r.kind === "lost" && r.winner).length > 0, "lost claims name the team whose claim won the same batch (" + rows.filter(r => r.kind === "lost" && r.winner).length + " of " + rows.filter(r => r.kind === "lost").length + ")");
     assert(rows.filter(r => r.kind === "lost" && r.winner).every(r => r.winner !== r.team), "a lost claim never names the losing team as its own winner");
     const logEl = d.getElementById("tab-log");
@@ -1410,13 +1412,15 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
       { id: "b", type: "WAIVER", status: "CANCELED", teamId: 2, scoringPeriodId: 3, proposedDate: 2000, items: [{ type: "ADD", playerId: 99 }] },
       { id: "c", type: "WAIVER", status: "FAILED_INVALIDPLAYERSOURCE", teamId: 2, scoringPeriodId: 2, processDate: 1000, items: [{ type: "ADD", playerId: 10 }] },
       { id: "d", type: "WAIVER", status: "EXECUTED", teamId: 1, scoringPeriodId: 2, processDate: 1000, items: [{ type: "ADD", playerId: 10 }] },
-      { id: "e", type: "WAIVER", status: "SOMETHING_NEW", teamId: 7, scoringPeriodId: 2, processDate: 500, items: [] } ] };
+      { id: "e", type: "WAIVER", status: "SOMETHING_NEW", teamId: 7, scoringPeriodId: 2, processDate: 500, items: [] },
+      { id: "f", type: "ROSTER", status: "EXECUTED", executionType: "EXECUTE", teamId: 1, scoringPeriodId: 3, processDate: 3500, items: [{ type: "DROP", playerId: 10 }] } ] };
     const fr = T.txNormalize(fake);
     assert(fr.find(r => r.id === "a").kind === "drop" && fr.find(r => r.id === "b").kind === "canceled" && fr.find(r => r.id === "e").kind === "other", "pure drop / canceled / unknown status classify as drop / canceled / other");
+    assert(fr.find(r => r.id === "f").kind === "drop" && fr.find(r => r.id === "f").drops[0].name === "Ten Guy", "a roster-page drop (ROSTER + DROP) classifies as a drop and names the player (Love 2026-11-03)");
     assert(fr.find(r => r.id === "c").winner === "A", "lost claim in the same batch names the winning team");
     assert(fr.find(r => r.id === "b").adds[0].name === "player #99" && fr.find(r => r.id === "e").team === "team 7", "unknown player / team ids render as placeholders instead of crashing");
     T.setTransactions(fake);
-    assert([...logEl.querySelectorAll(".gx .row.grid")].length === 5 && /Ten Guy/.test(logEl.textContent), "synthetic feed renders every row");
+    assert([...logEl.querySelectorAll(".gx .row.grid")].length === fake.transactions.length && /Ten Guy/.test(logEl.textContent), "synthetic feed renders every row (" + fake.transactions.length + ")");
     T.setTransactions(null);
     assert(/No transaction history yet/.test(logEl.textContent) && /not been synced/.test(logEl.textContent), "missing feed renders a plain explanation, not an error");
     T.setTransactions({ transactions: [] });
