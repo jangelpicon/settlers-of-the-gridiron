@@ -341,6 +341,23 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
       box.split("🤕 ").slice(1).forEach(seg => { if (!/If he sits: .+ steps in/.test(seg)) return;
         const gains = Array.from(seg.matchAll(/\+(\d+\.\d) if he sits/g)).map(m => +m[1]);
         assert(gains.every(g => g >= T.STREAM_BAR), t + ": with a bench cover, every card beats the step-in by " + T.STREAM_BAR + "+ (" + seg.slice(0, 40) + "… gains " + gains.join("/") + ")"); }); });
+    // Next-week box + bye-fit lines (Jose 2026-11-03: Swift + Irving bye W10 on ur done, claim sheet led with a W10-bye RB)
+    teamsToCheck.forEach(t => { T.setTeamParam("team=" + encodeURIComponent(t)); const tm = T.getRosters().teams[t].map(T.info); const nv = T.nextWeekView(tm);
+      const wt = d.getElementById("tab-waivers").textContent.replace(/\s+/g, " ");
+      const box = d.getElementById("nextweek-box"); const bt = box ? box.textContent.replace(/\s+/g, " ") : "";
+      if (!nv || (!nv.out.length && !nv.holes.length)) { assert(!box, t + ": nobody on bye next week and no hole → no Next-week box"); }
+      else {
+        assert(box && new RegExp("Next week \\(W" + nv.week + "\\)").test(bt) && nv.out.every(p => bt.indexOf(p.name) >= 0), t + ": Next-week box names the week and everyone on bye (" + nv.out.map(p => p.name).join(", ") + ")");
+        if (nv.holes.length) {
+          assert(new RegExp("hole: " + nv.holes.join(", ")).test(bt) && /➕ Add/.test(bt), t + ": Next-week box names the hole(s) " + nv.holes.join(", ") + " and offers adds");
+          const adds = Array.from(bt.matchAll(/➕ Add ([^·]+?) (QB|RB|WR|TE) /g)).map(m => m[1].trim());
+          const fa = T.freeAgents(); adds.forEach(n => { const f = fa.find(x => x.name === n); assert(f && f.bye !== nv.week, t + ": next-week add " + n + " actually plays W" + nv.week + " (bye " + (f ? f.bye : "?") + ")"); });
+        } else assert(/bench covers it/.test(bt), t + ": Next-week box says the bench covers it");
+      }
+      // every claim-sheet row prints its bye fit; a W(next)-bye add never claims to cover a next-week hole
+      const sheet = wt.slice(wt.indexOf("Your claim sheet")); const rows = sheet.split(/Priority \d+ · /).slice(1).filter(r => /(QB|RB|WR|TE) \(ROS/.test(r.slice(0, 80)));
+      rows.forEach(r => assert(/bye (done|W\d+|\?)/.test(r), t + ": claim row prints its bye (" + r.slice(0, 50) + "…)"));
+      if (nv) rows.forEach(r => assert(!(new RegExp("bye W" + nv.week + " \\(next week\\) · covers").test(r)), t + ": a next-week-bye add never claims to cover the hole")); });
     T.setTeamParam("team=" + encodeURIComponent(rosters.me));
     console.log("  questionable-starter box check ran on " + shakyChecked + " of my teams");
     T.setTeamParam("team=" + encodeURIComponent(rosters.me));
