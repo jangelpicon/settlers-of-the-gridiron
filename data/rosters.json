@@ -1,7 +1,7 @@
 {
  "me": "ur done",
  "updated": "2026-11-03",
- "source": "ESPN league 882823976 sync 2026-11-03 13:56 CST",
+ "source": "ESPN league 882823976 sync 2026-11-03 16:10 CST",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -662,8 +662,7 @@
     "pos": "RB",
     "team": "NO",
     "irOk": true,
-    "ir": true,
-    "slot": "IR"
+    "slot": "BN"
    },
    {
     "name": "Quinshon Judkins",
@@ -690,13 +689,6 @@
     "name": "Michael Wilson",
     "pos": "WR",
     "team": "ARI",
-    "irOk": true,
-    "slot": "BN"
-   },
-   {
-    "name": "Zach Charbonnet",
-    "pos": "RB",
-    "team": "SEA",
     "irOk": true,
     "slot": "BN"
    },
