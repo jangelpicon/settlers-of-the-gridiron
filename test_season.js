@@ -363,7 +363,10 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(r.verdict === "hold" && /coin flip/.test(r.reason), "+0.4 over a replaceable unit is a coin flip → hold (no churn for nothing): " + r.reason);
   // The live question (2026-10-27): Fitzgerald K22 at 7.8 with McPherson (K5) and Bass (K13) both at 10.2 and Ryland (K23) at 9.2.
   const mkK0 = (n, mu, pr, bye) => ({ ...mkDst(n, mu, pr, bye), pos: "K" });
-  r = T.streamStatusRaw([mkK0("Fitz Like", 7.8, "K22", 5)], [mkK0("Bass Like", 10.2, "K13", 7), mkK0("McPherson Like", 10.2, "K5", 10), mkK0("Ryland Like", 9.2, "K23", 14)], "mu").find(st => st.pos === "K");
+  // Byes are pinned RELATIVE to the live week (was 5/7/10/14 hard-coded from Week 8): Week 9 2026 lesson — once the
+  // season reached Week 9 the K5's hard-coded bye 10 became "next week" and the tool correctly dropped him from the chain,
+  // so the fixture, not the rule, went red. Fitz/Bass byes done, McPherson's 2 ahead (never "next"), Ryland's far ahead.
+  r = T.streamStatusRaw([mkK0("Fitz Like", 7.8, "K22", wk - 3)], [mkK0("Bass Like", 10.2, "K13", wk - 1), mkK0("McPherson Like", 10.2, "K5", wk + 2), mkK0("Ryland Like", 9.2, "K23", wk + 6)], "mu").find(st => st.pos === "K");
   assert(r.verdict === "swap" && r.best.name === "McPherson Like" && r.chain.map(c => c.name).join(">") === "McPherson Like>Bass Like>Ryland Like", "a K22 is swapped for the best week; the 10.2 tie breaks to the K5, and Bass (+2.4) and Ryland (+1.4) are live backups, not holds (" + r.chain.map(c => c.name).join(" > ") + ")");
   r = T.streamStatusRaw([mkDst("Mine Mid", 7.4, "DST9", 10)], [mkDst("Clear Edge", 10.6, "DST12", 13)], "mu")[0];
   assert(r.verdict === "swap" && r.delta === 3.2, "+3.2 over a mid-tier DST → swap");
@@ -677,7 +680,13 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const matchups = JSON.parse(fs.readFileSync(path.join(__dirname, "data/matchups.json"), "utf8"));
   assert(Object.keys(matchups.defVsPos).length >= 30, "defense-vs-position table covers the league (" + Object.keys(matchups.defVsPos).length + " defenses)");
   assert(["QB","RB","WR","TE","K","DST"].every(pos => matchups.leagueAvg[pos] > 0), "league average present for all six positions");
-  assert(matchups.defVsPos.DET && matchups.defVsPos.DET.QB && matchups.defVsPos.DET.QB.avg > matchups.leagueAvg.QB * 1.3, "sanity anchor: Detroit is a far-above-average QB matchup (" + (matchups.defVsPos.DET ? matchups.defVsPos.DET.QB.avg : "?") + " vs lg " + matchups.leagueAvg.QB + ")");
+  // Sanity anchors on LIVE data must not depend on one team staying extreme: the old "DET > 1.3x league avg" anchor
+  // failed by a hair (20.9 vs 21.05) in Week 9 2026 as Detroit regressed toward the mean while the table was correct.
+  // Structural check instead: the table has real spread (softest QB defense far above average, toughest far below)
+  // and the direction is right (DET, a known soft QB matchup this season, sits above average).
+  const qbAvgs = Object.values(matchups.defVsPos).map(d => d.QB && d.QB.avg).filter(v => typeof v === "number");
+  assert(Math.max(...qbAvgs) > matchups.leagueAvg.QB * 1.25 && Math.min(...qbAvgs) < matchups.leagueAvg.QB * 0.75, "sanity: the QB matchup table has real spread (softest " + Math.max(...qbAvgs) + ", toughest " + Math.min(...qbAvgs) + " vs lg " + matchups.leagueAvg.QB + ")");
+  assert(matchups.defVsPos.DET && matchups.defVsPos.DET.QB && matchups.defVsPos.DET.QB.avg > matchups.leagueAvg.QB, "sanity direction: Detroit is an above-average QB matchup (" + (matchups.defVsPos.DET ? matchups.defVsPos.DET.QB.avg : "?") + " vs lg " + matchups.leagueAvg.QB + ")");
   // graceful degrade: no matchups file = consensus-only, no matchup fields, no errors
   T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
   const anyQB = rosters.teams[rosters.me].filter(p => p.pos === "QB").map(p => T.info(p));
