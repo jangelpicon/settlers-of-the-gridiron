@@ -1,7 +1,7 @@
 {
  "me": "ur done",
  "updated": "2026-11-03",
- "source": "ESPN league 882823976 sync 2026-11-03 18:40 CST",
+ "source": "ESPN league 882823976 sync 2026-11-03 18:56 CST",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -125,7 +125,7 @@
     "pos": "WR",
     "team": "KC",
     "irOk": true,
-    "slot": "FLEX"
+    "slot": "WR"
    },
    {
     "name": "Breece Hall",
@@ -189,7 +189,7 @@
     "pos": "WR",
     "team": "CHI",
     "irOk": true,
-    "slot": "WR"
+    "slot": "FLEX"
    },
    {
     "name": "Jacksonville Jaguars",
