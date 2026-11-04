@@ -1800,6 +1800,22 @@
     const w = POOL.waivers[p.n]; if (!w || !w.processAt) return { batch:"now", at:null, text:"instant add — free agent, executes when you click" };
     return { batch:String(w.processAt), at:w.processAt, text:"processes "+new Date(w.processAt).toLocaleString("en-US",{timeZone:"America/Chicago",weekday:"short",month:"numeric",day:"numeric",hour:"numeric",minute:"2-digit"}) }; };
   const claimLateFor = p => { const c = claimWhen(p); return c.batch==="?" ? kicksBeforeClaim(p) : !!(p.game && p.game.kick && c.at!=null && c.at >= Date.parse(p.game.kick)); };
+  // Chain across processing batches (Jose 2026-11-03, Charbonnet Thu vs Kamara Wed): a claim that processes LATER than
+  // the primary is a legitimate backup — it only lands if the drop is still on the roster, i.e. the earlier claim
+  // failed. A claim that processes EARLIER is not: it would spend the drop first. So: primary = best of the earliest
+  // batch, unless a later-batch man beats him by STREAM_BAR (then wait for the better man and list the early names as
+  // a different plan); backups = same-or-later batches, batch order first, then quality.
+  const batchAt = p => { const w = claimWhen(p); return w.batch==="?" ? null : (w.at!=null ? w.at : 0); };
+  // cands arrive in quality order (the caller's own ranking/tie-breaks); within a batch that order is kept.
+  function pickChain(cands, scoreOf, atOf){
+    const at = atOf || batchAt;
+    if (!cands.length) return { chain:[], other:[] };
+    if (cands.some(c=>at(c)==null)) return { chain:cands.slice(), other:[] };
+    const byBatch = cands.map((c,i)=>({c,i})).sort((a,b)=>at(a.c)-at(b.c) || a.i-b.i).map(x=>x.c); // stable
+    const earliest = byBatch[0], best = cands[0];
+    const primary = (at(best)>at(earliest) && scoreOf(best)-scoreOf(earliest) >= STREAM_BAR) ? best : earliest;
+    return { chain: [primary].concat(byBatch.filter(c=>c!==primary && at(c)>=at(primary))), other: byBatch.filter(c=>at(c)<at(primary)) };
+  }
   const timingHtml = (p, thisWeek) => { const c = claimWhen(p); if (!c.text) return ""; const late = thisWeek && claimLateFor(p); return " <span class='tag "+(late?"warn":"")+"' title='ESPN waiver timing for this player'>⏱ "+esc(c.text)+(late?" — after his kickoff, scores nothing this week":"")+"</span>"; };
   // Per position: what I have, the ranked candidate chain, and the verdict (fill / swap / hold).
   function weeklyStreamStatus(me, fa, wkey){
@@ -1822,8 +1838,8 @@
       const clearsBar = c => !mine ? true : (c.mu!=null && mine.mu!=null) ? (c.mu-mine.mu) >= swapBar(mine) : (c.wkRank!=null && mine.wkRank!=null && (mine.wkRank-c.wkRank) >= swapBarRank(mine));
       const chainAll = cands.filter(c=>!mine || c.n!==mine.n).filter(clearsBar).sort((a,b)=>(a.claimLate?1:0)-(b.claimLate?1:0)).slice(0,3);
       // backups only inside the primary's processing batch; the rest are listed as a different batch, not as backups
-      const b0 = chainAll.length ? claimWhen(chainAll[0]).batch : null;
-      const chain = chainAll.filter(c=>claimWhen(c).batch===b0), otherBatch = chainAll.filter(c=>claimWhen(c).batch!==b0);
+      const pc = pickChain(chainAll, c => c.mu!=null ? c.mu : (c.wkRank!=null ? -c.wkRank : -999));
+      const chain = pc.chain, otherBatch = pc.other;
       const rosterFull = openSpots(me) === 0;
       const st = { pos, mine, best, chain, otherBatch, delta:null, verdict:"ok", drop:null, reason:"" };
       if (satThisWeek()){
@@ -1919,7 +1935,7 @@
           .map(x=>({ f:x.f, gain: Math.round((lineupPts(x.L)-lineupPts(L0))*10)/10, slot: (x.L.slots.find(y=>y.p && y.p.n===x.f.n)||{}).slot })).sort((a,b)=>b.gain-a.gain || b.f.mu-a.f.mu).slice(0,3);
         const line = "🩹 <b>"+esc(p.name)+"</b> out"+note+" · 0 pts this week (ROS #"+(p.ros!=null?p.ros:"–")+", back "+fmtBack(p)+")";
         if (!rentals.length){ ctx.push(line+" · nothing on the wire would start for you — keep him"); return; }
-        holeRows.push({ why: esc(p.name)+" out", when: "this week", kick: true, ctxIndex: ctx.length, cands: rentals.map(x=>({ f:x.f, note:"+"+x.gain.toFixed(1)+" to your lineup this week · starts "+x.slot })) });
+        holeRows.push({ why: esc(p.name)+" out", when: "this week", kick: true, ctxIndex: ctx.length, cands: rentals.map(x=>({ f:x.f, score:x.gain, note:"+"+x.gain.toFixed(1)+" to your lineup this week · starts "+x.slot })) });
         ctx.push(line);
       });
     }
@@ -1942,7 +1958,7 @@
         let line = "🤕 <b>"+esc(p.name)+"</b> "+esc(p.injLive)+" · "+pct+"%"+(p.injNote?" · "+esc(p.injNote.split(" · ")[0]):"")+(p.game && p.game.kick ? " · kicks "+esc(kickText(p.game)) : "")
           + " · If he sits: "+(hole ? "<b>"+hole.slot+" empty — 0 pts</b>" : stepIn ? "<b>"+esc(stepIn.name)+"</b> steps in"+(stepIn.mu!=null?" ("+stepIn.mu.toFixed(1)+")":"") : "lineup unchanged");
         if (!fills.length){ ctx.push(line+" · "+(hole || !stepIn ? "nothing on the wire would start in his place" : "nothing on the wire beats "+esc(stepIn.name)+" by enough ("+STREAM_BAR.toFixed(0)+"+ points) — no move")); return; }
-        holeRows.push({ why: "if "+esc(p.name)+" sits", when: "this week", kick: true, ctxIndex: ctx.length, cands: fills.map(x=>({ f:x.f, note:(x.gain!=null?"+"+x.gain.toFixed(1)+" if he sits":"only if he sits")+" · bench if he plays" })) });
+        holeRows.push({ why: "if "+esc(p.name)+" sits", when: "this week", kick: true, ctxIndex: ctx.length, cands: fills.map(x=>({ f:x.f, score:(x.gain!=null?x.gain:0), note:(x.gain!=null?"+"+x.gain.toFixed(1)+" if he sits":"only if he sits")+" · bench if he plays" })) });
         ctx.push(line);
       });
     }
@@ -1961,7 +1977,7 @@
           .sort((x,y)=>((y.mu!=null?y.mu:0)-(x.mu!=null?x.mu:0)) || ((y.seasonProj!=null?y.seasonProj:0)-(x.seasonProj!=null?x.seasonProj:0)) || rosR(x)-rosR(y)).slice(0,3);
         if (!fits.length){ none.push(b); return; }
         holeRows.push({ why: "your W"+NV.week+" "+b+" hole ("+NV.out.filter(p=>b==="FLEX"?FLEX.includes(p.pos):p.pos===b).map(p=>esc(p.name)).join(", ")+" on bye)", when: "W"+NV.week, kick: false, ctxIndex: ctx.length,
-          cands: fits.map(f=>({ f, note:"plays W"+NV.week+" · fills "+b+(byPos[b]>1?" ×"+byPos[b]:"") })) });
+          cands: fits.map(f=>({ f, score:(f.mu!=null?f.mu:(f.seasonProj!=null?f.seasonProj/10:0)), note:"plays W"+NV.week+" · fills "+b+(byPos[b]>1?" ×"+byPos[b]:"") })) });
       });
       if (none.length) line += " · nothing on the wire plays W"+NV.week+" at "+none.join("/");
       nwIndex = ctx.length; ctx.push(line);
@@ -1969,7 +1985,7 @@
     // --- drops down the ladder: each hole row spends a different man; what's left feeds the season-long rows ---
     let ladder = bench.slice(); const holeAdds = new Set();
     holeRows.forEach(r=>{
-      const b0 = claimWhen(r.cands[0].f).batch; r.other = r.cands.filter(c=>claimWhen(c.f).batch!==b0); r.cands = r.cands.filter(c=>claimWhen(c.f).batch===b0);
+      const pc = pickChain(r.cands, c => c.score, c => batchAt(c.f)); r.cands = pc.chain; r.other = pc.other;
       r.drop = dropCandidate(ladder, me, r.cands[0].f, lineupImpact(me, r.cands[0].f)); if (r.drop) ladder = ladder.filter(p=>p.n!==r.drop.n); r.cands.concat(r.other).forEach(c=>holeAdds.add(c.f.n)); });
     const { sugg, marginal, needs: N } = waiverSuggestions(me, ladder, fa.filter(f=>!holeAdds.has(f.n)));
     // Is a hole fill ALSO a season-long upgrade (full-bench lens), or just a rental? Say so on his row.
@@ -2012,10 +2028,10 @@
           pri++;
           const kick = r.kick && c.f.game && c.f.game.kick ? " · kicks "+esc(kickText(c.f.game))+" — instant add before then; a waiver claim lands after the game" : "";
           const note = (i===0 ? "fills "+r.why+" · "+c.note
-                             : "backup for Priority "+r.pri+" — same drop; fires only if "+esc(r.cands[i-1].f.name)+" is taken by a team ahead of you in waiver priority · "+c.note)+" · "+c.season+kick;
+                             : "backup for Priority "+r.pri+" — same drop; "+(batchAt(c.f)>batchAt(r.cands[0].f) ? "runs in a later batch and lands only if the claims above it failed" : "fires only if "+esc(r.cands[i-1].f.name)+" is taken by a team ahead of you in waiver priority")+" · "+c.note)+" · "+c.season+kick;
           h += "<div class='suggest'><b>Priority "+pri+"</b> · ➕ Add "+holeLine(c.f)+" &nbsp;➖ Drop "+(r.drop ? player(r.drop,true) : "<span class='muted'>nobody — open roster spot</span>")+" <span class='tag good'>"+(r.when==="this week"?"this week":"W"+NV.week+" hole")+"</span>"+timingHtml(c.f, r.when==="this week")+"<br><span class='muted'>"+note+"</span></div>";
         });
-        if (r.other && r.other.length) h += "<div class='muted' style='margin:-2px 0 8px'>Different batch, not backups: "+r.other.map(c=>"<b>"+esc(c.f.name)+"</b> ("+esc(claimWhen(c.f).text)+")").join(", ")+" — a claim on one of them runs at a different time than Priority "+r.pri+"'s and would spend "+(r.drop?esc(r.drop.name):"the roster spot")+" first. One plan per hole: take Priority "+r.pri+" or swap him for one of these, not both.</div>";
+        if (r.other && r.other.length) h += "<div class='muted' style='margin:-2px 0 8px'>Earlier batch, not backups: "+r.other.map(c=>"<b>"+esc(c.f.name)+"</b> ("+esc(claimWhen(c.f).text)+")").join(", ")+" — a claim on one of them runs BEFORE Priority "+r.pri+"'s and would spend "+(r.drop?esc(r.drop.name):"the roster spot")+" first; Priority "+r.pri+" is worth waiting for. One plan per hole.</div>";
       });
       let freeShown = 0, firstFree = 0;
       sugg.filter(s=>!s.free || freeShown++ < 3).slice(0,6+Math.min(freeShown,3)).forEach(s=>{
@@ -2047,11 +2063,11 @@
           pri++;
           const note = i===0
             ? (s.verdict==="fill" ? "fills your empty "+s.pos+" slot this week · " : "")+esc(s.reason)
-            : "backup for Priority "+first+" — same drop; fires only if "+esc(s.chain[i-1].name)+" is taken by a team ahead of you in waiver priority";
+            : "backup for Priority "+first+" — same drop; "+(batchAt(c)>batchAt(s.chain[0]) ? "runs in a later batch and lands only if the claims above it failed" : "fires only if "+esc(s.chain[i-1].name)+" is taken by a team ahead of you in waiver priority");
           const late = c.claimLate ? " <span class='tag warn' title='This league holds dropped players on waivers for "+WAIVER_HOURS+"h; a claim filed now processes after his game, so he scores nothing for you this week. Only worth it as an instant add if he has already cleared waivers.'>⚠ kicks "+esc(kickText(c.game))+" — a waiver claim lands after his game</span>" : "";
           h += "<div class='suggest'><b>Priority "+pri+"</b> · ➕ Add "+wkCand(c)+" &nbsp;➖ Drop "+dropHtml+" <span class='tag good'>weekly "+s.pos+"</span>"+late+timingHtml(c,true)+"<br><span class='muted'>"+note+"</span></div>";
         });
-        if (s.otherBatch && s.otherBatch.length) h += "<div class='muted' style='margin:-2px 0 4px'>Different batch, not backups: "+s.otherBatch.map(c=>"<b>"+esc(c.name)+"</b> ("+esc(claimWhen(c).text)+")").join(", ")+" — ESPN runs them at a different time than Priority "+first+", so one plan: Priority "+first+" or one of these.</div>";
+        if (s.otherBatch && s.otherBatch.length) h += "<div class='muted' style='margin:-2px 0 4px'>Earlier batch, not backups: "+s.otherBatch.map(c=>"<b>"+esc(c.name)+"</b> ("+esc(claimWhen(c).text)+")").join(", ")+" — they run BEFORE Priority "+first+" and would spend the drop first; Priority "+first+" is worth waiting for.</div>";
         h += "<div class='muted' style='margin:-2px 0 8px'>"+s.pos+" chain order: every claim here beats your "+s.pos+" by at least "+swapBar(s.drop)+" this week on its own"+(isEliteUnit(s.drop)?" (he's a top-8 season unit, so only a real edge moves him)":" (he's not a top-8 season unit, so any edge beyond a coin flip counts)")+" — a backup that doesn't is left out; this-week projection first; projections within "+STREAM_TIE+" are a coin flip, so ties go to a kicker/defense whose bye is already behind him when the season ranks are close, otherwise to the better season rank. Anyone on bye next week is left out — you'd be streaming again in seven days.</div>";
       });
       streamHolds.forEach(st=>{ h += "<div class='suggest'>✋ <b>Hold "+esc(st.mine.name)+"</b> ("+st.pos+(st.mine.posRank?", "+esc(st.mine.posRank)+" for the season":"")+(st.mine.mu!=null?", "+st.mine.mu.toFixed(1)+" proj this week":"")+")<br><span class='muted'>"+esc(st.reason)+". Best available: "+esc(st.best.name)+" ("+(st.best.posRank||"unranked")+(st.best.mu!=null?", "+st.best.mu.toFixed(1)+" proj":"")+").</span></div>"; });
@@ -2924,7 +2940,7 @@
   window.__seasonTest = { inject:(s,r,x,tl,pj,pool,mu,hist)=>{ S=s; R=JSON.parse(JSON.stringify(r)); X=x||{players:[]}; P=pj||null; POOL=pool||null; MU=mu||null; HIST=hist||null; LG=null; PSTAMP = pj ? {text:"snapshot "+pj.generated, cls:"stale"} : {text:"none", cls:""}; RSTAMP = {text:R.updated||"–", cls:""}; mergeLog((tl||{}).entries); applyAcceptedTrades(); buildIndex(); renderAll(); },
     setHistory:(h)=>{ HIST=h||null; renderMatchup(); renderScoreboard(); },
     setSettings:(st)=>{ SETTINGS=st||null; SIMC=null; }, setTransactions:(tx)=>{ TX=tx||null; LOGF={team:"",kind:"all"}; renderLog(); }, setLogFilter:(f)=>{ LOGF=Object.assign({team:"",kind:"all"},f||{}); renderLog(); }, txNormalize, getTransactions:()=>TX, leagueSim, simDelta, simDeltaFast, simWinProb, waiverChamp, simLeverage, simScoringModel, simRun, simPlayoffs, simSeedOrder, simBracketOrder, simNormals, simWidth, talentSlope, SIM_N, SIM_SEED, historyFromLeague, teamSeason, currentOpponent, allScores, scoringRank, effPts, effSd, gameFrac, liveState, scoreFrame, currentWeekProj,
-    nextWeekView, coversNextWeek, lastSheet:()=>LAST_SHEET, claimWhen, claimLateFor, rostersFromLeague, setRosters:(r)=>{ R = JSON.parse(JSON.stringify(r)); buildIndex(); renderAll(); },
+    nextWeekView, coversNextWeek, lastSheet:()=>LAST_SHEET, claimWhen, claimLateFor, batchAt, pickChain, rostersFromLeague, setRosters:(r)=>{ R = JSON.parse(JSON.stringify(r)); buildIndex(); renderAll(); },
     setLineup, rankVote, logTrade, teamFloor, tradeTalent, tradeLineup, strippedPositions, replFill, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, lockAwareLineup, strength, findTrades, findSurplus, surplusDeals, allSurplusDeals, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M, teamNeeds,
     waiverSuggestions:()=>{ const me = myTeam(); const { bench } = optimalLineup(me, "ros"); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,
     weeklyStreamClaims:()=>{ const me = myTeam(); return weeklyStreamClaims(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },

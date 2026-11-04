@@ -440,9 +440,19 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     if (espnPool && espnPool.waivers) {
       const prio = wtxt2.slice(wtxt2.indexOf("Your claim sheet")).split(/Priority \d+ · /).slice(1);
       assert(prio.length > 0 && prio.every(r => /⏱ (processes |instant add)/.test(r)), "every claim row prints its ESPN timing (processes <day> / instant add)");
-      LS.holeRows.forEach(r => assert(r.cands.every(c => T.claimWhen(c.f).batch === T.claimWhen(r.cands[0].f).batch), "hole backups share the primary's batch (" + r.cands.map(c => c.f.name + ":" + T.claimWhen(c.f).text).join(" | ") + ")"));
-      LS.holeRows.filter(r => r.other && r.other.length).forEach(r => assert(new RegExp("Different batch, not backups: .*" + rx(r.other[0].f.name).source).test(wtxt2), "other-batch candidates are listed as a different plan, not as backups (" + r.other.map(c => c.f.name).join(", ") + ")"));
-      SC.forEach(s => assert(s.chain.every(c => T.claimWhen(c).batch === T.claimWhen(s.chain[0]).batch), s.pos + " stream backups share the primary's batch"));
+      // a backup processes in the primary's batch or LATER (it lands only if the drop is still there); never earlier
+      LS.holeRows.forEach(r => assert(r.cands.every(c => (T.batchAt(c.f) || 0) >= (T.batchAt(r.cands[0].f) || 0)), "hole backups process with or after the primary (" + r.cands.map(c => c.f.name + ":" + T.claimWhen(c.f).text).join(" | ") + ")"));
+      LS.holeRows.forEach(r => (r.other || []).forEach(c => assert(T.batchAt(c.f) < T.batchAt(r.cands[0].f), "an 'earlier batch' name really processes before the primary (" + c.f.name + ")")));
+      LS.holeRows.filter(r => r.other && r.other.length).forEach(r => assert(new RegExp("Earlier batch, not backups: .*" + rx(r.other[0].f.name).source).test(wtxt2), "earlier-batch candidates are listed as a different plan, not as backups (" + r.other.map(c => c.f.name).join(", ") + ")"));
+      SC.forEach(s => assert(s.chain.every(c => (T.batchAt(c) || 0) >= (T.batchAt(s.chain[0]) || 0)), s.pos + " stream backups process with or after the primary"));
+      // synthetic pickChain: Wed 10.0 vs Thu 10.8 → Wed first, Thu is the later-batch backup; Wed 7.0 vs Thu 14.0 → wait for Thu, Wed is an earlier-batch plan
+      { const W = Date.now() + 6 * 3600000, TH = W + 86400000; const pool0 = espnPool.waivers;
+        espnPool.waivers = Object.assign({}, pool0, { pcwed: { processAt: W }, pcthu: { processAt: TH } });
+        let pc = T.pickChain([{ n: "pcthu", score: 10.8 }, { n: "pcwed", score: 10.0 }], c => c.score);
+        assert(pc.chain.map(c => c.n).join(">") === "pcwed>pcthu" && !pc.other.length, "close call across batches: earliest batch first, later batch as backup (" + pc.chain.map(c => c.n).join(">") + ")");
+        pc = T.pickChain([{ n: "pcthu", score: 14.0 }, { n: "pcwed", score: 7.0 }], c => c.score);
+        assert(pc.chain.map(c => c.n).join(">") === "pcthu" && pc.other.map(c => c.n).join() === "pcwed", "a later-batch man who is 3+ better is worth waiting for; the earlier name is a different plan (" + pc.chain.map(c => c.n).join(">") + " | " + pc.other.map(c => c.n).join() + ")");
+        espnPool.waivers = pool0; }
     }
     assert(rows.every(r => { const m = wtxt2.indexOf("Priority " + r[0]); if (m < 0) return false; const seg = wtxt2.slice(m, wtxt2.indexOf("Priority " + (r[0]+1)) > 0 ? wtxt2.indexOf("Priority " + (r[0]+1)) : m + 400); return rx(r[1]).test(seg) && rx(r[2]).test(seg); }), "claim sheet renders every row as 'Priority N · add X · drop Y' in exact order, backups included (" + rows.map(r => r[0] + ":" + r[1] + "/" + r[2]).join(", ") + ")");
     assert(WS.sugg.every(s => !s.chain || !s.chain.worth || /backup for Priority/.test(wtxt2)), "a worth-it deeper drop becomes its own backup claim row, ESPN-style");
