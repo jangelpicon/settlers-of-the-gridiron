@@ -32,7 +32,10 @@ def _int(v):
     except (TypeError, ValueError): return None
 
 def ecr(page):
-    h = get(FP.format(page))
+    # Cache-buster + no-cache headers (Jose 2026-11-03): FantasyPros recomputed the ROS consensus at 6:22 PM, the 6:30 PM
+    # fetch still got the 2:39 PM page — a CDN/edge copy. A unique query string and explicit no-cache make every
+    # Tuesday-evening half-hour refresh read the live sheet instead of whatever the edge last cached.
+    h = get(FP.format(page) + "?nocache=" + str(int(datetime.datetime.now().timestamp())), {**UA, "Cache-Control": "no-cache", "Pragma": "no-cache"})
     m = re.search(r"var ecrData = (\{.*?\});\s*\n", h, re.S)
     if not m:
         sys.exit(f"no ecrData on {page}")
