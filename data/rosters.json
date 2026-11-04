@@ -1,7 +1,7 @@
 {
  "me": "ur done",
  "updated": "2026-11-03",
- "source": "ESPN league 882823976 sync 2026-11-03 19:00 CST",
+ "source": "ESPN league 882823976 sync 2026-11-03 19:19 CST",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -834,14 +834,14 @@
     "pos": "RB",
     "team": "SF",
     "irOk": true,
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Nico Collins",
     "pos": "WR",
     "team": "HOU",
     "irOk": true,
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Kenneth Walker III",
@@ -855,14 +855,15 @@
     "pos": "WR",
     "team": "BAL",
     "irOk": true,
-    "slot": "WR"
+    "slot": "FLEX"
    },
    {
     "name": "Lamar Jackson",
     "pos": "QB",
     "team": "BAL",
     "irOk": true,
-    "slot": "QB"
+    "ir": true,
+    "slot": "IR"
    },
    {
     "name": "Cam Skattebo",
@@ -911,7 +912,7 @@
     "pos": "WR",
     "team": "LV",
     "irOk": true,
-    "slot": "FLEX"
+    "slot": "BN"
    },
    {
     "name": "Hunter Henry",
@@ -925,7 +926,7 @@
     "pos": "QB",
     "team": "WAS",
     "irOk": true,
-    "slot": "BN"
+    "slot": "QB"
    }
   ]
  }
