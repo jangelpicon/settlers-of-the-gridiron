@@ -152,10 +152,16 @@ def main():
     # ESPN's player universe for THIS league (rostered + free agents + waivers) -> replaces the hand-kept exclusions list
     flt = json.dumps({"players": {"filterSlotIds": {"value": [0, 2, 4, 6, 17, 16]}, "limit": 1500, "sortPercOwned": {"sortPriority": 1, "sortAsc": False}}})
     kp = get(base + "?view=kona_player_info", {**h, "x-fantasy-filter": flt})
-    pool = {}
+    pool, waivers = {}, {}
     for x in kp.get("players", []):
         r = player_row(x)
-        if r: pool[norm(r["name"])] = {"onTeamId": x.get("onTeamId", 0), "status": x.get("status")}
+        if r:
+            k = norm(r["name"]); pool[k] = {"onTeamId": x.get("onTeamId", 0), "status": x.get("status")}
+            # Jose 2026-11-03: a dropped player sits on WAIVERS until ESPN's stated process time (this league: 24h hold,
+            # daily runs); everyone else is an instant free-agent add. The claim sheet prints this per row and only
+            # chains backups inside the same processing batch (ESPN priority orders claims that run together).
+            if x.get("status") == "WAIVERS" and x.get("waiverProcessDate"):
+                waivers[k] = {"status": "WAIVERS", "processAt": int(x["waiverProcessDate"])}
     if len(pool) < 300: sys.exit(f"league player pool too small ({len(pool)}) — refusing")
     now = datetime.datetime.now(datetime.timezone.utc).astimezone()
     rosters = {"me": me, "updated": datetime.date.today().isoformat(), "source": f"ESPN league {league} sync {now.strftime('%Y-%m-%d %H:%M %Z')}",
@@ -179,7 +185,7 @@ def main():
     if dry: return
     rp.write_text(json.dumps(rosters, indent=1))
     (HERE / "data" / "espn_pool.json").write_text(json.dumps({"note": "Players in ESPN's pool for this league (rostered, free agent or waivers). The page only treats FantasyPros-ranked players as free agents if they are in here and on no roster.",
-        "leagueId": league, "updated": rosters["updated"], "players": sorted(pool)}, separators=(",", ":")))
+        "leagueId": league, "updated": rosters["updated"], "players": sorted(pool), "waivers": waivers}, separators=(",", ":")))
     (HERE / "data" / "league_history.json").write_text(json.dumps(hist, separators=(",", ":")))
     write_settings(d, league, season, now)
     print("wrote data/rosters.json + data/espn_pool.json + data/league_history.json + data/settings.json")

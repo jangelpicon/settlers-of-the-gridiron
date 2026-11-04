@@ -97,7 +97,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     const solo = T.predict({ name: "Solo Rank", n: "solorank", pos: "WR", team: "CIN", wkRank: 175, wkStd: 61, inj: null });
     assert(solo.srcs.length === 1 && solo.rankVote === 0.1 && Math.abs(solo.ifPlays - solo.rankPts * solo.vegasMult) < 0.06, "a player with only a rank-implied source keeps it whole — the vote only matters among several sources");
     ["splitguy","agreeguy","fightguy","noisyguy","typicalguy","mildguy","nostdguy"].forEach(n => delete unlockedProjections.players[n]);
-    T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
+    T.inject(season, rosters, exclusions, tradeLog, unlockedProjections, espnPool); // + this league's ESPN pool, so waiver timing (Jose 2026-11-03) is exercised
     assert(season.weekly.FLEX.every(r => r.std != null) && season.weekly.QB.every(r => r.std != null), "data/season.json carries the expert spread (std) on every weekly rank row");
     // across the board: no rostered player whose two feeds agree is dragged >25% away from them by the rank any more
     const all = Object.keys(rosters.teams).flatMap(t => rosters.teams[t].map(T.info)).filter(p => p.espn != null && p.sleeper != null && p.rankPts != null);
@@ -418,8 +418,10 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   r = T.streamStatusRaw([mkDst("Mine Mid", 7.4, "DST9", 10)], [mkDst("Clear Edge", 10.6, "DST12", 13), mkDst("Second", 11.2, "DST14", 13)], "mu")[0];
   assert(r.chain.length === 2 && r.chain[0].name === "Second", "backups that do clear the bar stay, best projection first (" + r.chain.map(c => c.name).join(" > ") + ")");
   const soon = new Date(Date.now() + 2 * 3600000).toISOString().replace(/\.\d+Z$/, "Z"), later = new Date(Date.now() + 3 * 86400000).toISOString().replace(/\.\d+Z$/, "Z");
+  // per-player ESPN timing (2026-11-03): both process in tomorrow's batch — after Tonight's kick, before Sunday's
+  if (espnPool) { espnPool.waivers = espnPool.waivers || {}; espnPool.waivers.tonight = { status: "WAIVERS", processAt: Date.now() + 24 * 3600000 }; espnPool.waivers.sunday = { status: "WAIVERS", processAt: Date.now() + 24 * 3600000 }; }
   r = T.streamStatusRaw([mkDst("Mine Mid", 7.4, "DST9", 10)], [{ ...mkDst("Tonight", 11.0, "DST3", 13), game: { kick: soon } }, { ...mkDst("Sunday", 10.6, "DST12", 13), game: { kick: later } }], "mu")[0];
-  assert(r.chain.map(c => c.name).join(">") === "Sunday>Tonight" && r.chain[1].claimLate === true && r.chain[0].claimLate === false, "a candidate whose game kicks inside the 24h waiver window is flagged and ranked behind the on-time claim (" + r.chain.map(c => c.name + (c.claimLate ? "⚠" : "")).join(" > ") + ")");
+  assert(r.chain.map(c => c.name).join(">") === "Sunday>Tonight" && r.chain[1].claimLate === true && r.chain[0].claimLate === false, "a candidate whose claim processes after his kickoff is flagged and ranked behind the on-time claim (" + r.chain.map(c => c.name + (c.claimLate ? "⚠" : "")).join(" > ") + ")");
   r = T.streamStatusRaw(fullMe, kFA, "mu").find(st => st.pos === "K");
   assert(r.verdict === "fill" && r.chain.length === 3, "fill (my K on bye) keeps the full chain — there is no bar to clear against an empty slot");
   {
@@ -433,6 +435,15 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     LS.holeRows.forEach(r => r.cands.forEach(c => rows.push([++pri, c.f.name, r.drop ? r.drop.name : "nobody — open roster spot"])));
     LS.sugg.filter(s => !s.free || freeLeft-- > 0).slice(0, 6 + Math.min(3 - Math.max(freeLeft, 0), 3)).forEach(s => { rows.push([++pri, s.add.name, s.free ? "nobody — open roster spot" : s.drop.name]); if (s.chain && s.chain.worth) rows.push([++pri, s.add.name, s.chain.drop.name]); });
     assert(rows.length > 0 && rows.every((r, i) => r[0] === i + 1), "priorities run 1..N with no gaps across hole rows and season-long rows (" + rows.length + ")");
+    // Waiver timing (Jose 2026-11-03: Charbonnet processes Thursday, Price/Kamara Wednesday): every row says when it
+    // runs, and a backup row always shares its primary's processing batch — ESPN priority only orders one batch.
+    if (espnPool && espnPool.waivers) {
+      const prio = wtxt2.slice(wtxt2.indexOf("Your claim sheet")).split(/Priority \d+ · /).slice(1);
+      assert(prio.length > 0 && prio.every(r => /⏱ (processes |instant add)/.test(r)), "every claim row prints its ESPN timing (processes <day> / instant add)");
+      LS.holeRows.forEach(r => assert(r.cands.every(c => T.claimWhen(c.f).batch === T.claimWhen(r.cands[0].f).batch), "hole backups share the primary's batch (" + r.cands.map(c => c.f.name + ":" + T.claimWhen(c.f).text).join(" | ") + ")"));
+      LS.holeRows.filter(r => r.other && r.other.length).forEach(r => assert(new RegExp("Different batch, not backups: .*" + rx(r.other[0].f.name).source).test(wtxt2), "other-batch candidates are listed as a different plan, not as backups (" + r.other.map(c => c.f.name).join(", ") + ")"));
+      SC.forEach(s => assert(s.chain.every(c => T.claimWhen(c).batch === T.claimWhen(s.chain[0]).batch), s.pos + " stream backups share the primary's batch"));
+    }
     assert(rows.every(r => { const m = wtxt2.indexOf("Priority " + r[0]); if (m < 0) return false; const seg = wtxt2.slice(m, wtxt2.indexOf("Priority " + (r[0]+1)) > 0 ? wtxt2.indexOf("Priority " + (r[0]+1)) : m + 400); return rx(r[1]).test(seg) && rx(r[2]).test(seg); }), "claim sheet renders every row as 'Priority N · add X · drop Y' in exact order, backups included (" + rows.map(r => r[0] + ":" + r[1] + "/" + r[2]).join(", ") + ")");
     assert(WS.sugg.every(s => !s.chain || !s.chain.worth || /backup for Priority/.test(wtxt2)), "a worth-it deeper drop becomes its own backup claim row, ESPN-style");
   }
