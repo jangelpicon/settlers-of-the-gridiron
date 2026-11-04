@@ -549,6 +549,25 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
       espnPool.waivers = pool0; }
   }
 
+  console.log("== Waivers: explanations fold behind a tap (Jose 2026-11-04: 'huge wall of text') ==");
+  { const wtab = d.getElementById("tab-waivers");
+    const folds = [...wtab.querySelectorAll("details.why")];
+    assert(folds.length >= 4 && folds.every(f => !f.hasAttribute("open")), "every explanation on the Waivers tab is a closed <details> fold (" + folds.length + " folds)");
+    const labels = folds.map(f => f.querySelector("summary").textContent.trim());
+    ["how this list is built", "how to read it", "how the ladder works", "how to read this"].forEach(l => assert(labels.includes(l), "section intro folded: '" + l + "'"));
+    const visible = el => { const c = el.cloneNode(true); c.querySelectorAll("details").forEach(x => x.remove()); return c.textContent.replace(/\s+/g, " ").trim(); };
+    const sheet = [...wtab.querySelectorAll(".suggest")].filter(x => /Priority \d+ · /.test(x.textContent));
+    assert(sheet.length > 0 && sheet.every(x => x.querySelector("details.why")), "every claim row carries its reasoning in a fold (" + sheet.length + " rows)");
+    sheet.forEach(x => { const v = visible(x); assert(/^Priority \d+ · ➕ Add .+ ➖ Drop .+/.test(v) && !/rest-of-season spots|kept —|projected season points|fires when|steps in/.test(v), "claim row headline is just the move + tags, no prose (" + v.slice(0, 90) + "…)"); });
+    [...wtab.querySelectorAll(".suggest")].filter(x => /^(✋ Hold|⚡ Sources split|⚖️ Marginal)/.test(x.textContent.trim())).forEach(x => assert(x.querySelector("details.why") && visible(x).length < 160, "hold / marginal card is a one-liner with the why folded (" + visible(x).slice(0, 60) + "…)"));
+    const longMuted = [...wtab.querySelectorAll(".muted")].filter(m => !m.closest("details") && !m.closest(".tbl") && !m.closest(".row") && m.textContent.replace(/\s+/g, " ").length > 260 && !/^(🩹|🤕|📅)/.test(m.textContent.trim()));
+    assert(longMuted.length === 0, "no unfolded explanation longer than 260 chars outside the tables (" + longMuted.map(m => m.textContent.replace(/\s+/g, " ").slice(0, 50)).join(" | ") + ")");
+    // the stale-batch sentence lives in the fold; the headline tag is the short form
+    if (espnPool && espnPool.waivers) { const pool0 = espnPool.waivers; espnPool.waivers = Object.assign({}, pool0, { stalex: { processAt: Date.now() - 5 * 3600000 } });
+      const c = T.claimWhen({ n: "stalex" }); assert(c.short === "instant add — cleared waivers" && c.text.length > c.short.length, "stale run: short tag for the headline, full sentence for the fold");
+      espnPool.waivers = pool0; }
+  }
+
   console.log("== Trades ==");
   const trades = T.findTrades();
   assert(trades.length > 0, "at least one win-win trade found (" + trades.length + ")");
