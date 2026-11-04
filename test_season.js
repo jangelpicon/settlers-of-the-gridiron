@@ -334,7 +334,10 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
       // scope every box assertion to the box itself — the claim sheet below it has its own "➕ Add" rows
       const box = wt.slice(wt.indexOf("🤕"), wt.indexOf("Your claim sheet") > 0 ? wt.indexOf("Your claim sheet") : undefined);
       assert(/If he sits: ((QB|RB|WR|TE|FLEX)\d? empty — 0 pts|.+ steps in|lineup unchanged)/.test(box) && (!/➕ Add/.test(box) || /1\. ➕ Add/.test(box)), t + ": the box says what happens if he sits");
-      assert(/(➕ Add |Nothing on the wire (would start in his place|beats .+ by enough))/.test(box), t + ": the box names the free agents who would start in his place, or says none would");
+      assert(/(see Priority \d+|[Nn]othing on the wire (would start in his place|beats .+ by enough))/.test(box), t + ": the box points at its claim rows, or says nothing on the wire would start / beats the cover");
+      // one list: 'if he sits' rows live on the claim sheet; with a bench cover each one clears STREAM_BAR
+      if (/If he sits: .+ steps in/.test(box)) { const sheetTxt = wt.slice(wt.indexOf("Your claim sheet")); const g = Array.from(sheetTxt.matchAll(/\+(\d+\.\d) if he sits/g)).map(m => +m[1]);
+        assert(g.every(x => x >= T.STREAM_BAR), t + ": with a bench cover, every 'if he sits' row beats the step-in by " + T.STREAM_BAR + "+ (" + g.join("/") + ")"); }
       // Jose 2026-11-03 (London Q, Concepcion covers): no card is a straight "starts over him even if he plays" upgrade
       // (those live on the claim sheet), and when a bench man covers, every card clears STREAM_BAR over him.
       assert(!/starts over him even if he plays/.test(box), t + ": injury box never repeats a plain waiver upgrade");
@@ -349,10 +352,13 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
       else {
         assert(box && new RegExp("Next week \\(W" + nv.week + "\\)").test(bt) && nv.out.every(p => bt.indexOf(p.name) >= 0), t + ": Next-week box names the week and everyone on bye (" + nv.out.map(p => p.name).join(", ") + ")");
         if (nv.holes.length) {
-          assert(new RegExp("hole: " + nv.holes.join(", ")).test(bt) && /➕ Add/.test(bt), t + ": Next-week box names the hole(s) " + nv.holes.join(", ") + " and offers adds");
-          const adds = Array.from(bt.matchAll(/➕ Add ([^·]+?) (QB|RB|WR|TE) /g)).map(m => m[1].trim());
+          const sheetTxt = wt.slice(wt.indexOf("Your claim sheet"));
+          const holeRowsTxt = sheetTxt.split(/Priority \d+ · /).slice(1).filter(r => new RegExp("fills your W" + nv.week + " ").test(r));
+          assert(new RegExp("hole: " + nv.holes.join(", ")).test(bt) && (/see Priority \d+/.test(bt) ? holeRowsTxt.length > 0 : /nothing on the wire plays/.test(bt)), t + ": Next-week line names the hole(s) " + nv.holes.join(", ") + " and points at claim rows (or says nothing plays)");
+          const adds = holeRowsTxt.map(r => (r.match(/➕ Add ([^,]+), [A-Z]{2,3} (QB|RB|WR|TE)/) || [])[1]).filter(Boolean);
           const fa = T.freeAgents(); adds.forEach(n => { const f = fa.find(x => x.name === n); assert(f && f.bye !== nv.week, t + ": next-week add " + n + " actually plays W" + nv.week + " (bye " + (f ? f.bye : "?") + ")"); });
-        } else assert(/bench covers it/.test(bt), t + ": Next-week box says the bench covers it");
+          assert(holeRowsTxt.every(r => /(also a season-long upgrade|one-week rental)/.test(r)), t + ": every hole row says whether the add is a season-long upgrade or a rental");
+        } else assert(/bench covers it/.test(bt), t + ": Next-week line says the bench covers it");
       }
       // every claim-sheet row prints its bye fit; a W(next)-bye add never claims to cover a next-week hole
       const sheet = wt.slice(wt.indexOf("Your claim sheet")); const rows = sheet.split(/Priority \d+ · /).slice(1).filter(r => /(QB|RB|WR|TE) \(ROS/.test(r.slice(0, 80)));
@@ -421,7 +427,12 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     const rows = [];
     // the sheet shows at most 3 free rows (the open-spot claim + 2 backups), then up to 6 add/drop rows
     let freeLeft = 3;
-    WS.sugg.filter(s => !s.free || freeLeft-- > 0).slice(0, 6 + Math.min(3 - Math.max(freeLeft, 0), 3)).forEach(s => { rows.push([++pri, s.add.name, s.free ? "nobody — open roster spot" : s.drop.name]); if (s.chain && s.chain.worth) rows.push([++pri, s.add.name, s.chain.drop.name]); });
+    // ONE LIST (Jose 2026-11-03): hole rows (this week / next week's byes) come first, then the season-long rows; the page
+    // computes the season-long rows against the bench MINUS the men the hole rows already spend, so read its own model.
+    const LS = T.lastSheet();
+    LS.holeRows.forEach(r => r.cands.forEach(c => rows.push([++pri, c.f.name, r.drop ? r.drop.name : "nobody — open roster spot"])));
+    LS.sugg.filter(s => !s.free || freeLeft-- > 0).slice(0, 6 + Math.min(3 - Math.max(freeLeft, 0), 3)).forEach(s => { rows.push([++pri, s.add.name, s.free ? "nobody — open roster spot" : s.drop.name]); if (s.chain && s.chain.worth) rows.push([++pri, s.add.name, s.chain.drop.name]); });
+    assert(rows.length > 0 && rows.every((r, i) => r[0] === i + 1), "priorities run 1..N with no gaps across hole rows and season-long rows (" + rows.length + ")");
     assert(rows.every(r => { const m = wtxt2.indexOf("Priority " + r[0]); if (m < 0) return false; const seg = wtxt2.slice(m, wtxt2.indexOf("Priority " + (r[0]+1)) > 0 ? wtxt2.indexOf("Priority " + (r[0]+1)) : m + 400); return rx(r[1]).test(seg) && rx(r[2]).test(seg); }), "claim sheet renders every row as 'Priority N · add X · drop Y' in exact order, backups included (" + rows.map(r => r[0] + ":" + r[1] + "/" + r[2]).join(", ") + ")");
     assert(WS.sugg.every(s => !s.chain || !s.chain.worth || /backup for Priority/.test(wtxt2)), "a worth-it deeper drop becomes its own backup claim row, ESPN-style");
   }
@@ -455,7 +466,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const flagged = WS.sugg.concat(WS.marginal).map(s => s.add.name);
   assert(flagged.every(n => wrows.some(r => rx(n).test(r.textContent))), "every ADD/marginal player is in the free-agent table (" + (flagged.join(", ") || "none this week") + ")");
   const cards = [...d.querySelectorAll("#tab-waivers .suggest")].map(x => x.textContent);
-  assert(WS.marginal.slice(0, 4).every(s => cards.some(c => (s.key === "split" ? /Sources split/ : /Marginal/).test(c) && rx(s.add.name).test(c))), "marginal and split players get their own card, not a footnote (split cards are labelled 'Sources split')");
+  assert(T.lastSheet().marginal.slice(0, 4).every(s => cards.some(c => (s.key === "split" ? /Sources split/ : /Marginal/).test(c) && rx(s.add.name).test(c))), "marginal and split players get their own card, not a footnote (split cards are labelled 'Sources split')");
   assert(new RegExp(benchSkill[0].name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(d.getElementById("tab-waivers").textContent), "the drop candidate's name appears on the waiver tab");
   const faRows = [...d.querySelectorAll("#tab-waivers .row.grid")];
   assert(faRows.length > 0 && faRows.some(r => /^\d+$/.test(r.children[10].textContent.trim())), "free agents show their live season projection in the Season pts column");
