@@ -492,6 +492,63 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const faRows = [...d.querySelectorAll("#tab-waivers .row.grid")];
   assert(faRows.length > 0 && faRows.some(r => /^\d+$/.test(r.children[10].textContent.trim())), "free agents show their live season projection in the Season pts column");
 
+  console.log("== Waivers: next-week covers never drop (Jose 2026-11-04, Kamara) ==");
+  // The drop ladder may never spend a bench man who starts in next week's bye-adjusted lineup for an add who does not
+  // take his place that week. League-wide invariant first: every rendered row, every team, next week's hole count
+  // never rises. Then the exact 11/04 state: ur done with Kamara added for Meyers, Swift + Irving on bye W10.
+  { const holesAfter = (tm, drop, add) => { const v = T.nextWeekView(tm.filter(p => p.n !== drop.n).concat([add])); return v ? v.holes.length : 0; };
+    const holesNow = tm => { const v = T.nextWeekView(tm); return v ? v.holes.length : 0; };
+    let rowsChecked = 0;
+    Object.keys(rosters.teams).forEach(t => { T.setTeamParam("team=" + encodeURIComponent(t)); const tm = T.getRosters().teams[t].map(T.info); const base = holesNow(tm); const LS2 = T.lastSheet(); if (!LS2) return;
+      LS2.sugg.forEach(sg => { [sg.drop, sg.chain && sg.chain.worth ? sg.chain.drop : null].filter(Boolean).forEach(dp => { rowsChecked++;
+        assert(holesAfter(tm, dp, sg.add) <= base, t + ": add " + sg.add.name + " / drop " + dp.name + " leaves next week's lineup no emptier (" + holesAfter(tm, dp, sg.add) + " ≤ " + base + ")"); }); });
+      LS2.holeRows.forEach(r => { if (!r.drop) return; rowsChecked++; assert(holesAfter(tm, r.drop, r.cands[0].f) <= base, t + ": hole row " + r.cands[0].f.name + " / drop " + r.drop.name + " leaves next week's lineup no emptier"); }); });
+    console.log("  next-week invariant checked on " + rowsChecked + " claim rows across " + Object.keys(rosters.teams).length + " teams");
+    // exact 11/04 state (snapshot predates the move): Kamara in for Meyers, Lions DST in for Bengals
+    const fix = JSON.parse(JSON.stringify(rosters)); const ud = Object.keys(fix.teams).find(t => /ur done/i.test(t));
+    fix.teams[ud] = fix.teams[ud].filter(p => !/Jakobi Meyers|Cincinnati Bengals/.test(p.name)).concat([{ name: "Alvin Kamara", pos: "RB", team: "NO", slot: "BN" }, { name: "Detroit Lions", pos: "DST", team: "DET", slot: "DST" }]);
+    T.setRosters(fix); T.setTeamParam("team=" + encodeURIComponent(ud));
+    const tmK = T.getRosters().teams[ud].map(T.info), nvK = T.nextWeekView(tmK, true), kam = tmK.find(p => /Kamara/.test(p.name)), war = tmK.find(p => /Warren/.test(p.name));
+    if (kam && nvK && nvK.out.some(p => /Swift/.test(p.name)) && nvK.out.some(p => /Irving/.test(p.name))) {
+      assert(nvK.holes.length === 0 && nvK.used.has(kam.n) && war && nvK.used.has(war.n), "W" + nvK.week + ": Swift + Irving on bye, Warren + Kamara are the RB starters, no hole");
+      assert(T.benchSkill().filter(p => p.pos === "RB").length === 2, "Kamara AND Warren sit on the rest-of-season bench (two bench RBs — the old last-man guard protected neither)");
+      const wrAdd = T.freeAgents().find(f => f.pos === "WR" && f.ros != null && f.bye !== nvK.week);
+      assert(wrAdd && T.opensHole(tmK, kam, wrAdd) && T.opensHole(tmK, war, wrAdd), "dropping Kamara or Warren for a WR opens a W" + nvK.week + " RB hole");
+      const rbPlays = T.freeAgents().find(f => f.pos === "RB" && f.ros != null && f.bye !== nvK.week), rbBye = T.freeAgents().find(f => f.pos === "RB" && f.ros != null && f.bye === nvK.week);
+      assert(rbPlays && !T.opensHole(tmK, kam, rbPlays), "an RB who plays W" + nvK.week + " may replace Kamara (" + rbPlays.name + ")");
+      assert(rbBye && T.opensHole(tmK, kam, rbBye), "an RB on bye W" + nvK.week + " himself may NOT (" + rbBye.name + ")");
+      const LSK = T.lastSheet(), wtK = d.getElementById("tab-waivers").textContent.replace(/\s+/g, " ");
+      assert(LSK.sugg.every(sg => sg.drop.n !== kam.n && sg.drop.n !== war.n && (!sg.chain || !sg.chain.worth || (sg.chain.drop.n !== kam.n && sg.chain.drop.n !== war.n))), "no season-long claim row drops Kamara or Warren (" + LSK.sugg.map(sg => sg.add.name + "/" + sg.drop.name).join(", ") + ")");
+      assert(LSK.holeRows.every(r => !r.drop || (r.drop.n !== kam.n && r.drop.n !== war.n)), "no hole row drops Kamara or Warren");
+      const sheetK = wtK.slice(wtK.indexOf("Your claim sheet"));
+      assert(!/Drop Alvin Kamara/.test(sheetK) && !/Drop Jaylen Warren/.test(sheetK), "the rendered sheet never says 'Drop Alvin Kamara' / 'Drop Jaylen Warren'");
+      const nb = d.getElementById("nextweek-box"); const nbt = nb ? nb.textContent.replace(/\s+/g, " ") : "";
+      assert(/bench covers it — .*Kamara.* start that week and stay off the drop ladder/.test(nbt) && /Warren/.test(nbt), "Next-week box names the covers and says they are off the ladder (" + nbt + ")");
+      assert(LSK.sugg.every(sg => !sg.kept || sg.kept.some(p => p.n === kam.n)) && (!LSK.sugg.length || /kept — they start W10|kept — he starts W10/.test(sheetK)), "every kept row names Kamara as the man kept and says why");
+      assert(LSK.sugg.every(sg => sg.add.bye !== nvK.week || holesAfter(tmK, sg.drop, sg.add) <= nvK.holes.length), "a W" + nvK.week + "-bye add (Odunze/Coleman case) never spends a W" + nvK.week + " starter");
+      assert(!LSK.sugg.some(sg => /Meyers/.test(sg.add.name) && (sg.drop.n === kam.n)), "the sheet does not propose reversing Jose's own move (Meyers back for Kamara)");
+    } else console.log("  (fixture skipped: Kamara not in projections / Swift+Irving not on bye next week in this snapshot)");
+    T.setRosters(rosters); T.setTeamParam("team=" + encodeURIComponent(rosters.me));
+    // synthetic: the rule by itself. Two RBs on bye next week, two bench RBs covering, one spare WR.
+    { const mk = (name, pos, bye, ros, extra) => ({ name, n: name.toLowerCase().replace(/[^a-z]/g, ""), pos, team: "X", bye, ros, srcs: [1, 2], pPlay: 1, onBye: false, ...(extra || {}) });
+      const nw = season.week + 1, done = season.week - 1;
+      const me2 = [mk("Qb One", "QB", done, 5), mk("Rb Bye A", "RB", nw, 10), mk("Rb Bye B", "RB", nw, 12), mk("Wr One", "WR", done, 3), mk("Wr Two", "WR", done, 4), mk("Te One", "TE", done, 6), mk("Dst One", "DST", done, 300), mk("K One", "K", done, 301),
+        mk("Wr Flex", "WR", done, 20), mk("Rb Cover A", "RB", done, 60), mk("Rb Cover B", "RB", done, 170), mk("Wr Spare", "WR", done, 80), mk("Qb Spare", "QB", done, 50)];
+      const wrAdd = mk("Wr Add", "WR", done, 65), rbPlays = mk("Rb Plays", "RB", done, 55), rbBye = mk("Rb Bye Add", "RB", nw, 55);
+      const covB = me2.find(p => p.name === "Rb Cover B"), spare = me2.find(p => p.name === "Wr Spare");
+      assert(T.opensHole(me2, covB, wrAdd) && !T.opensHole(me2, spare, wrAdd), "synthetic: the #170 RB who covers next week is protected from a WR add; the spare WR is not");
+      assert(!T.opensHole(me2, covB, rbPlays) && T.opensHole(me2, covB, rbBye), "synthetic: an RB who plays next week may replace him, an RB on bye next week may not");
+      const bench2 = T.optimalLineup(me2, "ros").bench;
+      assert(T.scarcityPool(bench2, "WR", me2, wrAdd).every(p => !/Cover/.test(p.name)) && T.dropCandidate(bench2, me2, wrAdd, null).name === "Wr Spare", "synthetic: the ladder spends the spare WR, never a next-week RB cover (" + T.dropCandidate(bench2, me2, wrAdd, null).name + ")");
+      assert(T.keptForNextWeek(bench2, me2, wrAdd).map(p => p.name).join(",") === "Rb Cover B,Rb Cover A", "synthetic: both covers are named as kept, worst first"); }
+    // stale waiver batch: a processAt in the past already ran → instant add, never a 'processes <past time>' row
+    if (espnPool && espnPool.waivers) { const pool0 = espnPool.waivers; espnPool.waivers = Object.assign({}, pool0, { stalex: { processAt: Date.now() - 5 * 3600000 }, futurex: { processAt: Date.now() + 5 * 3600000 } });
+      const st = T.claimWhen({ n: "stalex" }), fu = T.claimWhen({ n: "futurex" });
+      assert(st.batch === "now" && st.at == null && st.stale && /^instant add/.test(st.text) && /already processed/.test(st.text), "a waiver run that already happened reads as an instant add (" + st.text + ")");
+      assert(fu.batch !== "now" && /^processes /.test(fu.text) && T.batchAt({ n: "futurex" }) > T.batchAt({ n: "stalex" }), "a future run still prints 'processes <time>' and sorts after the cleared man");
+      espnPool.waivers = pool0; }
+  }
+
   console.log("== Trades ==");
   const trades = T.findTrades();
   assert(trades.length > 0, "at least one win-win trade found (" + trades.length + ")");
