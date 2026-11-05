@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-11-04",
- "source": "ESPN league 882823976 sync 2026-11-04 02:00 CST",
+ "updated": "2026-11-05",
+ "source": "ESPN league 882823976 sync 2026-11-05 08:23 CST",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -56,13 +56,6 @@
     "slot": "BN"
    },
    {
-    "name": "J.K. Dobbins",
-    "pos": "RB",
-    "team": "DEN",
-    "irOk": true,
-    "slot": "BN"
-   },
-   {
     "name": "Spencer Shrader",
     "pos": "K",
     "team": "IND",
@@ -108,6 +101,13 @@
     "name": "Blake Corum",
     "pos": "RB",
     "team": "LAR",
+    "irOk": true,
+    "slot": "BN"
+   },
+   {
+    "name": "Devaughn Vele",
+    "pos": "WR",
+    "team": "NO",
     "irOk": true,
     "slot": "BN"
    }
@@ -171,13 +171,6 @@
     "slot": "BN"
    },
    {
-    "name": "Jaylen Waddle",
-    "pos": "WR",
-    "team": "DEN",
-    "irOk": true,
-    "slot": "BN"
-   },
-   {
     "name": "Trevor Lawrence",
     "pos": "QB",
     "team": "JAX",
@@ -213,11 +206,18 @@
     "slot": "TE"
    },
    {
-    "name": "Jordan Mason",
+    "name": "Jonah Coleman",
     "pos": "RB",
-    "team": "MIN",
+    "team": "DEN",
     "irOk": true,
     "slot": "RB"
+   },
+   {
+    "name": "Omarion Hampton",
+    "pos": "RB",
+    "team": "LAC",
+    "irOk": true,
+    "slot": "BN"
    }
   ],
   "Resting Blitz Face": [
@@ -232,13 +232,6 @@
     "name": "A.J. Brown",
     "pos": "WR",
     "team": "NE",
-    "irOk": true,
-    "slot": "BN"
-   },
-   {
-    "name": "Omarion Hampton",
-    "pos": "RB",
-    "team": "LAC",
     "irOk": true,
     "slot": "BN"
    },
@@ -326,6 +319,13 @@
     "team": "TEN",
     "irOk": true,
     "slot": "BN"
+   },
+   {
+    "name": "Jaylen Waddle",
+    "pos": "WR",
+    "team": "DEN",
+    "irOk": true,
+    "slot": "BN"
    }
   ],
   "Unnecessary Sanctions": [
@@ -341,7 +341,7 @@
     "pos": "WR",
     "team": "NO",
     "irOk": true,
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Josh Allen",
@@ -418,7 +418,7 @@
     "pos": "WR",
     "team": "MIN",
     "irOk": true,
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Rachaad White",
@@ -662,7 +662,8 @@
     "pos": "RB",
     "team": "NO",
     "irOk": true,
-    "slot": "BN"
+    "ir": true,
+    "slot": "IR"
    },
    {
     "name": "Quinshon Judkins",
@@ -700,20 +701,6 @@
     "slot": "QB"
    },
    {
-    "name": "Germie Bernard",
-    "pos": "WR",
-    "team": "PIT",
-    "irOk": true,
-    "slot": "BN"
-   },
-   {
-    "name": "Cleveland Browns",
-    "pos": "DST",
-    "team": "CLE",
-    "irOk": true,
-    "slot": "DST"
-   },
-   {
     "name": "Pittsburgh Steelers",
     "pos": "DST",
     "team": "PIT",
@@ -726,6 +713,27 @@
     "team": "CHI",
     "irOk": true,
     "slot": "TE"
+   },
+   {
+    "name": "Tyler Allgeier",
+    "pos": "RB",
+    "team": "ARI",
+    "irOk": true,
+    "slot": "BN"
+   },
+   {
+    "name": "New York Giants",
+    "pos": "DST",
+    "team": "NYG",
+    "irOk": true,
+    "slot": "DST"
+   },
+   {
+    "name": "Deebo Samuel Sr.",
+    "pos": "WR",
+    "team": "SF",
+    "irOk": true,
+    "slot": "BN"
    }
   ],
   "ur done": [
@@ -800,13 +808,6 @@
     "slot": "BN"
    },
    {
-    "name": "Jakobi Meyers",
-    "pos": "WR",
-    "team": "JAX",
-    "irOk": true,
-    "slot": "BN"
-   },
-   {
     "name": "KC Concepcion",
     "pos": "WR",
     "team": "CLE",
@@ -814,18 +815,25 @@
     "slot": "BN"
    },
    {
-    "name": "Cincinnati Bengals",
-    "pos": "DST",
-    "team": "CIN",
-    "irOk": true,
-    "slot": "DST"
-   },
-   {
     "name": "Cam Little",
     "pos": "K",
     "team": "JAX",
     "irOk": true,
     "slot": "K"
+   },
+   {
+    "name": "Alvin Kamara",
+    "pos": "RB",
+    "team": "NO",
+    "irOk": true,
+    "slot": "BN"
+   },
+   {
+    "name": "Detroit Lions",
+    "pos": "DST",
+    "team": "DET",
+    "irOk": true,
+    "slot": "DST"
    }
   ],
   "PapasCabezas": [
@@ -887,13 +895,6 @@
     "slot": "K"
    },
    {
-    "name": "Kyler Murray",
-    "pos": "QB",
-    "team": "MIN",
-    "irOk": true,
-    "slot": "BN"
-   },
-   {
     "name": "DeMario Douglas",
     "pos": "WR",
     "team": "NE",
@@ -919,7 +920,7 @@
     "pos": "TE",
     "team": "NE",
     "irOk": true,
-    "slot": "TE"
+    "slot": "BN"
    },
    {
     "name": "Jayden Daniels",
@@ -927,6 +928,20 @@
     "team": "WAS",
     "irOk": true,
     "slot": "QB"
+   },
+   {
+    "name": "T.J. Hockenson",
+    "pos": "TE",
+    "team": "MIN",
+    "irOk": true,
+    "slot": "TE"
+   },
+   {
+    "name": "C.J. Stroud",
+    "pos": "QB",
+    "team": "HOU",
+    "irOk": true,
+    "slot": "BN"
    }
   ]
  }
