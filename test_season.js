@@ -166,10 +166,11 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(paid.concat(WS.marginal).filter(s => s.key !== "split").every(s => s.add.seasonProj == null || s.drop.seasonProj == null || s.add.seasonProj >= s.drop.seasonProj), "no ADD/marginal suggestion drops a player with a higher ESPN full-season projection than the add (split rows are the one allowed exception — FantasyPros yes, ESPN no, shown as a judgment call)");
   assert(WS.marginal.filter(s => s.key === "split").every(s => s.gain >= T.ROS_MARGIN && s.add.seasonProj != null && s.drop.seasonProj != null && s.add.seasonProj < s.drop.seasonProj), "every split row clears the FantasyPros bar and loses on ESPN season projection (that is what split means)");
   const benchSkill = T.benchSkill().slice().sort((a, b) => (b.ros || 420) - (a.ros || 420));
-  const scarceDrop = pos => T.scarcityPool(T.benchSkill(), pos).sort((a, b) => (b.ros || 420) - (a.ros || 420))[0];
+  // scarcityPool with me + add applies the next-week-cover guard (Jose 2026-11-04, Kamara): the oracle must see what the page sees.
+  const scarceDrop = (pos, add) => T.scarcityPool(T.benchSkill(), pos, add ? me : null, add || null).sort((a, b) => (b.ros || 420) - (a.ros || 420))[0];
   const rosOf = p => (p.rosEff != null ? p.rosEff : p.ros) || 420;
   // Ruling 2026-10-21 (Kincaid/Juwan): the drop is the scarcity-aware bench worst, OR the starter the add pushes out when that starter is worth less than the bench worst.
-  const rightDrop = (add, drop) => { const sd = scarceDrop(add.pos); const imp = T.lineupImpact(me, add); if (imp.starts && imp.displaced && (!sd || rosOf(imp.displaced) > rosOf(sd))) return drop.n === imp.displaced.n; return !!sd && drop.n === sd.n; };
+  const rightDrop = (add, drop) => { const sd = scarceDrop(add.pos, add); const imp = T.lineupImpact(me, add); if (imp.starts && imp.displaced && (!sd || rosOf(imp.displaced) > rosOf(sd))) return drop.n === imp.displaced.n; return !!sd && drop.n === sd.n; };
   assert(paid.concat(WS.marginal).every(s => !["K","DST"].includes(s.add.pos) && (s.add.pos === "QB" ? s.drop.pos === "QB" : rightDrop(s.add, s.drop))), "suggestions drop your least-valuable spareable bench player (scarcity-aware) — or the starter the add replaces when he's worth less than that; a QB suggestion is a straight QB swap; K/DST never suggested");
   assert(WS.sugg.every(s => T.waiverBoard([s.add])[0].verdict.key === "add") && WS.marginal.every(s => ["marginal","split"].includes(T.waiverBoard([s.add])[0].verdict.key)), "suggestion box and per-player verdict column agree (one rule)");
   assert(me.every(p => typeof p.seasonProj === "number"), "every rostered player has a live ESPN full-season projection");
@@ -253,7 +254,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(WBfree.length === (T.openSpots(me) > 0 ? Math.min(12, WBfree.length || 12) : 0) && WBfree.every(b => b.drop == null && b.verdict.key === "add" && ["RB","WR","TE"].includes(b.fa.pos)), "free-add rows (open roster spot) carry no drop, are capped at 12 and are skill players only (" + WBfree.length + " rows)");
   assert(WB.length > 0 && WBpaid.filter(b => !["K","DST","QB"].includes(b.fa.pos)).every(b => b.drop && rightDrop(b.fa, b.drop)), "every skill free agent names the scarcity-aware drop candidate (least rest-of-season value at a position you can spare), or the starter he'd replace when that starter is worth less");
   const starterDrops = WB.filter(b => b.drop && b.verdict.starts && !T.benchSkill().some(p => p.n === b.drop.n));
-  assert(starterDrops.every(b => b.drop.pos === b.fa.pos || T.optimalLineup(me, "ros").slots.some(s => s.slot === "FLEX" && s.p && s.p.n === b.drop.n)) && starterDrops.every(b => rosOf(b.drop) > rosOf(scarceDrop(b.fa.pos))), "a starter is only ever the drop for a free agent who takes his slot AND when he's worth less than the spareable bench worst (" + starterDrops.length + " such rows)");
+  assert(starterDrops.every(b => b.drop.pos === b.fa.pos || T.optimalLineup(me, "ros").slots.some(s => s.slot === "FLEX" && s.p && s.p.n === b.drop.n)) && starterDrops.every(b => rosOf(b.drop) > rosOf(scarceDrop(b.fa.pos, b.fa))), "a starter is only ever the drop for a free agent who takes his slot AND when he's worth less than the spareable bench worst (" + starterDrops.length + " such rows)");
   const benchCounts = {}; benchRos.forEach(p => benchCounts[p.pos] = (benchCounts[p.pos] || 0) + 1);
   const allSole = benchRos.every(p => benchCounts[p.pos] === 1);
   assert(WB.filter(b => ["RB","WR","TE"].includes(b.fa.pos) && b.drop && b.drop.pos !== b.fa.pos).every(b => benchCounts[b.drop.pos] > 1 || allSole), "a cross-position add never drops your only bench player at a position (scarcity guard)");
@@ -434,7 +435,10 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     const LS = T.lastSheet();
     LS.holeRows.forEach(r => r.cands.forEach(c => rows.push([++pri, c.f.name, r.drop ? r.drop.name : "nobody — open roster spot"])));
     LS.sugg.filter(s => !s.free || freeLeft-- > 0).slice(0, 6 + Math.min(3 - Math.max(freeLeft, 0), 3)).forEach(s => { rows.push([++pri, s.add.name, s.free ? "nobody — open roster spot" : s.drop.name]); if (s.chain && s.chain.worth) rows.push([++pri, s.add.name, s.chain.drop.name]); });
-    assert(rows.length > 0 && rows.every((r, i) => r[0] === i + 1), "priorities run 1..N with no gaps across hole rows and season-long rows (" + rows.length + ")");
+    SC.forEach(s => (s.chain || [s.add]).forEach(c => rows.push([++pri, c.name, s.drop ? s.drop.name : "nobody — open roster spot"])));
+    const rendered = (wtxt2.slice(wtxt2.indexOf("Your claim sheet")).match(/Priority \d+ · /g) || []).map(m => +m.match(/\d+/)[0]);
+    assert(rows.length > 0 && rows.every((r, i) => r[0] === i + 1), "priorities run 1..N with no gaps across hole rows, season-long rows and weekly K/DST rows (" + rows.length + ")");
+    assert(rendered.length === rows.length && rendered.every((v, i) => v === i + 1), "the rendered sheet numbers exactly those rows 1..N (" + rendered.join(",") + ")");
     // Waiver timing (Jose 2026-11-03: Charbonnet processes Thursday, Price/Kamara Wednesday): every row says when it
     // runs, and a backup row always shares its primary's processing batch — ESPN priority only orders one batch.
     if (espnPool && espnPool.waivers) {
@@ -467,7 +471,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(WS.sugg.every(s => !s.chain || (s.chain.worth === (s.chain.verdict.key === "add"))), "the deeper drop gets its own season-long verdict — worth it only on a real ADD");
   if (WS.sugg.length >= 2 && WS.sugg[0].drop && WS.sugg[0].add.pos !== "QB" && WS.sugg[1].chain && !WS.sugg[1].free){
     const sim = benchRos.filter(p => p.n !== WS.sugg[0].drop.n); // the landed add is NOT in the pool — he can't be filed as a drop
-    const expect = T.scarcityPool(sim, WS.sugg[1].add.pos).sort((a, b) => (b.ros || 420) - (a.ros || 420))[0];
+    const expect = T.scarcityPool(sim, WS.sugg[1].add.pos, me, WS.sugg[1].add).sort((a, b) => (b.ros || 420) - (a.ros || 420))[0];
     assert(WS.sugg[1].chain.drop.n === expect.n, "when claim 1 lands, claim 2's chained drop is the scarcity-aware next man up from TODAY's roster, never the landed add (" + expect.name + ")");
   }
   {
@@ -504,9 +508,10 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
         assert(holesAfter(tm, dp, sg.add) <= base, t + ": add " + sg.add.name + " / drop " + dp.name + " leaves next week's lineup no emptier (" + holesAfter(tm, dp, sg.add) + " ≤ " + base + ")"); }); });
       LS2.holeRows.forEach(r => { if (!r.drop) return; rowsChecked++; assert(holesAfter(tm, r.drop, r.cands[0].f) <= base, t + ": hole row " + r.cands[0].f.name + " / drop " + r.drop.name + " leaves next week's lineup no emptier"); }); });
     console.log("  next-week invariant checked on " + rowsChecked + " claim rows across " + Object.keys(rosters.teams).length + " teams");
-    // exact 11/04 state (snapshot predates the move): Kamara in for Meyers, Lions DST in for Bengals
+    // exact 11/04 state: Kamara in for Meyers, Lions DST in for Bengals. Idempotent — once the live snapshot carries the
+    // move (it does from 11/05), re-adding would put a second Kamara on the bench and the two-RB assertions go wrong.
     const fix = JSON.parse(JSON.stringify(rosters)); const ud = Object.keys(fix.teams).find(t => /ur done/i.test(t));
-    fix.teams[ud] = fix.teams[ud].filter(p => !/Jakobi Meyers|Cincinnati Bengals/.test(p.name)).concat([{ name: "Alvin Kamara", pos: "RB", team: "NO", slot: "BN" }, { name: "Detroit Lions", pos: "DST", team: "DET", slot: "DST" }]);
+    fix.teams[ud] = fix.teams[ud].filter(p => !/Jakobi Meyers|Cincinnati Bengals|Alvin Kamara|Detroit Lions/.test(p.name)).concat([{ name: "Alvin Kamara", pos: "RB", team: "NO", slot: "BN" }, { name: "Detroit Lions", pos: "DST", team: "DET", slot: "DST" }]);
     T.setRosters(fix); T.setTeamParam("team=" + encodeURIComponent(ud));
     const tmK = T.getRosters().teams[ud].map(T.info), nvK = T.nextWeekView(tmK, true), kam = tmK.find(p => /Kamara/.test(p.name)), war = tmK.find(p => /Warren/.test(p.name));
     if (kam && nvK && nvK.out.some(p => /Swift/.test(p.name)) && nvK.out.some(p => /Irving/.test(p.name))) {
