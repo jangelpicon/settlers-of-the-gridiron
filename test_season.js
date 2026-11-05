@@ -437,13 +437,14 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     LS.sugg.filter(s => !s.free || freeLeft-- > 0).slice(0, 6 + Math.min(3 - Math.max(freeLeft, 0), 3)).forEach(s => { rows.push([++pri, s.add.name, s.free ? "nobody — open roster spot" : s.drop.name]); if (s.chain && s.chain.worth) rows.push([++pri, s.add.name, s.chain.drop.name]); });
     SC.forEach(s => (s.chain || [s.add]).forEach(c => rows.push([++pri, c.name, s.drop ? s.drop.name : "nobody — open roster spot"])));
     const rendered = (wtxt2.slice(wtxt2.indexOf("Your claim sheet")).match(/Priority \d+ · /g) || []).map(m => +m.match(/\d+/)[0]);
-    assert(rows.length > 0 && rows.every((r, i) => r[0] === i + 1), "priorities run 1..N with no gaps across hole rows, season-long rows and weekly K/DST rows (" + rows.length + ")");
+    const emptyWire = /Nothing on the wire is a clear season-long upgrade/.test(wtxt2);
+    assert((rows.length > 0 || emptyWire) && rows.every((r, i) => r[0] === i + 1), "priorities run 1..N with no gaps across hole rows, season-long rows and weekly K/DST rows (" + rows.length + ")");
     assert(rendered.length === rows.length && rendered.every((v, i) => v === i + 1), "the rendered sheet numbers exactly those rows 1..N (" + rendered.join(",") + ")");
     // Waiver timing (Jose 2026-11-03: Charbonnet processes Thursday, Price/Kamara Wednesday): every row says when it
     // runs, and a backup row always shares its primary's processing batch — ESPN priority only orders one batch.
     if (espnPool && espnPool.waivers) {
       const prio = wtxt2.slice(wtxt2.indexOf("Your claim sheet")).split(/Priority \d+ · /).slice(1);
-      assert(prio.length > 0 && prio.every(r => /⏱ (processes |instant add)/.test(r)), "every claim row prints its ESPN timing (processes <day> / instant add)");
+      assert((prio.length > 0 || emptyWire) && prio.every(r => /⏱ (processes |instant add)/.test(r)), "every claim row prints its ESPN timing (processes <day> / instant add)" + (emptyWire ? " — no sheet this run, empty-wire note shown" : ""));
       // a backup processes in the primary's batch or LATER (it lands only if the drop is still there); never earlier
       LS.holeRows.forEach(r => assert(r.cands.every(c => (T.batchAt(c.f) || 0) >= (T.batchAt(r.cands[0].f) || 0)), "hole backups process with or after the primary (" + r.cands.map(c => c.f.name + ":" + T.claimWhen(c.f).text).join(" | ") + ")"));
       LS.holeRows.forEach(r => (r.other || []).forEach(c => assert(T.batchAt(c.f) < T.batchAt(r.cands[0].f), "an 'earlier batch' name really processes before the primary (" + c.f.name + ")")));
@@ -559,10 +560,12 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     const folds = [...wtab.querySelectorAll("details.why")];
     assert(folds.length >= 4 && folds.every(f => !f.hasAttribute("open")), "every explanation on the Waivers tab is a closed <details> fold (" + folds.length + " folds)");
     const labels = folds.map(f => f.querySelector("summary").textContent.trim());
-    ["how this list is built", "how to read it", "how the ladder works", "how to read this"].forEach(l => assert(labels.includes(l), "section intro folded: '" + l + "'"));
+    // "how to read it" introduces the claim sheet, which only renders when there is at least one claim (empty-wire note otherwise)
+    const noSheet = /Nothing on the wire is a clear season-long upgrade/.test(wtab.textContent);
+    ["how this list is built", "how to read it", "how the ladder works", "how to read this"].filter(l => !(noSheet && l === "how to read it")).forEach(l => assert(labels.includes(l), "section intro folded: '" + l + "'"));
     const visible = el => { const c = el.cloneNode(true); c.querySelectorAll("details").forEach(x => x.remove()); return c.textContent.replace(/\s+/g, " ").trim(); };
     const sheet = [...wtab.querySelectorAll(".suggest")].filter(x => /Priority \d+ · /.test(x.textContent));
-    assert(sheet.length > 0 && sheet.every(x => x.querySelector("details.why")), "every claim row carries its reasoning in a fold (" + sheet.length + " rows)");
+    assert((sheet.length > 0 || noSheet) && sheet.every(x => x.querySelector("details.why")), "every claim row carries its reasoning in a fold (" + sheet.length + " rows" + (noSheet ? ", empty wire" : "") + ")");
     sheet.forEach(x => { const v = visible(x); assert(/^Priority \d+ · ➕ Add .+ ➖ Drop .+/.test(v) && !/rest-of-season spots|kept —|projected season points|fires when|steps in/.test(v), "claim row headline is just the move + tags, no prose (" + v.slice(0, 90) + "…)"); });
     [...wtab.querySelectorAll(".suggest")].filter(x => /^(✋ Hold|⚡ Sources split|⚖️ Marginal)/.test(x.textContent.trim())).forEach(x => assert(x.querySelector("details.why") && visible(x).length < 160, "hold / marginal card is a one-liner with the why folded (" + visible(x).slice(0, 60) + "…)"));
     const longMuted = [...wtab.querySelectorAll(".muted")].filter(m => !m.closest("details") && !m.closest(".tbl") && !m.closest(".row") && m.textContent.replace(/\s+/g, " ").length > 260 && !/^(🩹|🤕|📅)/.test(m.textContent.trim()));
