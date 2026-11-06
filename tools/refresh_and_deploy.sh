@@ -23,7 +23,7 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO"
 
 LIVE_BASE="${LIVE_BASE:-https://jangelpicon.github.io/settlers-of-the-gridiron}"
-POLL_TRIES="${POLL_TRIES:-6}"
+POLL_TRIES="${POLL_TRIES:-15}"
 POLL_SLEEP="${POLL_SLEEP:-20}"
 DRY=0
 for a in "$@"; do
