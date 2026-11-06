@@ -518,9 +518,12 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     if (kam && nvK && nvK.out.some(p => /Swift/.test(p.name)) && nvK.out.some(p => /Irving/.test(p.name))) {
       assert(nvK.holes.length === 0 && nvK.used.has(kam.n) && war && nvK.used.has(war.n), "W" + nvK.week + ": Swift + Irving on bye, Warren + Kamara are the RB starters, no hole");
       assert(T.benchSkill().filter(p => p.pos === "RB").length === 2, "Kamara AND Warren sit on the rest-of-season bench (two bench RBs — the old last-man guard protected neither)");
-      const wrAdd = T.freeAgents().find(f => f.pos === "WR" && f.ros != null && f.bye !== nvK.week);
+      // live picks must be men who can actually play next week: an IR/OUT back (Jeremiyah Love, 11/06) can never be a
+      // W10 cover, so the page rightly says dropping Kamara for him opens the hole — the test, not the page, was wrong
+      const playable = f => f.ros != null && !sidelined(f);
+      const wrAdd = T.freeAgents().find(f => f.pos === "WR" && playable(f) && f.bye !== nvK.week);
       assert(wrAdd && T.opensHole(tmK, kam, wrAdd) && T.opensHole(tmK, war, wrAdd), "dropping Kamara or Warren for a WR opens a W" + nvK.week + " RB hole");
-      const rbPlays = T.freeAgents().find(f => f.pos === "RB" && f.ros != null && f.bye !== nvK.week), rbBye = T.freeAgents().find(f => f.pos === "RB" && f.ros != null && f.bye === nvK.week);
+      const rbPlays = T.freeAgents().find(f => f.pos === "RB" && playable(f) && f.bye !== nvK.week), rbBye = T.freeAgents().find(f => f.pos === "RB" && playable(f) && f.bye === nvK.week);
       assert(rbPlays && !T.opensHole(tmK, kam, rbPlays), "an RB who plays W" + nvK.week + " may replace Kamara (" + rbPlays.name + ")");
       assert(rbBye && T.opensHole(tmK, kam, rbBye), "an RB on bye W" + nvK.week + " himself may NOT (" + rbBye.name + ")");
       const LSK = T.lastSheet(), wtK = d.getElementById("tab-waivers").textContent.replace(/\s+/g, " ");
