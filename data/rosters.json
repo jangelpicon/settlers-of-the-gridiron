@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-11-08",
- "source": "ESPN league 882823976 sync 2026-11-08 08:00 CST",
+ "updated": "2026-11-09",
+ "source": "ESPN league 882823976 sync 2026-11-09 02:00 CST",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -441,7 +441,7 @@
     "pos": "RB",
     "team": "PHI",
     "irOk": true,
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Mike Evans",
@@ -483,14 +483,14 @@
     "pos": "TE",
     "team": "NYG",
     "irOk": true,
-    "slot": "BN"
+    "slot": "TE"
    },
    {
     "name": "Emanuel Wilson",
     "pos": "RB",
     "team": "SEA",
     "irOk": true,
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "Braelon Allen",
@@ -503,13 +503,6 @@
     "name": "Chris Boswell",
     "pos": "K",
     "team": "PIT",
-    "irOk": true,
-    "slot": "K"
-   },
-   {
-    "name": "RJ Harvey",
-    "pos": "RB",
-    "team": "DEN",
     "irOk": true,
     "slot": "BN"
    },
@@ -525,7 +518,14 @@
     "pos": "TE",
     "team": "BUF",
     "irOk": true,
-    "slot": "TE"
+    "slot": "BN"
+   },
+   {
+    "name": "Cairo Santos",
+    "pos": "K",
+    "team": "CHI",
+    "irOk": true,
+    "slot": "K"
    }
   ],
   "BlitzAndGiggles": [
