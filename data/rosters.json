@@ -1,7 +1,7 @@
 {
  "me": "ur done",
  "updated": "2026-11-10",
- "source": "ESPN league 882823976 sync 2026-11-10 08:42 CST",
+ "source": "ESPN league 882823976 sync 2026-11-10 11:52 CST",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -118,7 +118,7 @@
     "pos": "WR",
     "team": "LAR",
     "irOk": true,
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Rashee Rice",
@@ -161,7 +161,7 @@
     "pos": "WR",
     "team": "PIT",
     "irOk": true,
-    "slot": "FLEX"
+    "slot": "WR"
    },
    {
     "name": "Emeka Egbuka",
@@ -217,7 +217,7 @@
     "pos": "RB",
     "team": "LAC",
     "irOk": true,
-    "slot": "BN"
+    "slot": "FLEX"
    }
   ],
   "Resting Blitz Face": [
@@ -735,7 +735,7 @@
     "pos": "WR",
     "team": "ATL",
     "irOk": true,
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Trey McBride",
@@ -784,7 +784,7 @@
     "pos": "WR",
     "team": "BUF",
     "irOk": true,
-    "slot": "FLEX"
+    "slot": "BN"
    },
    {
     "name": "Jaylen Warren",
