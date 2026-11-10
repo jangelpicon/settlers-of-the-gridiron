@@ -550,9 +550,40 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
       const covB = me2.find(p => p.name === "Rb Cover B"), spare = me2.find(p => p.name === "Wr Spare");
       assert(T.opensHole(me2, covB, wrAdd) && !T.opensHole(me2, spare, wrAdd), "synthetic: the #170 RB who covers next week is protected from a WR add; the spare WR is not");
       assert(!T.opensHole(me2, covB, rbPlays) && T.opensHole(me2, covB, rbBye), "synthetic: an RB who plays next week may replace him, an RB on bye next week may not");
-      const bench2 = T.optimalLineup(me2, "ros").bench;
+      const bench2 = T.ladderBench(me2);
       assert(T.scarcityPool(bench2, "WR", me2, wrAdd).every(p => !/Cover/.test(p.name)) && T.dropCandidate(bench2, me2, wrAdd, null).name === "Wr Spare", "synthetic: the ladder spends the spare WR, never a next-week RB cover (" + T.dropCandidate(bench2, me2, wrAdd, null).name + ")");
       assert(T.keptForNextWeek(bench2, me2, wrAdd).map(p => p.name).join(",") === "Rb Cover B,Rb Cover A", "synthetic: both covers are named as kept, worst first"); }
+    // ---- Drop ladder = rest-of-season lens, byes present (Jose 2026-11-10: "why not pick up Zach Charbonnet over Kamara") ----
+    // Swift + Irving on bye THIS week put Kamara (ROS #174) at RB2 in the this-week lineup; the ladder treated him as a
+    // starter and shielded him, so Charbonnet (ROS #148, +19 ESPN season pts) was judged against Concepcion and read "pass".
+    console.log("== Drop ladder: bye-week fill-ins are bench, bye starters are not drops ==");
+    { let teams = 0;
+      Object.keys(rosters.teams).forEach(t => { T.setTeamParam("team=" + encodeURIComponent(t)); const tm = T.getRosters().teams[t].map(T.info); const L = T.tradeLineup(tm); const DOt = T.dropOrder(); teams++;
+        const skillBench = L.bench.filter(p => !["K", "DST"].includes(p.pos));
+        assert(DOt.every(p => !L.used.has(p.n)), t + ": no rest-of-season starter (bye-present) is on the drop ladder (" + DOt.filter(p => L.used.has(p.n)).map(p => p.name).join(", ") + ")");
+        assert(skillBench.every(p => DOt.some(q => q.n === p.n)) && DOt.length === skillBench.length, t + ": every rest-of-season bench skill player is on the ladder (" + DOt.length + "/" + skillBench.length + ")"); });
+      console.log("  ladder lens checked on " + teams + " teams");
+      T.setTeamParam("team=" + encodeURIComponent(rosters.me));
+      // synthetic, the rule by itself: two RB regulars on bye THIS week, a #170 RB filling in, a #140 RB on the wire
+      const mk = (name, pos, bye, ros, extra) => ({ name, n: name.toLowerCase().replace(/[^a-z]/g, ""), pos, team: "X", bye, ros, srcs: [1, 2], pPlay: 1, onBye: false, ...(extra || {}) });
+      const tw = season.week, done = season.week - 1;
+      const me3 = [mk("Qb One", "QB", done, 5), mk("Rb Bye A", "RB", tw, 10, { onBye: true }), mk("Rb Bye B", "RB", tw, 12, { onBye: true }), mk("Wr One", "WR", done, 3), mk("Wr Two", "WR", done, 4), mk("Te One", "TE", done, 6), mk("Dst One", "DST", done, 300), mk("K One", "K", done, 200),
+        mk("Wr Flex", "WR", done, 20), mk("Rb Third", "RB", done, 30), mk("Rb Fillin", "RB", done, 170, { seasonProj: 78 }), mk("Wr Spare", "WR", done, 60, { seasonProj: 90 }), mk("Qb Spare", "QB", done, 50)];
+      const rbBetter = mk("Rb Better", "RB", done, 140, { seasonProj: 95 }), fillin = me3.find(p => p.name === "Rb Fillin");
+      const thisWeek = T.optimalLineup(me3, "ros"), ladder3 = T.ladderBench(me3);
+      assert(thisWeek.used.has(fillin.n) && !ladder3.some(p => /Bye/.test(p.name)) && ladder3.some(p => p.n === fillin.n), "synthetic: the fill-in starts this week (byes) but is BENCH on the ladder; the two bye RBs are starters, not drops (" + ladder3.map(p => p.name).join(", ") + ")");
+      assert(!T.opensHole(me3, fillin, rbBetter), "synthetic: dropping the fill-in for the better RB opens no hole next week (the regulars are back)");
+      const dc = T.dropCandidate(ladder3, me3, rbBetter, null), v3 = T.dropVerdict(rbBetter, dc, T.lineupImpact(me3, rbBetter));
+      assert(dc && dc.n === fillin.n && v3.key === "add" && v3.rosDelta === 30, "synthetic: the fill-in is the drop and the better RB is a season-long ADD (+30 ROS spots, ESPN agrees) — not a rental judged against the spare WR (" + (dc && dc.name) + ", " + v3.key + ")");
+      assert(!T.optimalLineup(me3, "ros").bench.some(p => p.n === fillin.n), "synthetic: the old this-week lens hid the fill-in from the ladder (documents the defect)");
+      // live, guarded: the exact 11/10 question when the snapshot still carries it
+      const meL = rosters.teams[rosters.me].map(T.info), kamL = meL.find(p => /Kamara/.test(p.name)), zcL = T.freeAgents().find(p => /Charbonnet/.test(p.name));
+      const byeRBs = meL.filter(p => p.pos === "RB" && p.onBye).length;
+      if (kamL && zcL && byeRBs >= 2 && kamL.ros != null && zcL.ros != null && kamL.ros - zcL.ros >= T.ROS_MARGIN && !sidelined(zcL)) {
+        const row = T.waiverBoard([zcL])[0];
+        assert(row.drop && row.drop.n === kamL.n && row.verdict.key === "add", "live 11/10: Charbonnet is a season-long ADD with Kamara as the drop (" + (row.drop && row.drop.name) + ", " + row.verdict.key + ")");
+        assert(T.waiverSuggestions().sugg.some(x => x.add.n === zcL.n && x.drop.n === kamL.n), "live 11/10: the claim sheet carries Charbonnet for Kamara");
+      } else console.log("  (live Charbonnet/Kamara check skipped: snapshot no longer carries the 11/10 state)"); }
     // stale waiver batch: a processAt in the past already ran → instant add, never a 'processes <past time>' row
     if (espnPool && espnPool.waivers) { const pool0 = espnPool.waivers; espnPool.waivers = Object.assign({}, pool0, { stalex: { processAt: Date.now() - 5 * 3600000 }, futurex: { processAt: Date.now() + 5 * 3600000 } });
       const st = T.claimWhen({ n: "stalex" }), fu = T.claimWhen({ n: "futurex" });
