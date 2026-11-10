@@ -1851,7 +1851,10 @@
         const r=posRankNum(a)-posRankNum(b); if (Math.abs(r)>ELITE_GAP) return r; const bd=(byeDone(a)?0:1)-(byeDone(b)?0:1); return bd || r; };
       const mineAll = me.filter(p=>p.pos===pos);
       const mine = mineAll.filter(startable).sort(ord)[0] || null;
-      const cands = fa.filter(startable).filter(p=>!byeNext(p)).sort(chainOrd); // never chain a guy who's on bye NEXT week
+      // Bye NEXT week is no reason to skip a unit (Jose 2026-11-10: "who cares if I have to claim again next week, that's the
+      // whole point of this system") — the Packers (10.3, bye W11) were left off for the Ravens (8.0). Take the best week; the
+      // row says "stream again Tuesday" so the second claim is expected, not a surprise.
+      const cands = fa.filter(startable).sort(chainOrd);
       cands.forEach(p=>{ p.claimLate = claimLateFor(p); });
       const best = cands[0] || null;
       // Every backup must clear the swap bar ON ITS OWN against what I have — a backup is a claim that can land,
@@ -2083,7 +2086,7 @@
       // Weekly K/DST streams, after the season-long claims. Shows this-week projection (or rank) instead of ROS.
       const wkLine = p => "<b class='hl'>"+esc(p.name)+"</b>, "+esc(p.team||"?")+" "+p.pos+" <span class='muted'>("+(p.mu!=null?p.mu.toFixed(1)+" proj this week":"wk #"+(p.wkRank!=null?p.wkRank:"–"))+")</span>";
       const wkDrop = p => "<b>"+esc(p.name)+"</b>, "+esc(p.team||"?")+" "+p.pos+" <span class='muted'>("+(p.mu!=null?p.mu.toFixed(1)+" proj this week":"wk #"+(p.wkRank!=null?p.wkRank:"–"))+")</span>";
-      const wkCand = p => "<b class='hl'>"+esc(p.name)+"</b>, "+esc(p.team||"?")+" "+p.pos+" <span class='muted'>("+(p.mu!=null?p.mu.toFixed(1)+" proj this week":"wk #"+(p.wkRank!=null?p.wkRank:"–"))+" · "+(p.posRank||"unranked")+" for the season · "+(byeDone(p)?"bye done":p.bye!=null?"bye Wk "+p.bye:"bye ?")+")</span>";
+      const wkCand = p => "<b class='hl'>"+esc(p.name)+"</b>, "+esc(p.team||"?")+" "+p.pos+" <span class='muted'>("+(p.mu!=null?p.mu.toFixed(1)+" proj this week":"wk #"+(p.wkRank!=null?p.wkRank:"–"))+" · "+(p.posRank||"unranked")+" for the season · "+(byeDone(p)?"bye done":p.bye!=null?"bye Wk "+p.bye:"bye ?")+")</span>"+(byeNext(p)?" <span class='tag warn'>bye next week — stream again Tuesday</span>":"");
       streamC.forEach(s=>{
         const dropHtml = s.drop ? wkDrop(s.drop)+(s.drop.posRank?" <span class='muted'>"+esc(s.drop.posRank)+" for the season</span>":"") : "<span class='muted'>nobody — open roster spot</span>";
         const first = pri+1;
@@ -2096,7 +2099,7 @@
           h += "<div class='suggest'><b>Priority "+pri+"</b> · ➕ Add "+wkCand(c)+" &nbsp;➖ Drop "+dropHtml+" <span class='tag good'>weekly "+s.pos+"</span>"+late+timingHtml(c,true)+fold("why", note+timingNote(c))+"</div>";
         });
         if (s.otherBatch && s.otherBatch.length) h += "<div class='muted' style='margin:-2px 0 4px'>Earlier batch, not backups: "+s.otherBatch.map(c=>"<b>"+esc(c.name)+"</b> ("+esc(claimWhen(c).short||claimWhen(c).text)+")").join(", ")+fold("why", "They run BEFORE Priority "+first+" and would spend the drop first; Priority "+first+" is worth waiting for.")+"</div>";
-        h += "<div style='margin:-2px 0 8px'>"+fold("how the "+s.pos+" chain is ordered", s.pos+" chain order: every claim here beats your "+s.pos+" by at least "+swapBar(s.drop)+" this week on its own"+(isEliteUnit(s.drop)?" (he's a top-8 season unit, so only a real edge moves him)":" (he's not a top-8 season unit, so any edge beyond a coin flip counts)")+" — a backup that doesn't is left out; this-week projection first; projections within "+STREAM_TIE+" are a coin flip, so ties go to a kicker/defense whose bye is already behind him when the season ranks are close, otherwise to the better season rank. Anyone on bye next week is left out — you'd be streaming again in seven days.")+"</div>";
+        h += "<div style='margin:-2px 0 8px'>"+fold("how the "+s.pos+" chain is ordered", s.pos+" chain order: every claim here beats your "+s.pos+" by at least "+swapBar(s.drop)+" this week on its own"+(isEliteUnit(s.drop)?" (he's a top-8 season unit, so only a real edge moves him)":" (he's not a top-8 season unit, so any edge beyond a coin flip counts)")+" — a backup that doesn't is left out; this-week projection first; projections within "+STREAM_TIE+" are a coin flip, so ties go to a kicker/defense whose bye is already behind him when the season ranks are close, otherwise to the better season rank. A unit on bye next week stays in — take the best week and stream again next Tuesday; his row says so.")+"</div>";
       });
       streamHolds.forEach(st=>{ const u = st.unit, b = st.best; h += "<div class='suggest'>✋ <b>"+(u ? "Hold "+esc(u.name) : "No "+st.pos+" rostered")+"</b> ("+st.pos+(u && u.posRank?", "+esc(u.posRank)+" for the season":"")+(u && u.onBye?", on bye this week":(u && u.mu!=null?", "+u.mu.toFixed(1)+" proj this week":""))+")"+fold("why", esc(st.reason)+(b ? ". Best available: "+esc(b.name)+" ("+(b.posRank||"unranked")+(b.mu!=null?", "+b.mu.toFixed(1)+" proj":"")+")." : "."))+"</div>"; });
     }
@@ -2987,7 +2990,7 @@
     waiverSuggestions:()=>{ const me = myTeam(); const bench = ladderBench(me); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,
     weeklyStreamClaims:()=>{ const me = myTeam(); return weeklyStreamClaims(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
     weeklyStreamStatus:()=>{ const me = myTeam(); return weeklyStreamStatus(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
-    streamStatusRaw:(me,fa,wkey)=>weeklyStreamStatus(me, fa, wkey||"mu"), ROSTER_ACTIVE, STREAM_BAR, openSpots, activeCount, IR_SLOTS, isOut, irMoves, outSpots, parkable, backDate,
+    streamStatusRaw:(me,fa,wkey)=>weeklyStreamStatus(me, fa, wkey||"mu"), ROSTER_ACTIVE, STREAM_BAR, STREAM_TIE, openSpots, activeCount, IR_SLOTS, isOut, irMoves, outSpots, parkable, backDate,
     dropOrder:()=>{ const me = myTeam(); const bench = ladderBench(me); return dropOrder(me, bench); }, fitNote, scarcityPool, ladderBench, lineupImpact, dropCandidate, dropVerdict, opensHole, keptForNextWeek,
     winProbAt, winProbSeries, winLogPoints, setWinLog:(w)=>{ WPL=w||null; }, wouldStartHealthy, rentalImpact, rentalRows:(pos)=>rentalRows(myTeam(), freeAgents().filter(p=>!undraftable(p)), pos, lineupKey()), shakyStarters:()=>weekStarters(myTeam(), lineupKey()).filter(s=>shaky(s.p) && !["K","DST"].includes(s.p.pos)), STREAM_ROWS,
     setTeamParam:(qs)=>{ applyTeamParam(qs); buildIndex(); renderAll(); },

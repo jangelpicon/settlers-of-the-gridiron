@@ -292,7 +292,11 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(SS.length === 2 && SS.every(st => ["DST","K"].includes(st.pos) && ["ok","fill","swap","hold"].includes(st.verdict) && typeof st.reason === "string" && st.reason.length > 0), "every K/DST slot gets a verdict with a plain-language reason (" + SS.map(st => st.pos + ":" + st.verdict).join(", ") + ")");
   SC.forEach(s => {
     assert(Array.isArray(s.chain) && s.chain.length >= 1 && s.chain.length <= 3 && s.chain[0].n === s.add.n, s.pos + " claim carries a 1–3 deep backup chain led by the add (" + s.chain.map(c => c.name).join(" > ") + ")");
-    assert(s.chain.every(c => !(c.bye != null && c.bye === season.week + 1)), s.pos + " chain never includes someone on bye NEXT week (" + s.chain.map(c => c.name + " bye" + c.bye).join(", ") + ")");
+    // Jose 2026-11-10: a unit on bye NEXT week is never skipped for that — if the best startable free agent at the position is
+    // on bye next week and beats the chain leader by more than the tie band, he leads the chain (Packers over Ravens case).
+    { const sl = p => !!(p.inj && /^(IR|O|SUSP)$/.test(p.inj.code)) || p.pPlay === 0;
+      const bn = T.freeAgents().filter(p => p.pos === s.pos && p.bye === season.week + 1 && !p.onBye && !sl(p) && p.mu != null && !T.claimLateFor(p)).sort((a, b) => b.mu - a.mu)[0];
+      assert(!bn || bn.mu <= s.chain[0].mu + T.STREAM_TIE || s.chain[0].n === bn.n, s.pos + " chain leader is not skipped for a bye next week (" + (bn ? bn.name + " " + bn.mu : "no bye-next candidate") + " vs leader " + s.chain[0].name + " " + s.chain[0].mu + ")"); }
     const myAtPos = rosters.teams[rosters.me].filter(p => p.pos === s.pos);
     if (s.verdict === "fill" && T.openSpots(rosters.teams[rosters.me].map(T.info)) === 0) assert(s.drop && s.drop.pos === s.pos && myAtPos.some(p => p.name === s.drop.name), s.pos + " on bye with a full roster → the claim drops my own " + s.pos + ", never 'nobody' (" + (s.drop && s.drop.name) + ")");
   });
@@ -412,8 +416,10 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   r = T.streamStatusRaw(fullMe, kFA, "mu").find(st => st.pos === "K");
   T.setRosters(saveR);
   assert(r.verdict === "fill" && r.drop && r.drop.name === "Bye Kicker", "kicker on bye + full roster → verdict fill, drop = the bye kicker: " + (r.drop && r.drop.name));
-  assert(!r.chain.some(c => c.name === "Bye Next"), "a kicker on bye next week is excluded from the chain");
-  assert(r.chain.map(c => c.name).join(">") === "Butker Like>Loop Like>Rental", "chain tie-break: within 0.5 proj, close season ranks → bye-already-done wins (Butker-like), then season rank, rental last (" + r.chain.map(c => c.name).join(" > ") + ")");
+  assert(r.chain.some(c => c.name === "Bye Next"), "a kicker on bye next week is IN the chain (Jose 2026-11-10: a second claim next Tuesday is the point of streaming)");
+  // all four within 0.5: Butker (K9, bye done) beats Bye Next (K6) and Loop (K7) on the bye-done tie-break at close ranks;
+  // Bye Next beats Loop on season rank (neither bye done); Rental (K22) is out of the top three on rank.
+  assert(r.chain.map(c => c.name).join(">") === "Butker Like>Bye Next>Loop Like", "chain tie-break: within 0.5 proj, close season ranks → bye-already-done wins (Butker-like), then season rank; a bye-next unit is ranked, not skipped (" + r.chain.map(c => c.name).join(" > ") + ")");
   // 2026-10-15 Broncos lesson: a backup is a claim that can land, so every chain entry must clear the swap bar on its own.
   r = T.streamStatusRaw([mkDst("Mine Mid", 7.4, "DST9", wk + 2)], [mkDst("Clear Edge", 10.6, "DST12", wk + 3), mkDst("Barely", 9.4, "DST3", wk + 3), mkDst("Flat", 7.4, "DST23", wk + 3)], "mu")[0];
   assert(r.verdict === "swap" && r.chain.map(c => c.name).join(">") === "Clear Edge>Barely", "over a replaceable DST9 a +2.0 backup stays in the chain, a +0.0 coin flip is left out (" + r.chain.map(c => c.name).join(" > ") + ")");
