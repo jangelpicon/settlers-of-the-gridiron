@@ -153,7 +153,9 @@ def build_model(weeks, sched, upto):
         faced = sum((def_vs_pos.get(opp, {}).get(e["pos"], {}).get("avg") or lg) for _, opp, _ in e["games"]) / ng
         faced_adj = sum((def_vs_pos.get(opp, {}).get(e["pos"], {}).get("adj") or lg) for _, opp, _ in e["games"]) / ng
         player_form[n] = {"pos": e["pos"], "team": e["team"], "n": ng,
-                          "actAvg": round(act, 2), "facedAvg": round(faced, 2), "facedAdj": round(faced_adj, 2)}
+                          "actAvg": round(act, 2), "facedAvg": round(faced, 2), "facedAdj": round(faced_adj, 2),
+                          # provenance for the test gate: lets defVsPos be rebuilt player-side (direction + arithmetic)
+                          "log": [[w, opp, round(p, 2)] for w, opp, p in e["games"]]}
     return def_vs_pos, league_avg, player_form
 
 

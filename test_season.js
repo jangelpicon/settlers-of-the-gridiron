@@ -371,27 +371,30 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     console.log("  out-player spot check ran on " + outChecked + " of my teams (snapshot injuries: " + teamsToCheck.map(t => t + " " + rosters.teams[t].map(T.info).filter(T.isOut).map(p => p.name).join("/")).join("; ") + ")");
   }
   // synthetic: the rule itself, independent of this week's data
+  // Fixture byes are RELATIVE to the live week (wk ± n), never literal week numbers: a literal "bye 11" became "next week"
+  // in Week 10 2026 and the chain correctly dropped him, so the fixture, not the rule, went red (third gate hold in a week).
+  // wk - n = bye already done, wk + 1 = next week (excluded from chains), wk + 2/3 = future, not next.
   const mkDst = (n, mu, pr, bye) => ({ name: n, n: n.toLowerCase().replace(/[^a-z]/g, ""), pos: "DST", team: "X", mu, posRank: pr, bye, ros: 200, srcs: [1, 2] });
   const wk = season.week;
-  let r = T.streamStatusRaw([mkDst("Mine Elite", 7.4, "DST3", 10)], [mkDst("Big Matchup", 10.4, "DST11", 13)], "mu")[0];
+  let r = T.streamStatusRaw([mkDst("Mine Elite", 7.4, "DST3", wk + 2)], [mkDst("Big Matchup", 10.4, "DST11", wk + 3)], "mu")[0];
   assert(r.verdict === "hold" && /DST3/.test(r.reason) && r.delta === 3, "a top-8 season DST is held even when a DST11 projects +3 this week (drop is permanent): " + r.reason);
-  r = T.streamStatusRaw([mkDst("Mine Six", 7.4, "DST6", 10)], [mkDst("Jets Like", 9.1, "DST27", 13)], "mu")[0];
+  r = T.streamStatusRaw([mkDst("Mine Six", 7.4, "DST6", wk + 2)], [mkDst("Jets Like", 9.1, "DST27", wk + 3)], "mu")[0];
   assert(r.verdict === "hold" && r.delta === 1.7, "Week 7 2026 lesson: a DST6 is never dropped for a DST27 on a +1.7 projection (" + r.reason + ")");
-  r = T.streamStatusRaw([mkDst("Mine Six", 7.4, "DST6", 10)], [mkDst("Jets Like", 11.0, "DST27", 13)], "mu")[0];
+  r = T.streamStatusRaw([mkDst("Mine Six", 7.4, "DST6", wk + 2)], [mkDst("Jets Like", 11.0, "DST27", wk + 3)], "mu")[0];
   assert(r.verdict === "hold" && /DST6/.test(r.reason), "…even at +3.6: a top-8 season unit holds against a bottom-tier add: " + r.reason);
-  r = T.streamStatusRaw([mkDst("Jets Like", 7.4, "DST27", 13)], [mkDst("Jags Like", 8.4, "DST5", 7)], "mu")[0];
+  r = T.streamStatusRaw([mkDst("Jets Like", 7.4, "DST27", wk + 3)], [mkDst("Jags Like", 8.4, "DST5", wk - 3)], "mu")[0];
   assert(r.verdict === "swap" && r.drop && r.drop.name === "Jets Like" && /season upgrade/.test(r.reason) && r.chain[0].name === "Jags Like", "season upgrade: a DST27 is swapped for a free top-8 season DST even at only +1.0 this week (" + r.reason + ")");
-  r = T.streamStatusRaw([mkDst("Jets Like", 9.4, "DST27", 13)], [mkDst("Jags Like", 8.4, "DST5", 7)], "mu")[0];
+  r = T.streamStatusRaw([mkDst("Jets Like", 9.4, "DST27", wk + 3)], [mkDst("Jags Like", 8.4, "DST5", wk - 3)], "mu")[0];
   assert(r.verdict === "hold", "…but not when the season unit projects worse this week (-1.0): hold and revisit next Tuesday: " + r.reason);
-  r = T.streamStatusRaw([mkDst("Mine Ten", 7.4, "DST10", 13)], [mkDst("Peer Eight", 8.0, "DST8", 7)], "mu")[0];
+  r = T.streamStatusRaw([mkDst("Mine Ten", 7.4, "DST10", wk + 3)], [mkDst("Peer Eight", 8.0, "DST8", wk - 3)], "mu")[0];
   assert(r.verdict === "swap" && /nothing to protect/.test(r.reason), "2026-10-27 (Jose): a DST10 isn't worth protecting — +0.6 for a DST8 is more than a coin flip, take the better week: " + r.reason);
-  r = T.streamStatusRaw([mkDst("Mine Elite", 7.4, "DST3", 10)], [mkDst("Peer", 10.6, "DST4", 13)], "mu")[0];
+  r = T.streamStatusRaw([mkDst("Mine Elite", 7.4, "DST3", wk + 2)], [mkDst("Peer", 10.6, "DST4", wk + 3)], "mu")[0];
   assert(r.verdict === "swap" && r.drop && r.drop.name === "Mine Elite", "…but a same-tier DST4 at +3.2 is a legitimate swap: " + r.reason);
-  r = T.streamStatusRaw([mkDst("Mine Elite", 7.4, "DST3", 10)], [mkDst("Peer", 9.4, "DST4", 13)], "mu")[0];
+  r = T.streamStatusRaw([mkDst("Mine Elite", 7.4, "DST3", wk + 2)], [mkDst("Peer", 9.4, "DST4", wk + 3)], "mu")[0];
   assert(r.verdict === "hold" && /3-point/.test(r.reason), "a same-tier DST4 at only +2.0 is under the 3-point bar → hold (that edge is inside the weekly noise): " + r.reason);
-  r = T.streamStatusRaw([mkDst("Mine Mid", 7.4, "DST9", 10)], [mkDst("Small Edge", 8.8, "DST11", 13)], "mu")[0];
+  r = T.streamStatusRaw([mkDst("Mine Mid", 7.4, "DST9", wk + 2)], [mkDst("Small Edge", 8.8, "DST11", wk + 3)], "mu")[0];
   assert(r.verdict === "swap" && /nothing to protect/.test(r.reason), "+1.4 over a DST9 (not top-8) → swap; the 3-point bar only guards top-8 units: " + r.reason);
-  r = T.streamStatusRaw([mkDst("Mine Mid", 7.4, "DST9", 10)], [mkDst("Coin Flip", 7.8, "DST11", 13)], "mu")[0];
+  r = T.streamStatusRaw([mkDst("Mine Mid", 7.4, "DST9", wk + 2)], [mkDst("Coin Flip", 7.8, "DST11", wk + 3)], "mu")[0];
   assert(r.verdict === "hold" && /coin flip/.test(r.reason), "+0.4 over a replaceable unit is a coin flip → hold (no churn for nothing): " + r.reason);
   // The live question (2026-10-27): Fitzgerald K22 at 7.8 with McPherson (K5) and Bass (K13) both at 10.2 and Ryland (K23) at 9.2.
   const mkK0 = (n, mu, pr, bye) => ({ ...mkDst(n, mu, pr, bye), pos: "K" });
@@ -400,11 +403,11 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   // so the fixture, not the rule, went red. Fitz/Bass byes done, McPherson's 2 ahead (never "next"), Ryland's far ahead.
   r = T.streamStatusRaw([mkK0("Fitz Like", 7.8, "K22", wk - 3)], [mkK0("Bass Like", 10.2, "K13", wk - 1), mkK0("McPherson Like", 10.2, "K5", wk + 2), mkK0("Ryland Like", 9.2, "K23", wk + 6)], "mu").find(st => st.pos === "K");
   assert(r.verdict === "swap" && r.best.name === "McPherson Like" && r.chain.map(c => c.name).join(">") === "McPherson Like>Bass Like>Ryland Like", "a K22 is swapped for the best week; the 10.2 tie breaks to the K5, and Bass (+2.4) and Ryland (+1.4) are live backups, not holds (" + r.chain.map(c => c.name).join(" > ") + ")");
-  r = T.streamStatusRaw([mkDst("Mine Mid", 7.4, "DST9", 10)], [mkDst("Clear Edge", 10.6, "DST12", 13)], "mu")[0];
+  r = T.streamStatusRaw([mkDst("Mine Mid", 7.4, "DST9", wk + 2)], [mkDst("Clear Edge", 10.6, "DST12", wk + 3)], "mu")[0];
   assert(r.verdict === "swap" && r.delta === 3.2, "+3.2 over a mid-tier DST → swap");
   const mkK = (n, mu, pr, bye) => ({ ...mkDst(n, mu, pr, bye), pos: "K" });
   const fullMe = Array.from({ length: T.ROSTER_ACTIVE - 1 }, (_, i) => ({ name: "Body" + i, n: "body" + i, pos: "WR", team: "X", mu: 5, ros: 300, srcs: [1, 2] })).concat([{ ...mkK("Bye Kicker", 0, "K10", wk), onBye: true, mu: null }]);
-  const kFA = [mkK("Loop Like", 9.2, "K7", 13), mkK("Butker Like", 9.3, "K9", wk - 1), mkK("Rental", 9.5, "K22", 11), mkK("Bye Next", 9.4, "K6", wk + 1)];
+  const kFA = [mkK("Loop Like", 9.2, "K7", wk + 3), mkK("Butker Like", 9.3, "K9", wk - 1), mkK("Rental", 9.5, "K22", wk + 2), mkK("Bye Next", 9.4, "K6", wk + 1)];
   const saveR = T.getRosters(); T.setRosters({ ...saveR, teams: { ...saveR.teams, [saveR.me]: fullMe.map(p => ({ name: p.name, pos: p.pos, team: p.team })) } });
   r = T.streamStatusRaw(fullMe, kFA, "mu").find(st => st.pos === "K");
   T.setRosters(saveR);
@@ -412,16 +415,16 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(!r.chain.some(c => c.name === "Bye Next"), "a kicker on bye next week is excluded from the chain");
   assert(r.chain.map(c => c.name).join(">") === "Butker Like>Loop Like>Rental", "chain tie-break: within 0.5 proj, close season ranks → bye-already-done wins (Butker-like), then season rank, rental last (" + r.chain.map(c => c.name).join(" > ") + ")");
   // 2026-10-15 Broncos lesson: a backup is a claim that can land, so every chain entry must clear the swap bar on its own.
-  r = T.streamStatusRaw([mkDst("Mine Mid", 7.4, "DST9", 10)], [mkDst("Clear Edge", 10.6, "DST12", 13), mkDst("Barely", 9.4, "DST3", 13), mkDst("Flat", 7.4, "DST23", 13)], "mu")[0];
+  r = T.streamStatusRaw([mkDst("Mine Mid", 7.4, "DST9", wk + 2)], [mkDst("Clear Edge", 10.6, "DST12", wk + 3), mkDst("Barely", 9.4, "DST3", wk + 3), mkDst("Flat", 7.4, "DST23", wk + 3)], "mu")[0];
   assert(r.verdict === "swap" && r.chain.map(c => c.name).join(">") === "Clear Edge>Barely", "over a replaceable DST9 a +2.0 backup stays in the chain, a +0.0 coin flip is left out (" + r.chain.map(c => c.name).join(" > ") + ")");
-  r = T.streamStatusRaw([mkDst("Mine Elite", 7.4, "DST3", 10)], [mkDst("Clear Edge", 10.6, "DST4", 13), mkDst("Barely", 9.4, "DST5", 13), mkDst("Flat", 7.4, "DST2", 13)], "mu")[0];
+  r = T.streamStatusRaw([mkDst("Mine Elite", 7.4, "DST3", wk + 2)], [mkDst("Clear Edge", 10.6, "DST4", wk + 3), mkDst("Barely", 9.4, "DST5", wk + 3), mkDst("Flat", 7.4, "DST2", wk + 3)], "mu")[0];
   assert(r.verdict === "swap" && r.chain.map(c => c.name).join(">") === "Clear Edge", "over a top-8 DST3 the 3-point bar still guards the chain: same-tier +2.0 and +0.0 backups are left out (" + r.chain.map(c => c.name).join(" > ") + ")");
-  r = T.streamStatusRaw([mkDst("Mine Mid", 7.4, "DST9", 10)], [mkDst("Clear Edge", 10.6, "DST12", 13), mkDst("Second", 11.2, "DST14", 13)], "mu")[0];
+  r = T.streamStatusRaw([mkDst("Mine Mid", 7.4, "DST9", wk + 2)], [mkDst("Clear Edge", 10.6, "DST12", wk + 3), mkDst("Second", 11.2, "DST14", wk + 3)], "mu")[0];
   assert(r.chain.length === 2 && r.chain[0].name === "Second", "backups that do clear the bar stay, best projection first (" + r.chain.map(c => c.name).join(" > ") + ")");
   const soon = new Date(Date.now() + 2 * 3600000).toISOString().replace(/\.\d+Z$/, "Z"), later = new Date(Date.now() + 3 * 86400000).toISOString().replace(/\.\d+Z$/, "Z");
   // per-player ESPN timing (2026-11-03): both process in tomorrow's batch — after Tonight's kick, before Sunday's
   if (espnPool) { espnPool.waivers = espnPool.waivers || {}; espnPool.waivers.tonight = { status: "WAIVERS", processAt: Date.now() + 24 * 3600000 }; espnPool.waivers.sunday = { status: "WAIVERS", processAt: Date.now() + 24 * 3600000 }; }
-  r = T.streamStatusRaw([mkDst("Mine Mid", 7.4, "DST9", 10)], [{ ...mkDst("Tonight", 11.0, "DST3", 13), game: { kick: soon } }, { ...mkDst("Sunday", 10.6, "DST12", 13), game: { kick: later } }], "mu")[0];
+  r = T.streamStatusRaw([mkDst("Mine Mid", 7.4, "DST9", wk + 2)], [{ ...mkDst("Tonight", 11.0, "DST3", wk + 3), game: { kick: soon } }, { ...mkDst("Sunday", 10.6, "DST12", wk + 3), game: { kick: later } }], "mu")[0];
   assert(r.chain.map(c => c.name).join(">") === "Sunday>Tonight" && r.chain[1].claimLate === true && r.chain[0].claimLate === false, "a candidate whose claim processes after his kickoff is flagged and ranked behind the on-time claim (" + r.chain.map(c => c.name + (c.claimLate ? "⚠" : "")).join(" > ") + ")");
   r = T.streamStatusRaw(fullMe, kFA, "mu").find(st => st.pos === "K");
   assert(r.verdict === "fill" && r.chain.length === 3, "fill (my K on bye) keeps the full chain — there is no bar to clear against an empty slot");
@@ -838,7 +841,22 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   // and the direction is right (DET, a known soft QB matchup this season, sits above average).
   const qbAvgs = Object.values(matchups.defVsPos).map(d => d.QB && d.QB.avg).filter(v => typeof v === "number");
   assert(Math.max(...qbAvgs) > matchups.leagueAvg.QB * 1.25 && Math.min(...qbAvgs) < matchups.leagueAvg.QB * 0.75, "sanity: the QB matchup table has real spread (softest " + Math.max(...qbAvgs) + ", toughest " + Math.min(...qbAvgs) + " vs lg " + matchups.leagueAvg.QB + ")");
-  assert(matchups.defVsPos.DET && matchups.defVsPos.DET.QB && matchups.defVsPos.DET.QB.avg > matchups.leagueAvg.QB, "sanity direction: Detroit is an above-average QB matchup (" + (matchups.defVsPos.DET ? matchups.defVsPos.DET.QB.avg : "?") + " vs lg " + matchups.leagueAvg.QB + ")");
+  // Direction + arithmetic without naming a team: every defense×position avg must equal the mean of the per-game points
+  // the position's players actually scored AGAINST that defense, rebuilt here from the exported per-player game logs
+  // (playerForm[n].log = [[week, opp, pts], ...]). The named anchor "DET is a soft QB matchup" went red in Week 9 AND
+  // Week 10 2026 as Detroit regressed to the mean while the table was right — a live stat is not an invariant.
+  {
+    const per = {}; // def -> pos -> week -> team total scored against def
+    Object.values(matchups.playerForm).forEach(f => (f.log || []).forEach(([w, opp, pts]) => { const g = ((per[opp] = per[opp] || {})[f.pos] = per[opp][f.pos] || {}); g[w] = (g[w] || 0) + pts; }));
+    const r2 = x => Math.round(x * 100) / 100, bad = []; let cells = 0;
+    Object.entries(matchups.defVsPos).forEach(([def, by]) => Object.entries(by).forEach(([pos, e]) => {
+      const g = per[def] && per[def][pos]; cells++;
+      if (!g) { bad.push(def + " " + pos + ": no game log"); return; }
+      const vals = Object.values(g).map(r2), mean = r2(vals.reduce((a, b) => a + b, 0) / vals.length);
+      if (Math.abs(mean - e.avg) > 0.011 || vals.length !== e.games) bad.push(def + " " + pos + ": table " + e.avg + "/" + e.games + "g vs logs " + mean + "/" + vals.length + "g");
+    }));
+    assert(cells >= 150 && bad.length === 0, "direction + arithmetic: every defense×position avg = mean of points that position actually scored against it in the game logs (" + cells + " cells" + (bad.length ? "; " + bad.length + " bad, first: " + bad[0] : "") + ")");
+  }
   // graceful degrade: no matchups file = consensus-only, no matchup fields, no errors
   T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
   const anyQB = rosters.teams[rosters.me].filter(p => p.pos === "QB").map(p => T.info(p));
@@ -1409,8 +1427,8 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     const nt = T.predict({ name: "No Team Guy", n: "noteamguy", pos: "K", team: "LAR", wkRank: 3, inj: null });
     assert(nt.noTeam === true && nt.pPlay === 0 && nt.mu === 0 && nt.game === null, "a player the live feed lists as FA (no NFL team) is flagged noTeam, predicts 0 and has no game — even if the rankings file still shows his old club");
     const mkK = (n, mu, pr, bye) => ({ name: n, n: n.toLowerCase().replace(/[^a-z]/g, ""), pos: "K", team: "X", mu, posRank: pr, bye, ros: 200, srcs: [1, 2] });
-    const faK = { name: "No Team Guy", n: "noteamguy", pos: "K", team: "FA", mu: 0, pPlay: 0, noTeam: true, posRank: "K3", bye: 11, ros: 150, srcs: [] };
-    const r2 = T.streamStatusRaw([mkK("Mine K", 8.0, "K12", 9)], [faK, mkK("Real K", 11.2, "K9", 13)], "mu").find(st => st.pos === "K");
+    const faK = { name: "No Team Guy", n: "noteamguy", pos: "K", team: "FA", mu: 0, pPlay: 0, noTeam: true, posRank: "K3", bye: wk + 2, ros: 150, srcs: [] };
+    const r2 = T.streamStatusRaw([mkK("Mine K", 8.0, "K12", wk - 1)], [faK, mkK("Real K", 11.2, "K9", wk + 3)], "mu").find(st => st.pos === "K");
     assert(r2.chain.every(c => c.name !== "No Team Guy") && r2.best && r2.best.name === "Real K", "a released player never enters the K/DST stream chain (" + r2.chain.map(c => c.name).join(" > ") + ")");
   }
 
