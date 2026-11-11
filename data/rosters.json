@@ -1,7 +1,7 @@
 {
  "me": "ur done",
  "updated": "2026-11-10",
- "source": "ESPN league 882823976 sync 2026-11-10 19:30 CST",
+ "source": "ESPN league 882823976 sync 2026-11-10 20:00 CST",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -39,7 +39,7 @@
     "pos": "WR",
     "team": "LAC",
     "irOk": true,
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Jameson Williams",
@@ -67,7 +67,7 @@
     "pos": "WR",
     "team": "NYJ",
     "irOk": true,
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Bhayshul Tuten",
@@ -88,7 +88,7 @@
     "pos": "DST",
     "team": "DEN",
     "irOk": true,
-    "slot": "DST"
+    "slot": "BN"
    },
    {
     "name": "Tyler Shough",
