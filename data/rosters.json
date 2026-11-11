@@ -1,7 +1,7 @@
 {
  "me": "ur done",
  "updated": "2026-11-11",
- "source": "ESPN league 882823976 sync 2026-11-11 08:37 CST",
+ "source": "ESPN league 882823976 sync 2026-11-11 08:48 CST",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -822,18 +822,18 @@
     "slot": "K"
    },
    {
-    "name": "Jadarian Price",
-    "pos": "RB",
-    "team": "SEA",
-    "irOk": true,
-    "slot": "RB"
-   },
-   {
     "name": "Green Bay Packers",
     "pos": "DST",
     "team": "GB",
     "irOk": true,
     "slot": "DST"
+   },
+   {
+    "name": "Audric Estime",
+    "pos": "RB",
+    "team": "NO",
+    "irOk": true,
+    "slot": "RB"
    }
   ],
   "PapasCabezas": [
