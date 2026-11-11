@@ -1541,10 +1541,23 @@
     const open = pool.filter(p=>p.pos===faPos || counts[p.pos]>1);
     return open.length ? open : pool;
   }
-  // The bench men the ladder skipped for this add because they cover next week (named on the row so the skip is visible).
+  // The bench men the ladder skipped for this add because they hold a slot this week or cover next week's byes
+  // (named on the row so the skip is visible).
   function keptForNextWeek(bench, me, fa){
     if (!me || !fa) return [];
     return bench.filter(p=>!["K","DST"].includes(p.pos) && opensHole(me, p, fa)).sort((a,b)=>(rosR(b)||ROS_MAX)-(rosR(a)||ROS_MAX));
+  }
+  // Why the ladder skipped them, by week: "Meyers, Metcalf kept — they start this week (Egbuka, Burden on bye) · Coleman
+  // kept — he starts W11 (Nacua, Williams on bye), off the drop ladder for this add".
+  function keptNote(kept, me, fa, html){
+    const b = s => html ? "<b>"+esc(s)+"</b>" : s, e = s => html ? esc(s) : s;
+    const g = { "this": [], "next": [] }; kept.forEach(p=>{ g[holeWeek(me, p, fa) || "next"].push(p); });
+    const parts = [];
+    if (g["this"].length){ const out = me.filter(p=>p.onBye).map(p=>p.name);
+      parts.push(b(g["this"].map(p=>p.name).join(", ")+" kept")+" — "+(g["this"].length>1?"they start":"he starts")+" this week"+(out.length?" ("+e(out.join(", "))+" on bye)":"")+(fa.onBye?"; "+e(fa.name)+" is on bye too":"")); }
+    if (g["next"].length){ const nv = nextWeekView(me);
+      parts.push(b(g["next"].map(p=>p.name).join(", ")+" kept")+" — "+(g["next"].length>1?"they start":"he starts")+" W"+(nv?nv.week:"?")+(nv && nv.out.length?" ("+e(nv.out.map(p=>p.name).join(", "))+" on bye)":"")+(nv && fa.bye===nv.week?"; "+e(fa.name)+" is on bye that week too":"")); }
+    return parts.join(" · ")+", off the drop ladder for this add";
   }
   // ---------- Needs ----------
   // What does MY roster actually need, league-relative? For every starting slot, compare my
@@ -1612,7 +1625,7 @@
   function waiverSuggestions(me, bench, fa){
     const board = waiverBoard(me, bench, fa.filter(f=>f.ros!=null && !["K","DST"].includes(f.pos)));
     const N = teamNeeds();
-    const toItem = b => ({ drop:b.drop, add:b.fa, gain:b.verdict.rosDelta, agree: b.verdict.seasonDelta!=null, seasonDelta: b.verdict.seasonDelta, fit: fitNote(b.fa, me), need: N.needPos.has(b.fa.pos), key: b.verdict.key, text: b.verdict.text, starts: b.verdict.starts, displaced: b.verdict.displaced, free: !!b.verdict.free, ref: b.verdict.ref || null, kept: b.verdict.kept || null,
+    const toItem = b => ({ drop:b.drop, add:b.fa, gain:b.verdict.rosDelta, agree: b.verdict.seasonDelta!=null, seasonDelta: b.verdict.seasonDelta, fit: fitNote(b.fa, me), need: N.needPos.has(b.fa.pos), key: b.verdict.key, text: b.verdict.text, starts: b.verdict.starts, displaced: b.verdict.displaced, free: !!b.verdict.free, ref: b.verdict.ref || null, kept: b.verdict.kept || null, later: b.verdict.later || null,
       dChamp: ["add","marginal","split"].includes(b.verdict.key) ? waiverChamp(me, b.fa, b.drop, false) : null });
     // Clean fits first, then Δ title % (the objective), then adds at a position of need, then raw season-long gain.
     // The season-long rule stays the GATE (it values bench depth the simulator can't see — the talent score only
@@ -1672,16 +1685,28 @@
     // out just slides to the bench and the drop is the usual least-value bench player. Before this, starters
     // were untouchable, so a TE14 starter sat while a TE9 on the wire read "pass — worse than <bench WR>".
     const I = imp || lineupImpact(me, fa);
-    if (I.starts && I.displaced && !["K","DST","QB"].includes(I.displaced.pos) && (!worst || (rosR(I.displaced)||ROS_MAX) > (rosR(worst)||ROS_MAX)) && !opensHole(me, I.displaced, fa)) return I.displaced;
+    I.later = null;
+    if (I.starts && I.displaced && !["K","DST","QB"].includes(I.displaced.pos) && (!worst || (rosR(I.displaced)||ROS_MAX) > (rosR(worst)||ROS_MAX))){
+      const hw = holeWeek(me, I.displaced, fa);
+      if (!hw) return I.displaced;
+      // Two-step (Jose 2026-11-11, SACK OF WHEAT: Loveland on bye W10, Warren the only TE and he plays Sunday): the starter
+      // is still the right drop, just not before his game. Claim now with a spare bench man, drop the starter Tuesday.
+      // Only when the block is THIS week — a starter who covers next week's byes stays off the ladder entirely.
+      if (hw==="this" && worst) I.later = I.displaced;
+    }
     return worst;
   }
   function dropVerdict(fa, drop, imp){
     if (!drop) return { key:"none", text:"no one to drop" };
-    const rosDelta = (rosR(drop)||ROS_MAX) - (rosR(fa)||ROS_MAX);
     const I = (imp && !["K","DST","QB"].includes(fa.pos)) ? imp : null;
+    // Two-step: `later` is the starter who goes Tuesday (the yardstick for the season-long rule); `drop` is the interim bench man.
+    const later = (I && I.later && I.later.n!==drop.n) ? I.later : null;
+    const ref = later || drop;
+    const rosDelta = (rosR(ref)||ROS_MAX) - (rosR(fa)||ROS_MAX);
     const starts = !!(I && I.starts), displaced = I && I.displaced ? I.displaced.name : null;
-    const over = starts ? (displaced && displaced!==drop.name ? " · starts over "+displaced+" (he goes to your bench)" : displaced ? " · starts in his slot" : " · fills an empty starting slot") : " · bench depth only";
-    const seasonRaw = (fa.seasonProj!=null && drop.seasonProj!=null) ? fa.seasonProj - drop.seasonProj : null;
+    const over = later ? " · starts over "+later.name+" from W"+(S.week+1)+" — two-step: "+later.name+" plays this week and "+fa.name+(fa.onBye?" is on bye W"+S.week:" can't play this week")+", so drop "+drop.name+" now and "+later.name+" on Tuesday"
+               : starts ? (displaced && displaced!==drop.name ? " · starts over "+displaced+" (he goes to your bench)" : displaced ? " · starts in his slot" : " · fills an empty starting slot") : " · bench depth only";
+    const seasonRaw = (fa.seasonProj!=null && ref.seasonProj!=null) ? fa.seasonProj - ref.seasonProj : null;
     const seasonDelta = seasonRaw==null ? null : (Math.abs(seasonRaw) < 1 ? Math.round(seasonRaw*10)/10 : Math.round(seasonRaw));
     const seasonOk = seasonRaw==null || seasonRaw >= 0;   // unrounded, same test the suggestion box uses
     if (["K","DST"].includes(fa.pos)){
@@ -1706,13 +1731,13 @@
       if (rosDelta > 0 && seasonOk) return { key:"marginal", rosDelta, seasonDelta, text:"marginal over "+drop.name+" (+"+rosDelta+" ROS spots) — watch him, not worth the churn yet" };
       return { key:"rental", rosDelta, seasonDelta, text:"1-week rental — only if your QB is out or on bye" };
     }
-    if (rosDelta >= ROS_MARGIN && seasonOk) return { key:"add", rosDelta, seasonDelta, starts, displaced, text:"ADD: +"+rosDelta+" ROS spots over "+drop.name+(seasonDelta!=null?", +"+seasonDelta+" season pts":"")+over };
-    if (rosDelta > 0 && seasonOk) return { key:"marginal", rosDelta, seasonDelta, starts, displaced, text:"marginal: +"+rosDelta+" ROS spots over "+drop.name+(seasonDelta!=null?", +"+seasonDelta+" season pts":"")+over+" — not worth the churn" };
+    if (rosDelta >= ROS_MARGIN && seasonOk) return { key:"add", rosDelta, seasonDelta, starts, displaced, later, text:"ADD: +"+rosDelta+" ROS spots over "+ref.name+(seasonDelta!=null?", +"+seasonDelta+" season pts":"")+over };
+    if (rosDelta > 0 && seasonOk) return { key:"marginal", rosDelta, seasonDelta, starts, displaced, later, text:"marginal: +"+rosDelta+" ROS spots over "+ref.name+(seasonDelta!=null?", +"+seasonDelta+" season pts":"")+over+" — not worth the churn" };
     // The two season-long sources disagree. Not an ADD (the rule needs both), but not silent either — a starter-level
     // upgrade on FantasyPros' number is a judgment call Jose should see, not a "pass" buried in the table.
-    if (rosDelta >= ROS_MARGIN) return { key:"split", rosDelta, seasonDelta, starts, displaced, text:"split — FantasyPros says yes (+"+rosDelta+" ROS spots over "+drop.name+over+") but ESPN's season projection says no ("+seasonDelta+" pts); your call" };
-    if (rosDelta > 0) return { key:"pass", rosDelta, seasonDelta, starts, displaced, text:"pass — ESPN season projection says no ("+seasonDelta+" pts)" };
-    return { key:"pass", rosDelta, seasonDelta, starts, displaced, text:"pass — worse than "+drop.name+" for the season ("+rosDelta+" spots)" };
+    if (rosDelta >= ROS_MARGIN) return { key:"split", rosDelta, seasonDelta, starts, displaced, later, text:"split — FantasyPros says yes (+"+rosDelta+" ROS spots over "+ref.name+over+") but ESPN's season projection says no ("+seasonDelta+" pts); your call" };
+    if (rosDelta > 0) return { key:"pass", rosDelta, seasonDelta, starts, displaced, later, text:"pass — ESPN season projection says no ("+seasonDelta+" pts)" };
+    return { key:"pass", rosDelta, seasonDelta, starts, displaced, later, text:"pass — worse than "+ref.name+" for the season ("+rosDelta+" spots)" };
   }
   // Open roster spot: the best free agents become FREE adds (no drop). The "add" tier is the free agents who beat
   // your weakest spareable bench player for the season, or the 10 best on the wire regardless — a spot is a spot —
@@ -1742,7 +1767,7 @@
       if (free.has(f.n)){ const verdict = freeVerdict(me, bench, f, imp); const d = waiverChamp(me, f, null, true); if (d!=null) verdict.dChamp = d; return { fa:f, drop:null, verdict }; }
       const drop = dropCandidate(bench, me, f, imp); const verdict = dropVerdict(f, drop, imp);
       if (drop && !["K","DST"].includes(f.pos)){ const d = waiverChamp(me, f, drop, true); if (d!=null) verdict.dChamp = d; }
-      if (!["K","DST","QB"].includes(f.pos)){ const kept = keptForNextWeek(bench, me, f); if (kept.length){ verdict.kept = kept; const nv = nextWeekView(me); verdict.text += " · "+kept.map(p=>p.name).join(", ")+" kept — "+(kept.length>1?"they start":"he starts")+" W"+(nv?nv.week:"?")+(nv && nv.out.length?" ("+nv.out.map(p=>p.name).join(", ")+" on bye)":"")+(f.bye===(nv&&nv.week)?"; "+f.name+" is on bye that week too":""); } }
+      if (!["K","DST","QB"].includes(f.pos)){ const kept = keptForNextWeek(bench, me, f); if (kept.length){ verdict.kept = kept; verdict.text += " · "+keptNote(kept, me, f, false); } }
       return { fa:f, drop, verdict }; });
   }
   // ---- One-week rentals at RB/WR/TE/QB (Jose 2026-11-01, SACK OF WHEAT: Breece Hall questionable with no other RB) ----
@@ -2087,10 +2112,13 @@
           h += "<div class='suggest'><b>Priority "+pri+"</b> · ➕ Add "+player(s.add)+" &nbsp;➖ Drop <span class='muted'>nobody — open roster spot</span>"+timingHtml(s.add,false)+(s.need?" <span class='tag good'>fills a need: "+s.add.pos+"</span>":"")+(s.starts?" <span class='tag good'>would start"+(s.displaced && s.displaced!==(s.ref&&s.ref.name)?" over "+esc(s.displaced):"")+"</span>":"")+fold("why", (s.backup?"":title)+vs+" · "+back+(s.fit?"<br><span class='tag warn'>"+esc(s.fit)+"</span>":"")+byeFitLine(s.add, NV)+timingNote(s.add))+"</div>";
           return;
         }
-        let note = (s.dChamp!=null ? "title "+pp(s.dChamp)+(s.dChamp===0?" (depth only — doesn't crack your starting nine)":"")+" · " : "")+"+"+s.gain+" rest-of-season spots"+(s.seasonDelta!=null?" · "+(s.seasonDelta>=0?"+":"")+s.seasonDelta+" projected season points":" · ESPN season projection missing for one of them")+" — "+(s.agree?"both sources agree":"rank only");
+        let note = (s.dChamp!=null ? "title "+pp(s.dChamp)+(s.dChamp===0?" (depth only — doesn't crack your starting nine)":"")+" · " : "")+"+"+s.gain+" rest-of-season spots"+(s.later?" over "+esc(s.later.name):"")+(s.seasonDelta!=null?" · "+(s.seasonDelta>=0?"+":"")+s.seasonDelta+" projected season points":" · ESPN season projection missing for one of them")+" — "+(s.agree?"both sources agree":"rank only");
+        // Two-step: the starter he replaces plays this week and the add doesn't (bye / out), so the claim spends a spare
+        // bench man now and the starter goes Tuesday — the slot is never empty on game day.
+        if (s.later) note = "<b>Two-step.</b> "+esc(s.later.name)+" is your "+s.later.pos+" this week and "+esc(s.add.name)+(s.add.onBye?" is on bye W"+S.week:" can't play this week")+" — dropping him now leaves that slot empty on game day. Drop "+esc(s.drop.name)+" now (bench, not in this week's lineup); <b>Tuesday, drop "+esc(s.later.name)+"</b>"+(s.drop.pos!==s.add.pos?" and re-add a "+s.drop.pos+" from the wire if you want the depth back":"")+". · "+note;
         if (s.chain && !s.chain.worth) note += " · no backup row: if "+esc(s.drop.name)+" is already gone, the next man up ("+esc(s.chain.drop.name)+" #"+s.chain.drop.ros+") isn't worth dropping for him, so this claim just fails";
-        if (s.kept && s.kept.length) note += " · <b>"+esc(s.kept.map(p=>p.name).join(", "))+" kept</b> — "+(s.kept.length>1?"they start":"he starts")+" W"+(NV?NV.week:"?")+(NV && NV.out.length?" ("+esc(NV.out.map(p=>p.name).join(", "))+" on bye)":"")+", off the drop ladder for this add";
-        h += "<div class='suggest'><b>Priority "+pri+"</b> · ➕ Add "+player(s.add)+" &nbsp;➖ Drop "+player(s.drop,true)+(s.need?" <span class='tag good'>fills a need: "+s.add.pos+"</span>":"")+timingHtml(s.add,false)+fold("why", note+(s.fit?"<br><span class='tag warn'>"+esc(s.fit)+"</span>":"")+byeFitLine(s.add, NV)+timingNote(s.add))+"</div>";
+        if (s.kept && s.kept.length) note += " · "+keptNote(s.kept, me, s.add, true);
+        h += "<div class='suggest'><b>Priority "+pri+"</b> · ➕ Add "+player(s.add)+" &nbsp;➖ Drop "+player(s.drop,true)+(s.later?" <span class='tag warn'>two-step · "+esc(s.later.name)+" goes Tuesday</span>":"")+(s.need?" <span class='tag good'>fills a need: "+s.add.pos+"</span>":"")+timingHtml(s.add,false)+fold("why", note+(s.fit?"<br><span class='tag warn'>"+esc(s.fit)+"</span>":"")+byeFitLine(s.add, NV)+timingNote(s.add))+"</div>";
         if (s.chain && s.chain.worth){
           pri++;
           h += "<div class='suggest'><b>Priority "+pri+"</b> · ➕ Add "+player(s.add)+" &nbsp;➖ Drop "+player(s.chain.drop,true)+timingHtml(s.add,false)+" <span class='tag good'>backup for Priority "+(pri-1)+"</span>"+fold("why", "Fires when "+esc(s.drop.name)+" is already gone; still +"+s.chain.verdict.rosDelta+" ROS spots"+(s.chain.samePos?" · straight "+s.chain.drop.pos+"-for-"+s.chain.drop.pos+" swap":""))+"</div>";
@@ -2793,14 +2821,34 @@
   // Odunze/Coleman who are THEMSELVES on bye W10. The next-week check looked at the roster WITH Kamara, said "bench
   // covers it", then the ladder sold the cover.) General rule, every team, every position: a swap may never leave next
   // week's lineup with more empty slots than it has now. Same-position adds who play next week pass; bye-week adds fail.
-  const NW_BASE = new WeakMap();
-  function opensHole(me, drop, fa){
-    if (!drop || !fa || !S || S.week==null) return false;
+  // 2026-11-11 (Jose, SACK OF WHEAT: "cannot drop Warren bc Loveland is on bye"): Knight Moves dropped Loveland (TE, CHI,
+  // bye W10) on a Wednesday morning; the sheet read him as a season-long TE upgrade and spent Tyler Warren — the only TE,
+  // who plays Sunday — because this check only looked at NEXT week. Same rule now covers THIS week: a swap may never
+  // leave this week's lineup (games not yet kicked) with more empty slots than it has now. A bye / out / zero-projection
+  // add fills nothing this week. The starter stays the right drop — see the two-step in dropCandidate.
+  const NW_BASE = new WeakMap(), TW_BASE = new WeakMap();
+  function opensHole(me, drop, fa){ return holeWeek(me, drop, fa) != null; }
+  // "this" | "next" | null — which week the swap would leave emptier (this week checked first).
+  function holeWeek(me, drop, fa){
+    if (!drop || !fa || !S || S.week==null) return null;
+    if (weekLive() && !drop.locked){
+      let tb = TW_BASE.get(me); if (tb==null){ tb = thisWeekHoles(me).length; TW_BASE.set(me, tb); }
+      if (tb < 9 && thisWeekHoles(me.filter(p=>p.n!==drop.n).concat([fa])).length > tb) return "this";
+    }
     let base = NW_BASE.get(me); if (base==null){ const nv = nextWeekView(me); base = nv ? nv.holes.length : 0; NW_BASE.set(me, base); }
-    if (base >= 9) return false;
+    if (base >= 9) return null;
     const nv2 = nextWeekView(me.filter(p=>p.n!==drop.n).concat([fa]));
-    return !!nv2 && nv2.holes.length > base;
+    return (!!nv2 && nv2.holes.length > base) ? "next" : null;
   }
+  // This week's empty starting slots. Bye / out / zero-projection men fill nothing (a Doubtful WR projecting 0.0 "fills"
+  // FLEX on paper and scores nothing — that is a hole); without projections the weekly rank decides who can play.
+  function thisWeekHoles(players){
+    const key = lineupKey();
+    const usable = players.filter(p=> P ? (p.mu!=null && p.mu > 0) : (!p.onBye && p[key]!=null));
+    return optimalLineup(usable, key).slots.filter(s=>!s.p).map(s=>s.slot);
+  }
+  // Does this week still have games to play? Once every game is final only next week matters.
+  function weekLive(){ const gs = P && P.games ? Object.values(P.games) : []; return !gs.length || gs.some(g=>g && g.state!=="post"); }
   // Does a free agent cover a next-week hole? Position match (FLEX takes any RB/WR/TE) and not himself on bye that week.
   function coversNextWeek(f, nv){ return !!(nv && nv.holes.some(h=> (h==="FLEX" ? FLEX.includes(f.pos) : h.replace(/\d$/,"")===f.pos)) ); }
   function byeFitLine(f, nv){
@@ -3025,7 +3073,7 @@
     weeklyStreamClaims:()=>{ const me = myTeam(); return weeklyStreamClaims(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
     weeklyStreamStatus:()=>{ const me = myTeam(); return weeklyStreamStatus(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
     streamStatusRaw:(me,fa,wkey)=>weeklyStreamStatus(me, fa, wkey||"mu"), ROSTER_ACTIVE, STREAM_BAR, STREAM_TIE, openSpots, activeCount, IR_SLOTS, isOut, irMoves, outSpots, parkable, backDate,
-    dropOrder:()=>{ const me = myTeam(); const bench = ladderBench(me); return dropOrder(me, bench); }, fitNote, scarcityPool, ladderBench, lineupImpact, dropCandidate, dropVerdict, opensHole, keptForNextWeek,
+    dropOrder:()=>{ const me = myTeam(); const bench = ladderBench(me); return dropOrder(me, bench); }, fitNote, scarcityPool, ladderBench, lineupImpact, dropCandidate, dropVerdict, opensHole, holeWeek, thisWeekHoles, weekLive, keptNote, keptForNextWeek,
     winProbAt, winProbSeries, winLogPoints, setWinLog:(w)=>{ WPL=w||null; }, wouldStartHealthy, rentalImpact, setWaiverSub:(sub,pos)=>{ if (sub) WSUB = sub; if (pos!=null) WALLPOS = pos; renderWaivers(); }, getWaiverSub:()=>({ sub:WSUB, pos:WALLPOS }), topScorersThisWeek:(qb)=>{ const me = myTeam(); return topScorersThisWeek(me, freeAgents().filter(p=>!undraftable(p)), lineupKey(), !!qb); }, TOP_WEEK, TOP_WEEK_QB, rentalRows:(pos)=>rentalRows(myTeam(), freeAgents().filter(p=>!undraftable(p)), pos, lineupKey()), shakyStarters:()=>weekStarters(myTeam(), lineupKey()).filter(s=>shaky(s.p) && !["K","DST"].includes(s.p.pos)), STREAM_ROWS,
     setTeamParam:(qs)=>{ applyTeamParam(qs); buildIndex(); renderAll(); },
     benchSkill:()=>{ const me = myTeam(); const bench = ladderBench(me); return bench.filter(p=>!["K","DST"].includes(p.pos)); },

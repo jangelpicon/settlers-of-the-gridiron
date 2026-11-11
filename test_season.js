@@ -629,6 +629,44 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
       espnPool.waivers = pool0; }
   }
 
+  // ---- This-week hole guard + two-step claim (Jose 2026-11-11, SACK OF WHEAT: "cannot drop Warren bc Loveland is on bye") ----
+  // Knight Moves dropped Loveland (TE, bye W10) Wednesday morning; the sheet spent Tyler Warren — SOW's only TE, who plays
+  // Sunday — because opensHole only looked at next week. Rule: a swap never leaves THIS week's lineup emptier either; when
+  // the starter is still the right drop, the claim spends a spare bench man now and names the starter for Tuesday.
+  console.log("== This-week hole guard: a bye-week add never spends the man who holds that slot this week ==");
+  { const mk = (name, pos, bye, ros, mu, extra) => ({ name, n: name.toLowerCase().replace(/[^a-z]/g, ""), pos, team: "X", bye, ros, srcs: [1, 2], pPlay: 1, onBye: false, mu, wkRank: ros, ...(extra || {}) });
+    const tw = season.week, done = season.week - 1;
+    const me4 = [mk("Qb One", "QB", done, 5, 20), mk("Rb One", "RB", done, 10, 15), mk("Rb Two", "RB", done, 12, 14), mk("Wr One", "WR", done, 3, 16), mk("Wr Two", "WR", done, 4, 15), mk("Te Only", "TE", done, 95, 11, { seasonProj: 80 }), mk("Dst One", "DST", done, 300, 7), mk("K One", "K", done, 200, 8),
+      mk("Wr Flex", "WR", done, 20, 13), mk("Rb Third", "RB", done, 30, 9), mk("Wr Bye", "WR", tw, 56, 0, { onBye: true, pPlay: 0, seasonProj: 90 }), mk("Wr Spare", "WR", done, 60, 8, { seasonProj: 85 }), mk("Qb Spare", "QB", done, 50, 18)];
+    const teBye = mk("Te Bye Add", "TE", tw, 62, 0, { onBye: true, pPlay: 0, seasonProj: 98 }), tePlays = mk("Te Plays Add", "TE", done, 62, 12, { seasonProj: 98 });
+    const teOnly = me4.find(p => p.name === "Te Only"), wrBye = me4.find(p => p.name === "Wr Bye");
+    assert(T.weekLive() && T.thisWeekHoles(me4).length === 0, "synthetic: games still to play, full lineup this week, no holes");
+    assert(T.holeWeek(me4, teOnly, teBye) === "this" && T.opensHole(me4, teOnly, teBye), "synthetic: dropping the only TE for a TE on bye this week opens a TE hole THIS week");
+    assert(T.holeWeek(me4, teOnly, tePlays) == null, "synthetic: dropping him for a TE who plays this week opens nothing");
+    assert(T.holeWeek(me4, wrBye, teBye) == null, "synthetic: a bench WR on bye this week is spendable (not in this week's lineup, not a next-week cover)");
+    const ladder4 = T.ladderBench(me4), imp4 = T.lineupImpact(me4, teBye);
+    assert(imp4.starts && imp4.displaced && imp4.displaced.n === teOnly.n, "synthetic: the bye-week TE would start over the only TE (rest-of-season lens)");
+    const dc4 = T.dropCandidate(ladder4, me4, teBye, imp4), v4 = T.dropVerdict(teBye, dc4, imp4);
+    assert(dc4 && dc4.n !== teOnly.n && T.thisWeekHoles(me4.filter(p => p.n !== dc4.n).concat([teBye])).length === 0, "synthetic: the drop is NOT the TE who plays this week (" + (dc4 && dc4.name) + ") and this week's lineup stays full");
+    assert(v4.key === "add" && v4.later && v4.later.n === teOnly.n && v4.rosDelta === 33 && /two-step/.test(v4.text) && /Tuesday/.test(v4.text), "synthetic: two-step verdict — judged vs the TE who goes Tuesday (+33 ROS, ESPN agrees), text says drop now / Tuesday (" + v4.key + ", " + v4.rosDelta + ")");
+    const imp4b = T.lineupImpact(me4, tePlays), dc4b = T.dropCandidate(ladder4, me4, tePlays, imp4b);
+    assert(dc4b && dc4b.n === teOnly.n && !imp4b.later, "synthetic: when the add plays this week the starter is the drop, no two-step (" + (dc4b && dc4b.name) + ")");
+    // every team, every claim row on the sheet: this week's lineup is never left emptier (same invariant as next week)
+    let checked = 0;
+    Object.keys(rosters.teams).forEach(t => { T.setTeamParam("team=" + encodeURIComponent(t)); const tm = T.getRosters().teams[t].map(T.info); const base = T.thisWeekHoles(tm).length; const LS4 = T.lastSheet();
+      LS4.sugg.filter(sg => sg.drop).forEach(sg => { checked++; const after = T.thisWeekHoles(tm.filter(p => p.n !== sg.drop.n).concat([sg.add])).length;
+        assert(after <= base, t + ": add " + sg.add.name + " / drop " + sg.drop.name + " leaves this week's lineup no emptier (" + after + " ≤ " + base + ")");
+        if (sg.later) assert(sg.later.n !== sg.drop.n && T.thisWeekHoles(tm.filter(p => p.n !== sg.later.n).concat([sg.add])).length > base, t + ": two-step row names a starter (" + sg.later.name + ") whose drop WOULD empty a slot this week"); }); });
+    console.log("  this-week invariant checked on " + checked + " claim rows across " + Object.keys(rosters.teams).length + " teams");
+    // live, guarded: the exact 11/11 question while the snapshot still carries it (Loveland a bye-week free agent, Warren SOW's only TE)
+    const sow = Object.keys(rosters.teams).find(t => /SACK OF WHEAT/i.test(t));
+    if (sow) { T.setTeamParam("team=" + encodeURIComponent(sow)); const tmS = T.getRosters().teams[sow].map(T.info); const warS = tmS.find(p => /Tyler Warren/.test(p.name)); const lov = T.freeAgents().find(f => /Colston Loveland/.test(f.name));
+      if (warS && lov && lov.onBye && tmS.filter(p => p.pos === "TE").length === 1 && warS.mu > 0) {
+        const LSS = T.lastSheet(), row = LSS.sugg.find(sg => sg.add.n === lov.n), wtS = d.getElementById("tab-waivers").textContent.replace(/\s+/g, " ");
+        assert(row && row.drop && row.drop.n !== warS.n && row.later && row.later.n === warS.n, "SACK OF WHEAT: the Loveland claim keeps Warren this week (drop " + (row && row.drop && row.drop.name) + ", Warren goes Tuesday)");
+        assert(!/Drop Tyler Warren/.test(wtS) && /two-step · Tyler Warren goes Tuesday/.test(wtS), "SACK OF WHEAT sheet never says 'Drop Tyler Warren' and carries the two-step tag");
+      } else console.log("  (SOW fixture skipped: Loveland not a bye-week free agent / Warren not the only TE in this snapshot)"); }
+    T.setTeamParam("team=" + encodeURIComponent(rosters.me)); }
   console.log("== Waivers: explanations fold behind a tap (Jose 2026-11-04: 'huge wall of text') ==");
   { const wtab = d.getElementById("tab-waivers");
     const folds = [...wtab.querySelectorAll("details.why")];
