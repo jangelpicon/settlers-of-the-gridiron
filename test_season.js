@@ -200,6 +200,18 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
       assert(T.winProbSeries(mine, theirs, keyM).length === base.length, "clearing the log restores the kickoff walk");
     } else console.log("  (sat week — log merge test skipped)"); }
   console.log("== Waivers: one-week rentals at every position (Jose 2026-11-01, SACK OF WHEAT: Hall questionable) ==");
+  // Top scorers this week, all positions in one list (Jose 2026-11-10: "for cases where I need a streamer")
+  { const top = T.topScorersThisWeek(), faN = new Set(T.freeAgents().map(p => p.n)), wt = d.getElementById("tab-waivers").textContent.replace(/\s+/g, " ");
+    assert(/Top scorers this week \(Week \d+, all positions\)/.test(wt), "the Waivers tab has a Top scorers this week list");
+    assert(top.length > 0 && top.length <= T.TOP_WEEK && top.every(p => faN.has(p.n) && !p.onBye && p.pPlay > 0 && !T.liveState(p) && p.mu != null), "top scorers are free agents who can still be added this week (" + top.length + " rows)");
+    assert(top.every((p, i) => i === 0 || top[i - 1].mu >= p.mu), "top scorers are ordered by this-week projection, best first (" + top.slice(0, 3).map(p => p.name + " " + p.mu.toFixed(1)).join(" > ") + ")");
+    assert(new Set(top.map(p => p.pos)).size >= 2, "the list mixes positions (" + [...new Set(top.map(p => p.pos))].join("/") + ")");
+    const best = T.freeAgents().filter(p => p.mu != null && !p.onBye && p.pPlay > 0 && !T.liveState(p)).sort((a, b) => b.mu - a.mu)[0];
+    assert(best && top[0].n === best.n, "the list leads with the single best projection on the wire (" + best.name + ")");
+    const sec = wt.slice(wt.indexOf("Top scorers this week"), wt.indexOf("One-week streamers"));
+    assert(top.every(p => sec.includes(p.name)) && sec.indexOf(top[0].name) < sec.indexOf(top[top.length - 1].name), "every top scorer is rendered in the list, in order");
+    const rows = [...d.querySelectorAll("#tab-waivers .row.grid")].filter(r => rx(top[0].name).test(r.textContent));
+    assert(rows.length > 0 && /starts this week|starts only if|bench this week/.test(rows[0].textContent), "each row carries the starts-for-you tag"); }
   // live: RB / WR / TE each get a streamer table, best this-week projection first, startable players only
   ["RB","WR","TE"].forEach(pos => {
     const rows = T.rentalRows(pos);

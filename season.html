@@ -1757,6 +1757,11 @@
   const rentable = (p, pos) => p.pos===pos && p[lineupKey()]!=null && !p.onBye && p.pPlay>0 && !liveState(p);
   // The wire at one position, best this-week projection first (rank when projections are off). This is the table order.
   function rentalRows(me, fa, pos, wkey){ return fa.filter(p=>rentable(p, pos)).sort((a,b)=> wkey==="mu" ? b.mu-a.mu : a.wkRank-b.wkRank).slice(0, STREAM_ROWS); }
+  // Top scorers on the wire this week, every position in one list (Jose 2026-11-10: "a new list on the waiver tab, top
+  // scorers for this week, for cases where I need a streamer"). Projection mode only — weekly ranks are per position
+  // (QB/K/DST within their own), so there is no honest cross-position order without predicted points.
+  const TOP_WEEK = 15;
+  function topScorersThisWeek(me, fa, wkey){ if (wkey!=="mu") return []; return fa.filter(p=>rentable(p, p.pos)).sort((a,b)=>b.mu-a.mu).slice(0, TOP_WEEK); }
   // now: he cracks this week's lineup as-is (whom he pushes out, points gained). ifSit: my shaky starters who could
   // leave him a slot (same position, or any RB/WR/TE for a flex player) all sit — does he start then, and is the slot
   // he takes one that would otherwise be EMPTY (no bench player at the position)? Gains are null without projections.
@@ -2110,6 +2115,30 @@
       const dcounts = {}; dorder.forEach(p=>{ dcounts[p.pos]=(dcounts[p.pos]||0)+1; });
       dorder.forEach((p,i)=>{ h += "<div class='suggest'>➖ <b>#"+(i+1)+" "+esc(p.name)+"</b> <span class='muted'>"+p.pos+" · ROS "+(p.ros!=null?"#"+p.ros:"unranked")+(p.seasonProj!=null?" · "+p.seasonProj.toFixed(0)+" season pts":"")+(p.inj?" · "+esc(p.inj.code):"")+(p.bye!=null?" · bye "+p.bye:"")+"</span>"+(dcounts[p.pos]===1?" <span class='tag warn'>only "+p.pos+" on your bench — drops only for another "+p.pos+"</span>":"")+(isOut(p)?" <span class='tag warn'>OUT"+(p.injNote?" · "+esc(p.injNote):"")+" — zero this week"+(irMoves(me).includes(p)?"; park him on IR instead of dropping":"")+"</span>":"")+"</div>"; });
     }
+    // One decoration for every rental row (shared by the all-positions list and the per-position tables): the lineup
+    // tag (starts / starts only if X sits / bench), the instant-add warning, and — for skill positions that are not a
+    // season-long add — the "1-week rental" verdict. K/DST keep the stream rule's own verdict (one rule, two surfaces).
+    const rentalDecor = (b)=>{
+      const ri = rentalImpact(me, b.fa, wkey), names = xs => xs.map(x=>esc(x.name)).join(" and ");
+      const late = kicksBeforeClaim(b.fa) ? " <span class='tag warn' title='Instant add only: a free agent can be added until his game kicks; a waiver claim filed now lands after it.'>⚠ kicks "+esc(kickText(b.fa.game))+" — instant add only</span>" : "";
+      const tag = (ri.now ? "<span class='tag good'>starts this week"+(ri.now.displaced ? " over "+esc(ri.now.displaced.name) : " — fills your empty "+ri.now.slot)+(ri.now.gain!=null?" · +"+ri.now.gain.toFixed(1):"")+"</span>"
+        : ri.ifSit ? "<span class='tag warn'>starts only if "+names(ri.ifSit.risky)+" sit"+(ri.ifSit.risky.length>1?"":"s")+(ri.ifSit.fillsEmpty ? " — fills an empty "+ri.ifSit.slot : ri.ifSit.displaced ? " (over "+esc(ri.ifSit.displaced.name)+")" : "")+(ri.ifSit.gain!=null?" · +"+ri.ifSit.gain.toFixed(1):"")+"</span>"
+        : "<span class='tag'>bench this week</span>") + late;
+      if (!["K","DST"].includes(b.fa.pos) && !["add","marginal","split"].includes(b.verdict.key) && (ri.now || ri.ifSit) && b.drop){
+        const how = ri.now ? "starts "+ri.now.slot+(ri.now.displaced ? " over "+ri.now.displaced.name : "")+(ri.now.gain!=null?" (+"+ri.now.gain.toFixed(1)+")":"")
+                           : "only if "+ri.ifSit.risky.map(x=>x.name).join(" & ")+" sit"+(ri.ifSit.risky.length>1?"":"s")+(ri.ifSit.fillsEmpty?", fills empty "+ri.ifSit.slot:"")+(ri.ifSit.gain!=null?" (+"+ri.ifSit.gain.toFixed(1)+")":"");
+        b.verdict = Object.assign({}, b.verdict, { key:"rental", text:"1-week rental — "+how+" · drop "+b.drop.name+" (ROS "+(b.drop.ros!=null?"#"+b.drop.ros:"unranked")+(isOut(b.drop)?", out":"")+")" });
+      }
+      return tag;
+    };
+    // ---- Top scorers this week, all positions in one list (Jose 2026-11-10) ----
+    h += "<h3>Top scorers this week (Week "+S.week+", all positions)"+(satThisWeek()?" — you sit this week, informational only":"")+"</h3><div style='margin-bottom:6px'>"+fold("how to read this", "The "+TOP_WEEK+" best this-week projections on the wire, every position together, for when you need a streamer and don't care where he plays. Only players who can still be added for this week (not on bye, not out, game not started). The tag says whether he'd start for you right now and over whom; \"Drop for him\" is the same ladder as everywhere else. One-week projection only — a season-long upgrade shows on the claim sheet above, not here.")+"</div>";
+    { const top = topScorersThisWeek(me, fa, wkey);
+      h += "<div class='tbl'><div class='gw'>"+waiverHeader();
+      if (!P) h += "<div class='row grid'><span class='muted' style='grid-column:1 / -1'>needs projections — weekly ranks are per position, so there is no cross-position order without predicted points</span></div>";
+      else if (!top.length) h += "<div class='row grid'><span class='muted' style='grid-column:1 / -1'>nobody on the wire can still be added for this week</span></div>";
+      else waiverBoard(me, bench, top).forEach(b=>{ h += waiverRow(b, rentalDecor(b)); });
+      h += "</div></div>"; }
     h += "<h3>One-week streamers (Week "+S.week+", by "+(P?"predicted points":"rank")+")"+(satThisWeek()?" — you sit this week, informational only":"")+"</h3><div style='margin-bottom:6px'>"+(satThisWeek()?"<div class='muted'><b>No claim to make this week:</b> you have no matchup, so a Week "+S.week+" streamer scores for nobody. Re-check after Tuesday's refresh for next week.</div>":"")+fold("how to read this", "Best this-week projection first. RB / WR / TE and QB rows are one-week rentals — the tag says if he'd <b>start for you now</b>, <b>only if your questionable starter sits</b>, or not at all. K / DST are meant to be streamed. The drop named is your least-valuable spare, never a reason to drop a season-long asset.")+"</div>";
     FLEX.forEach(pos=>{
       const starters = weekStarters(me, wkey).filter(s=>s.p.pos===pos);
@@ -2117,19 +2146,7 @@
       const rows = rentalRows(me, fa, pos, wkey);
       h += "<div class='muted' style='margin:6px 0 2px'><b>"+pos+"</b> — yours: "+yours+"</div><div class='tbl'><div class='gw'>"+waiverHeader();
       if (!rows.length) h += "<div class='row grid'><span class='muted' style='grid-column:1 / -1'>nobody on the wire at "+pos+" with a game this week</span></div>";
-      waiverBoard(me, bench, rows).forEach(b=>{
-        const ri = rentalImpact(me, b.fa, wkey), names = xs => xs.map(x=>esc(x.name)).join(" and ");
-        const late = kicksBeforeClaim(b.fa) ? " <span class='tag warn' title='Instant add only: a free agent can be added until his game kicks; a waiver claim filed now lands after it.'>⚠ kicks "+esc(kickText(b.fa.game))+" — instant add only</span>" : "";
-        const tag = (ri.now ? "<span class='tag good'>starts this week"+(ri.now.displaced ? " over "+esc(ri.now.displaced.name) : " — fills your empty "+ri.now.slot)+(ri.now.gain!=null?" · +"+ri.now.gain.toFixed(1):"")+"</span>"
-          : ri.ifSit ? "<span class='tag warn'>starts only if "+names(ri.ifSit.risky)+" sit"+(ri.ifSit.risky.length>1?"":"s")+(ri.ifSit.fillsEmpty ? " — fills an empty "+ri.ifSit.slot : ri.ifSit.displaced ? " (over "+esc(ri.ifSit.displaced.name)+")" : "")+(ri.ifSit.gain!=null?" · +"+ri.ifSit.gain.toFixed(1):"")+"</span>"
-          : "<span class='tag'>bench this week</span>") + late;
-        if (!["add","marginal","split"].includes(b.verdict.key) && (ri.now || ri.ifSit) && b.drop){
-          const how = ri.now ? "starts "+ri.now.slot+(ri.now.displaced ? " over "+ri.now.displaced.name : "")+(ri.now.gain!=null?" (+"+ri.now.gain.toFixed(1)+")":"")
-                             : "only if "+ri.ifSit.risky.map(x=>x.name).join(" & ")+" sit"+(ri.ifSit.risky.length>1?"":"s")+(ri.ifSit.fillsEmpty?", fills empty "+ri.ifSit.slot:"")+(ri.ifSit.gain!=null?" (+"+ri.ifSit.gain.toFixed(1)+")":"");
-          b.verdict = Object.assign({}, b.verdict, { key:"rental", text:"1-week rental — "+how+" · drop "+b.drop.name+" (ROS "+(b.drop.ros!=null?"#"+b.drop.ros:"unranked")+(isOut(b.drop)?", out":"")+")" });
-        }
-        h += waiverRow(b, tag);
-      });
+      waiverBoard(me, bench, rows).forEach(b=>{ h += waiverRow(b, rentalDecor(b)); });
       h += "</div></div>";
     });
     ["QB","DST","K"].forEach(pos=>{
@@ -2992,7 +3009,7 @@
     weeklyStreamStatus:()=>{ const me = myTeam(); return weeklyStreamStatus(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
     streamStatusRaw:(me,fa,wkey)=>weeklyStreamStatus(me, fa, wkey||"mu"), ROSTER_ACTIVE, STREAM_BAR, STREAM_TIE, openSpots, activeCount, IR_SLOTS, isOut, irMoves, outSpots, parkable, backDate,
     dropOrder:()=>{ const me = myTeam(); const bench = ladderBench(me); return dropOrder(me, bench); }, fitNote, scarcityPool, ladderBench, lineupImpact, dropCandidate, dropVerdict, opensHole, keptForNextWeek,
-    winProbAt, winProbSeries, winLogPoints, setWinLog:(w)=>{ WPL=w||null; }, wouldStartHealthy, rentalImpact, rentalRows:(pos)=>rentalRows(myTeam(), freeAgents().filter(p=>!undraftable(p)), pos, lineupKey()), shakyStarters:()=>weekStarters(myTeam(), lineupKey()).filter(s=>shaky(s.p) && !["K","DST"].includes(s.p.pos)), STREAM_ROWS,
+    winProbAt, winProbSeries, winLogPoints, setWinLog:(w)=>{ WPL=w||null; }, wouldStartHealthy, rentalImpact, topScorersThisWeek:()=>{ const me = myTeam(); return topScorersThisWeek(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); }, TOP_WEEK, rentalRows:(pos)=>rentalRows(myTeam(), freeAgents().filter(p=>!undraftable(p)), pos, lineupKey()), shakyStarters:()=>weekStarters(myTeam(), lineupKey()).filter(s=>shaky(s.p) && !["K","DST"].includes(s.p.pos)), STREAM_ROWS,
     setTeamParam:(qs)=>{ applyTeamParam(qs); buildIndex(); renderAll(); },
     benchSkill:()=>{ const me = myTeam(); const bench = ladderBench(me); return bench.filter(p=>!["K","DST"].includes(p.pos)); },
     waiverBoard:(list)=>{ const me = myTeam(); const bench = ladderBench(me); return waiverBoard(me, bench, list || freeAgents().filter(p=>!undraftable(p))); } };
