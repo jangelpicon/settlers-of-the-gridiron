@@ -639,7 +639,11 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     const me4 = [mk("Qb One", "QB", done, 5, 20), mk("Rb One", "RB", done, 10, 15), mk("Rb Two", "RB", done, 12, 14), mk("Wr One", "WR", done, 3, 16), mk("Wr Two", "WR", done, 4, 15), mk("Te Only", "TE", done, 95, 11, { seasonProj: 80 }), mk("Dst One", "DST", done, 300, 7), mk("K One", "K", done, 200, 8),
       mk("Wr Flex", "WR", done, 20, 13), mk("Rb Third", "RB", done, 30, 9), mk("Wr Bye", "WR", tw, 56, 0, { onBye: true, pPlay: 0, seasonProj: 90 }), mk("Wr Spare", "WR", done, 60, 8, { seasonProj: 85 }), mk("Qb Spare", "QB", done, 50, 18)];
     const teBye = mk("Te Bye Add", "TE", tw, 62, 0, { onBye: true, pPlay: 0, seasonProj: 98 }), tePlays = mk("Te Plays Add", "TE", done, 62, 12, { seasonProj: 98 });
-    const teOnly = me4.find(p => p.name === "Te Only"), wrBye = me4.find(p => p.name === "Wr Bye");
+    const teOnly = me4.find(p => p.name === "Te Only"), wrBye = me4.find(p => p.name === "Wr Bye"), wrFlex = me4.find(p => p.name === "Wr Flex");
+    // Meyers case: a this-week starter whose slot a bench man would backfill (no hole) is STILL not spendable for a bye-week add
+    assert(T.thisWeekLineup(me4).used.has(wrFlex.n) && T.thisWeekHoles(me4.filter(p => p.n !== wrFlex.n).concat([teBye])).length === 0 && T.holeWeek(me4, wrFlex, teBye) === "this", "synthetic: the FLEX starter is protected from a bye-week add even though Rb Third would backfill the slot (no hole)");
+    assert(T.holeWeek(me4, wrFlex, tePlays) == null, "synthetic: the FLEX starter may go for a TE who plays and starts this week");
+    assert(!T.thisWeekLineup(me4.map(p => p.n === "rbthird" ? { ...p, slot: "IR" } : p).filter(p => p.n !== wrFlex.n)).used.has("rbthird"), "synthetic: a man in the IR slot fills nothing this week (Rb Third parked on IR never backfills FLEX)");
     assert(T.weekLive() && T.thisWeekHoles(me4).length === 0, "synthetic: games still to play, full lineup this week, no holes");
     assert(T.holeWeek(me4, teOnly, teBye) === "this" && T.opensHole(me4, teOnly, teBye), "synthetic: dropping the only TE for a TE on bye this week opens a TE hole THIS week");
     assert(T.holeWeek(me4, teOnly, tePlays) == null, "synthetic: dropping him for a TE who plays this week opens nothing");
@@ -656,14 +660,16 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     Object.keys(rosters.teams).forEach(t => { T.setTeamParam("team=" + encodeURIComponent(t)); const tm = T.getRosters().teams[t].map(T.info); const base = T.thisWeekHoles(tm).length; const LS4 = T.lastSheet();
       LS4.sugg.filter(sg => sg.drop).forEach(sg => { checked++; const after = T.thisWeekHoles(tm.filter(p => p.n !== sg.drop.n).concat([sg.add])).length;
         assert(after <= base, t + ": add " + sg.add.name + " / drop " + sg.drop.name + " leaves this week's lineup no emptier (" + after + " ≤ " + base + ")");
-        if (sg.later) assert(sg.later.n !== sg.drop.n && T.thisWeekHoles(tm.filter(p => p.n !== sg.later.n).concat([sg.add])).length > base, t + ": two-step row names a starter (" + sg.later.name + ") whose drop WOULD empty a slot this week"); }); });
+        const tw = T.thisWeekLineup(tm); if (tw.used.has(sg.drop.n)) assert(T.thisWeekLineup(tm.filter(p => p.n !== sg.drop.n).concat([sg.add])).used.has(sg.add.n), t + ": " + sg.drop.name + " starts this week, so " + sg.add.name + " must take the field this week");
+        if (sg.later) assert(sg.later.n !== sg.drop.n && tw.used.has(sg.later.n) && !T.thisWeekLineup(tm.filter(p => p.n !== sg.later.n).concat([sg.add])).used.has(sg.add.n), t + ": two-step row names a this-week starter (" + sg.later.name + ") for an add who can't play this week"); }); });
     console.log("  this-week invariant checked on " + checked + " claim rows across " + Object.keys(rosters.teams).length + " teams");
     // live, guarded: the exact 11/11 question while the snapshot still carries it (Loveland a bye-week free agent, Warren SOW's only TE)
     const sow = Object.keys(rosters.teams).find(t => /SACK OF WHEAT/i.test(t));
     if (sow) { T.setTeamParam("team=" + encodeURIComponent(sow)); const tmS = T.getRosters().teams[sow].map(T.info); const warS = tmS.find(p => /Tyler Warren/.test(p.name)); const lov = T.freeAgents().find(f => /Colston Loveland/.test(f.name));
       if (warS && lov && lov.onBye && tmS.filter(p => p.pos === "TE").length === 1 && warS.mu > 0) {
         const LSS = T.lastSheet(), row = LSS.sugg.find(sg => sg.add.n === lov.n), wtS = d.getElementById("tab-waivers").textContent.replace(/\s+/g, " ");
-        assert(row && row.drop && row.drop.n !== warS.n && row.later && row.later.n === warS.n, "SACK OF WHEAT: the Loveland claim keeps Warren this week (drop " + (row && row.drop && row.drop.name) + ", Warren goes Tuesday)");
+        const twS = T.thisWeekLineup(tmS);
+        assert(row && row.drop && !twS.used.has(row.drop.n) && row.later && row.later.n === warS.n, "SACK OF WHEAT: the Loveland claim drops nobody who starts this week (drop " + (row && row.drop && row.drop.name) + "; Warren goes Tuesday)");
         assert(!/Drop Tyler Warren/.test(wtS) && /two-step · Tyler Warren goes Tuesday/.test(wtS), "SACK OF WHEAT sheet never says 'Drop Tyler Warren' and carries the two-step tag");
       } else console.log("  (SOW fixture skipped: Loveland not a bye-week free agent / Warren not the only TE in this snapshot)"); }
     T.setTeamParam("team=" + encodeURIComponent(rosters.me)); }

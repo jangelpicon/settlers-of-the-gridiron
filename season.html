@@ -2832,8 +2832,13 @@
   function holeWeek(me, drop, fa){
     if (!drop || !fa || !S || S.week==null) return null;
     if (weekLive() && !drop.locked){
-      let tb = TW_BASE.get(me); if (tb==null){ tb = thisWeekHoles(me).length; TW_BASE.set(me, tb); }
-      if (tb < 9 && thisWeekHoles(me.filter(p=>p.n!==drop.n).concat([fa])).length > tb) return "this";
+      let tw = TW_BASE.get(me); if (tw==null){ tw = thisWeekLineup(me); TW_BASE.set(me, tw); }
+      const after = thisWeekLineup(me.filter(p=>p.n!==drop.n).concat([fa]));
+      // A man in this week's lineup never goes for an add who can't take the field this week (Jose 2026-11-11, Meyers:
+      // Tate flipped OUT→Q with a projection and "covered" the slot on paper from the IR spot — a hole count isn't enough).
+      if (tw.used.has(drop.n) && !after.used.has(fa.n)) return "this";
+      const tb = tw.slots.filter(x=>!x.p).length;
+      if (tb < 9 && after.slots.filter(x=>!x.p).length > tb) return "this";
     }
     let base = NW_BASE.get(me); if (base==null){ const nv = nextWeekView(me); base = nv ? nv.holes.length : 0; NW_BASE.set(me, base); }
     if (base >= 9) return null;
@@ -2842,11 +2847,13 @@
   }
   // This week's empty starting slots. Bye / out / zero-projection men fill nothing (a Doubtful WR projecting 0.0 "fills"
   // FLEX on paper and scores nothing — that is a hole); without projections the weekly rank decides who can play.
-  function thisWeekHoles(players){
+  // A man parked in the IR slot can't be started without a roster move, so he fills nothing here either.
+  function thisWeekLineup(players){
     const key = lineupKey();
-    const usable = players.filter(p=> P ? (p.mu!=null && p.mu > 0) : (!p.onBye && p[key]!=null));
-    return optimalLineup(usable, key).slots.filter(s=>!s.p).map(s=>s.slot);
+    const usable = players.filter(p=> p.slot!=="IR" && (P ? (p.mu!=null && p.mu > 0) : (!p.onBye && p[key]!=null)));
+    return optimalLineup(usable, key);
   }
+  function thisWeekHoles(players){ return thisWeekLineup(players).slots.filter(s=>!s.p).map(s=>s.slot); }
   // Does this week still have games to play? Once every game is final only next week matters.
   function weekLive(){ const gs = P && P.games ? Object.values(P.games) : []; return !gs.length || gs.some(g=>g && g.state!=="post"); }
   // Does a free agent cover a next-week hole? Position match (FLEX takes any RB/WR/TE) and not himself on bye that week.
@@ -3073,7 +3080,7 @@
     weeklyStreamClaims:()=>{ const me = myTeam(); return weeklyStreamClaims(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
     weeklyStreamStatus:()=>{ const me = myTeam(); return weeklyStreamStatus(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
     streamStatusRaw:(me,fa,wkey)=>weeklyStreamStatus(me, fa, wkey||"mu"), ROSTER_ACTIVE, STREAM_BAR, STREAM_TIE, openSpots, activeCount, IR_SLOTS, isOut, irMoves, outSpots, parkable, backDate,
-    dropOrder:()=>{ const me = myTeam(); const bench = ladderBench(me); return dropOrder(me, bench); }, fitNote, scarcityPool, ladderBench, lineupImpact, dropCandidate, dropVerdict, opensHole, holeWeek, thisWeekHoles, weekLive, keptNote, keptForNextWeek,
+    dropOrder:()=>{ const me = myTeam(); const bench = ladderBench(me); return dropOrder(me, bench); }, fitNote, scarcityPool, ladderBench, lineupImpact, dropCandidate, dropVerdict, opensHole, holeWeek, thisWeekHoles, thisWeekLineup, weekLive, keptNote, keptForNextWeek,
     winProbAt, winProbSeries, winLogPoints, setWinLog:(w)=>{ WPL=w||null; }, wouldStartHealthy, rentalImpact, setWaiverSub:(sub,pos)=>{ if (sub) WSUB = sub; if (pos!=null) WALLPOS = pos; renderWaivers(); }, getWaiverSub:()=>({ sub:WSUB, pos:WALLPOS }), topScorersThisWeek:(qb)=>{ const me = myTeam(); return topScorersThisWeek(me, freeAgents().filter(p=>!undraftable(p)), lineupKey(), !!qb); }, TOP_WEEK, TOP_WEEK_QB, rentalRows:(pos)=>rentalRows(myTeam(), freeAgents().filter(p=>!undraftable(p)), pos, lineupKey()), shakyStarters:()=>weekStarters(myTeam(), lineupKey()).filter(s=>shaky(s.p) && !["K","DST"].includes(s.p.pos)), STREAM_ROWS,
     setTeamParam:(qs)=>{ applyTeamParam(qs); buildIndex(); renderAll(); },
     benchSkill:()=>{ const me = myTeam(); const bench = ladderBench(me); return bench.filter(p=>!["K","DST"].includes(p.pos)); },
