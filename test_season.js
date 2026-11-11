@@ -146,7 +146,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const allRostered = new Set(Object.values(rosters.teams).flat().map(p => T.norm(p.name)));
   assert(fa.every(p => !allRostered.has(p.n)), "no rostered player appears as a free agent");
   assert(!fa.some(p => p.n === T.norm("Tetairoa McMillan")), "excluded player (not in ESPN's pool) never appears as a free agent or waiver suggestion");
-  assert(!/McMillan/.test(d.getElementById("tab-waivers").textContent), "waiver tab does not mention the excluded player");
+  assert(!/Tetairoa McMillan/.test(d.getElementById("tab-waivers").textContent), "waiver tab does not mention the excluded player (Jalen McMillan, TB, is a real free agent and may appear)");
   assert(/One-week streamers/.test(d.getElementById("tab-waivers").textContent) && /predicted points/.test(d.getElementById("tab-waivers").textContent), "streamer section rendered, ranked by predicted points");
   console.log("== Waivers: season-long rule ==");
   const WS = T.waiverSuggestions();
@@ -200,6 +200,24 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
       assert(T.winProbSeries(mine, theirs, keyM).length === base.length, "clearing the log restores the kickoff walk");
     } else console.log("  (sat week — log merge test skipped)"); }
   console.log("== Waivers: one-week rentals at every position (Jose 2026-11-01, SACK OF WHEAT: Hall questionable) ==");
+  // Waivers subtabs (Jose 2026-11-10: "this is getting messy, can you make subtabs"): long-term picks / this-week picks / all free agents
+  { const wtab = d.getElementById("tab-waivers"), pills = [...wtab.querySelectorAll("#wsubs .wsub-btn")];
+    const panels = () => [...wtab.querySelectorAll(".wsub")], vis = () => panels().filter(p => !p.classList.contains("hidden")).map(p => p.dataset.sub);
+    assert(pills.length === 3 && pills.map(b => b.dataset.sub).join(",") === "season,week,all" && panels().map(p => p.dataset.sub).join(",") === "season,week,all", "three subtab pills and three panels, in order: season, week, all");
+    assert(vis().join(",") === "season" && pills[0].classList.contains("on"), "Long-term picks is the default visible subtab");
+    const seasonP = panels()[0], weekP = panels()[1], allP = panels()[2];
+    assert(/Your drop order/.test(seasonP.textContent) && !/Top scorers this week|One-week streamers/.test(seasonP.textContent), "season panel holds the claim sheet + ladder, not the weekly lists");
+    assert(/Top scorers this week/.test(weekP.textContent) && /Top QBs this week/.test(weekP.textContent) && /One-week streamers/.test(weekP.textContent), "week panel holds top scorers, QBs and the per-position streamers");
+    const faRos = T.freeAgents().filter(p => p.ros != null);
+    assert(/All free agents \(rest of season\)/.test(allP.textContent) && allP.querySelectorAll(".row.grid").length === faRos.length, "all panel lists every free agent with a rest-of-season rank (" + allP.querySelectorAll(".row.grid").length + " rows = " + faRos.length + " free agents)");
+    T.setWaiverSub("week");
+    assert(vis().join(",") === "week" && [...wtab.querySelectorAll("#wsubs .wsub-btn")].find(b => b.classList.contains("on")).dataset.sub === "week", "clicking This-week picks shows only that panel");
+    T.setWaiverSub("all", "RB");
+    const rbRows = [...wtab.querySelectorAll(".wsub[data-sub=all] .row.grid")], rbFa = faRos.filter(p => p.pos === "RB"), rbN = new Set(rbFa.map(p => p.name));
+    assert(vis().join(",") === "all" && rbRows.length === rbFa.length && rbRows.every(r => rbFa.some(p => rx(p.name).test(r.textContent))), "the RB pill filters the all list to RBs only (" + rbRows.length + " = " + rbFa.length + ")");
+    const ord = { add:0, marginal:1, split:1, rental:2, pass:3, none:4 }, WB2 = T.waiverBoard(rbFa).sort((a, b) => (ord[a.verdict.key] - ord[b.verdict.key]) || (a.fa.ros - b.fa.ros));
+    assert(rbRows.length > 1 && rx(WB2[0].fa.name).test(rbRows[0].textContent) && rx(WB2[WB2.length - 1].fa.name).test(rbRows[rbRows.length - 1].textContent), "all list order: adds first, then rest-of-season rank (" + WB2[0].fa.name + " … " + WB2[WB2.length - 1].fa.name + ")");
+    T.setWaiverSub("season", ""); assert(vis().join(",") === "season", "back to Long-term picks"); }
   // Top scorers this week in one list, QBs on their own (Jose 2026-11-10: "for cases where I need a streamer" / "do not include QBs in this, make a separate QB list")
   { const top = T.topScorersThisWeek(false), qbs = T.topScorersThisWeek(true), faN = new Set(T.freeAgents().map(p => p.n)), wt = d.getElementById("tab-waivers").textContent.replace(/\s+/g, " ");
     const addable = p => faN.has(p.n) && !p.onBye && p.pPlay > 0 && !T.liveState(p) && p.mu != null;
@@ -259,7 +277,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     return v.key === "add" ? (up || (v.wkDelta != null && v.wkDelta >= bar && !elite)) : !(up || (v.wkDelta != null && v.wkDelta >= bar && !elite)); }), "K/DST table verdicts follow the claim-sheet rule: swap on a season upgrade, a +3 same-tier edge over a top-8 unit of mine, or any edge beyond a coin flip over a replaceable unit (" + kdRows.filter(b => b.verdict.key === "add").map(b => b.fa.name + " " + b.verdict.wkDelta).join(", ") + ")");
   assert(kdRows.every(b => !b.verdict.seasonUp || (prn(b.fa) <= 8 && prn(myKD(b.fa.pos)) > prn(b.fa) + 5)), "'season upgrade' on a K/DST row means a top-8 season unit over a bottom-tier of mine, nothing weaker");
   assert(kdRows.every(b => { const mine = myKD(b.fa.pos); const bar = prn(mine) <= 8 ? 3 : 0.5; return !(b.verdict.wkDelta != null && b.verdict.wkDelta > 0 && b.verdict.wkDelta < bar && !b.verdict.seasonUp) || b.verdict.key === "marginal"; }), "a K/DST edge under the unit's bar (3 for a top-8 of mine, 0.5 otherwise) is marginal, never a swap");
-  SC.filter(s => ["K","DST"].includes(s.pos)).forEach(s => { const blk = wtxt.slice(wtxt.indexOf(s.pos + " — yours:")); const i = blk.indexOf(s.add.name); assert(i > 0 && i < blk.indexOf("Top free agents"), s.pos + " streamer table lists the claim sheet's pick (" + s.add.name + ")"); });
+  SC.filter(s => ["K","DST"].includes(s.pos)).forEach(s => { const blk = wtxt.slice(wtxt.indexOf(s.pos + " — yours:")); const i = blk.indexOf(s.add.name); assert(i > 0 && i < blk.indexOf("All free agents"), s.pos + " streamer table lists the claim sheet's pick (" + s.add.name + ")"); });
   console.log("== Waivers: who to drop ==");
   const WB = T.waiverBoard();
   const benchRos = T.benchSkill();

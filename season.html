@@ -357,6 +357,7 @@
       if (w) r.winner = w.team; });
     return rows.sort((a,b)=> b.ms - a.ms);
   }
+  let WSUB = "season", WALLPOS = ""; // Waivers subtabs (Jose 2026-11-10 "this is getting messy, make subtabs"): season | week | all, + position filter on the all list
   let LOGF = { team:"", kind:"all" }; // Waiver log filters (team name or "", kind: all | mine | moves | lost | canceled)
   const TX_KIND = { claimed:["Claimed","good"], lost:["Lost claim","bad"], dropgone:["Drop gone","warn"], canceled:["Canceled",""], fa:["FA add","good"], drop:["Drop","warn"], other:["Other",""] };
   function txDate(ms){ return ms ? new Date(ms).toLocaleString("en-US",{timeZone:"America/Chicago",month:"numeric",day:"numeric",hour:"numeric",minute:"2-digit"}).replace(",", "") : "–"; }
@@ -1947,7 +1948,13 @@
     const bench = ladderBench(me);
     const fa = freeAgents().filter(p=>!undraftable(p));
     const wkey = lineupKey(), better = (a,b)=> wkey==="mu" ? a.mu > b.mu : a.wkRank < b.wkRank;
-    let h = "<div class='panel'><h2>Waiver moves that beat your bench — season-long only</h2><div style='margin-bottom:6px'>"+fold("how this list is built", "An add/drop is suggested only when the free agent is better for the <b>rest of the season</b>, judged two ways at once: FantasyPros rest-of-season rank (refreshed Tuesdays) must be at least "+ROS_MARGIN+" spots better, and ESPN's live full-season projection must agree. This week's matchup is never a reason to drop a player. Smaller edges are listed as marginal so you don't churn.")+"</div>";
+    // Three subtabs (Jose 2026-11-10): long-term picks (claim sheet, marginals, drop ladder), this-week picks (top scorers,
+    // QBs, per-position streamers), all free agents (the whole wire, rest-of-season order, position filter). All three are
+    // rendered — in that DOM order — and the inactive ones are hidden, so the tab's text is one document for the tests.
+    const WSUBS = [["season","Long-term picks"],["week","This-week picks"],["all","All free agents"]];
+    const subOpen = k => "<div class='panel wsub"+(WSUB===k?"":" hidden")+"' data-sub='"+k+"'>";
+    let h = "<div class='logf' id='wsubs'>"+WSUBS.map(([k,l])=>"<button class='tb wsub-btn"+(WSUB===k?" on":"")+"' data-sub='"+k+"'>"+l+"</button>").join("")+"</div>";
+    h += subOpen("season")+"<h2>Waiver moves that beat your bench — season-long only</h2><div style='margin-bottom:6px'>"+fold("how this list is built", "An add/drop is suggested only when the free agent is better for the <b>rest of the season</b>, judged two ways at once: FantasyPros rest-of-season rank (refreshed Tuesdays) must be at least "+ROS_MARGIN+" spots better, and ESPN's live full-season projection must agree. This week's matchup is never a reason to drop a player. Smaller edges are listed as marginal so you don't churn.")+"</div>";
     const NV = nextWeekView(me, true); // next week's byes/holes — every claim row prints its bye fit against this
     // ===== ONE LIST (Jose 2026-11-03: "this is confusing, I just want one list") =====
     // Everything that used to be its own stack of cards — out starters, questionable starters, next week's bye holes —
@@ -2133,6 +2140,7 @@
       return tag;
     };
     // ---- Top scorers this week, all positions in one list (Jose 2026-11-10) ----
+    h += "</div>"+subOpen("week");
     h += "<h3>Top scorers this week (Week "+S.week+", RB / WR / TE / K / DST)"+(satThisWeek()?" — you sit this week, informational only":"")+"</h3><div style='margin-bottom:6px'>"+fold("how to read this", "The "+TOP_WEEK+" best this-week projections on the wire, every position except QB together, for when you need a streamer and don't care where he plays (QBs score the most and would bury the list — they get their own below). Only players who can still be added for this week (not on bye, not out, game not started). The tag says whether he'd start for you right now and over whom; \"Drop for him\" is the same ladder as everywhere else. One-week projection only — a season-long upgrade shows on the claim sheet above, not here.")+"</div>";
     const topList = (rows)=>{
       h += "<div class='tbl'><div class='gw'>"+waiverHeader();
@@ -2170,17 +2178,22 @@
       });
       h += "</div></div>";
     });
-    h += "<h3>Top free agents (rest of season) — and who you'd drop</h3><div style='margin-bottom:6px'>"+fold("how to read this", (openSpots(me)>0 ? "You have an open roster spot, so the best free agents are <b>free adds</b> (no drop). Once it's filled, every add is a drop. " : "Every add is a drop. ")+"\"Drop for him\" is the bench player with the least rest-of-season value <b>at a position you can spare</b> — your only backup at a position never drops for a different position — or the <b>starter he'd replace</b>, when that starter is worth less than anyone on your bench. The verdict applies the season-long rule (+"+ROS_MARGIN+" ROS spots and ESPN's season projection not lower); when the two sources disagree it says <b>split</b> instead of hiding him.")+"</div><div class='tbl'><div class='gw'>"+waiverHeader();
-    // ADDs and marginals always make the table (even if outside the top 15 by rank), and sort to the top.
+    h += "</div>"+subOpen("all");
+    h += "<h3>All free agents (rest of season) — and who you'd drop</h3><div style='margin-bottom:6px'>"+fold("how to read this", (openSpots(me)>0 ? "You have an open roster spot, so the best free agents are <b>free adds</b> (no drop). Once it's filled, every add is a drop. " : "Every add is a drop. ")+"\"Drop for him\" is the bench player with the least rest-of-season value <b>at a position you can spare</b> — your only backup at a position never drops for a different position — or the <b>starter he'd replace</b>, when that starter is worth less than anyone on your bench. The verdict applies the season-long rule (+"+ROS_MARGIN+" ROS spots and ESPN's season projection not lower); when the two sources disagree it says <b>split</b> instead of hiding him.")+"</div>";
+    // Every free agent with a rest-of-season rank, adds first, then ROS order. Position pills filter the list.
     const order = { add:0, marginal:1, split:1, rental:2, pass:3, none:4 };
-    const boardAll = waiverBoard(me, bench, fa.filter(p=>!["K","DST"].includes(p.pos) && p.ros!=null));
-    const seenN = new Set();
-    boardAll.filter(b=>["add","marginal","split"].includes(b.verdict.key) && !b.verdict.free).concat(boardAll.slice().sort((a,b)=>a.fa.ros-b.fa.ros).slice(0,15))
-      .filter(b=>{ if (seenN.has(b.fa.n)) return false; seenN.add(b.fa.n); return true; })
-      .sort((a,b)=> (order[a.verdict.key]-order[b.verdict.key]) || (a.fa.ros-b.fa.ros))
-      .forEach(b=>{ h += waiverRow(b); });
+    // "All" means all: sidelined men (IR / out / suspended) are listed too, but never as an add — stash only.
+    const faAll = freeAgents().filter(p=>p.ros!=null && (!WALLPOS || p.pos===WALLPOS));
+    const boardAll = waiverBoard(me, bench, faAll).map(b=> undraftable(b.fa) ? Object.assign({}, b, { verdict:{ key:"pass", rosDelta:null, seasonDelta:null, text:"sidelined — "+((P && b.fa.injLive) || (b.fa.inj && b.fa.inj.code) || "out")+", stash only, not an add" } }) : b)
+      .sort((a,b)=> (order[a.verdict.key]-order[b.verdict.key]) || (a.fa.ros-b.fa.ros));
+    h += "<div class='logf'>"+[["","All"],["QB","QB"],["RB","RB"],["WR","WR"],["TE","TE"],["K","K"],["DST","DST"]].map(([k,l])=>"<button class='tb wallpos"+(WALLPOS===k?" on":"")+"' data-pos='"+k+"'>"+l+"</button>").join("")+"<span class='muted'>"+boardAll.length+" players</span></div>";
+    h += "<div class='tbl'><div class='gw'>"+waiverHeader();
+    if (!boardAll.length) h += "<div class='row grid'><span class='muted' style='grid-column:1 / -1'>nobody on the wire"+(WALLPOS?" at "+WALLPOS:"")+" with a rest-of-season rank</span></div>";
+    boardAll.forEach(b=>{ h += waiverRow(b); });
     h += "</div></div></div>";
     document.getElementById("tab-waivers").innerHTML = h;
+    document.querySelectorAll("#tab-waivers .wsub-btn").forEach(b=>b.addEventListener("click", ()=>{ WSUB = b.dataset.sub; renderWaivers(); }));
+    document.querySelectorAll("#tab-waivers .wallpos").forEach(b=>b.addEventListener("click", ()=>{ WALLPOS = b.dataset.pos; renderWaivers(); }));
   }
 
   // ---------- Trades tab ----------
@@ -3013,7 +3026,7 @@
     weeklyStreamStatus:()=>{ const me = myTeam(); return weeklyStreamStatus(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
     streamStatusRaw:(me,fa,wkey)=>weeklyStreamStatus(me, fa, wkey||"mu"), ROSTER_ACTIVE, STREAM_BAR, STREAM_TIE, openSpots, activeCount, IR_SLOTS, isOut, irMoves, outSpots, parkable, backDate,
     dropOrder:()=>{ const me = myTeam(); const bench = ladderBench(me); return dropOrder(me, bench); }, fitNote, scarcityPool, ladderBench, lineupImpact, dropCandidate, dropVerdict, opensHole, keptForNextWeek,
-    winProbAt, winProbSeries, winLogPoints, setWinLog:(w)=>{ WPL=w||null; }, wouldStartHealthy, rentalImpact, topScorersThisWeek:(qb)=>{ const me = myTeam(); return topScorersThisWeek(me, freeAgents().filter(p=>!undraftable(p)), lineupKey(), !!qb); }, TOP_WEEK, TOP_WEEK_QB, rentalRows:(pos)=>rentalRows(myTeam(), freeAgents().filter(p=>!undraftable(p)), pos, lineupKey()), shakyStarters:()=>weekStarters(myTeam(), lineupKey()).filter(s=>shaky(s.p) && !["K","DST"].includes(s.p.pos)), STREAM_ROWS,
+    winProbAt, winProbSeries, winLogPoints, setWinLog:(w)=>{ WPL=w||null; }, wouldStartHealthy, rentalImpact, setWaiverSub:(sub,pos)=>{ if (sub) WSUB = sub; if (pos!=null) WALLPOS = pos; renderWaivers(); }, getWaiverSub:()=>({ sub:WSUB, pos:WALLPOS }), topScorersThisWeek:(qb)=>{ const me = myTeam(); return topScorersThisWeek(me, freeAgents().filter(p=>!undraftable(p)), lineupKey(), !!qb); }, TOP_WEEK, TOP_WEEK_QB, rentalRows:(pos)=>rentalRows(myTeam(), freeAgents().filter(p=>!undraftable(p)), pos, lineupKey()), shakyStarters:()=>weekStarters(myTeam(), lineupKey()).filter(s=>shaky(s.p) && !["K","DST"].includes(s.p.pos)), STREAM_ROWS,
     setTeamParam:(qs)=>{ applyTeamParam(qs); buildIndex(); renderAll(); },
     benchSkill:()=>{ const me = myTeam(); const bench = ladderBench(me); return bench.filter(p=>!["K","DST"].includes(p.pos)); },
     waiverBoard:(list)=>{ const me = myTeam(); const bench = ladderBench(me); return waiverBoard(me, bench, list || freeAgents().filter(p=>!undraftable(p))); } };
