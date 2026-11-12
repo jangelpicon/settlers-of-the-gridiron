@@ -1744,5 +1744,39 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   if (iw.length) console.log("  " + iw.join("\n  "));
   console.log("\n--- POWER ---");
   [...d.querySelectorAll("#tab-league .row")].forEach(r => console.log(" ", r.textContent.replace(/\s+/g, " ").trim()));
+
+  console.log("== Waivers: this-week rows are judged net of the drop (Jose 2026-11-12, Strange/Warren) ==");
+  // A this-week claim (out / if-he-sits / rental) is judged on the ACTUAL swap: lineup(me − drop + add) vs lineup(me). The drop
+  // ladder is a rest-of-season lens, so its worst man can be THIS week's starter (Warren at TE while Loveland, TE4, sat on bye);
+  // the row then sold "+0.3 · starts FLEX over Shakir" for a swap that really netted −0.3 and −30 ROS spots. Jose made the move.
+  { let n = 0;
+    Object.keys(rosters.teams).forEach(t => { T.setTeamParam("team=" + encodeURIComponent(t)); const tm = T.getRosters().teams[t].map(T.info); const LS = T.lastSheet(); if (!LS) return;
+      LS.holeRows.filter(r => r.when === "this week" && r.drop).forEach(r => { n++; const g = T.swapGain(r.base || tm, r.drop, r.cands[0].f);
+        assert(g == null || g >= r.minGain, t + ": " + r.cands[0].f.name + " for " + r.drop.name + " nets " + g + " this week (row bar " + r.minGain + ")"); }); });
+    console.log("  net-of-drop invariant checked on " + n + " this-week claim rows across " + Object.keys(rosters.teams).length + " teams");
+    // exact 11/12 state: SACK OF WHEAT with Warren at TE, Loveland (bye W10) on the bench, Strange on the wire
+    const fix = JSON.parse(JSON.stringify(rosters)); const sw = Object.keys(fix.teams).find(t => /SACK OF WHEAT/i.test(t));
+    if (sw && projections.players.tylerwarren && projections.players.brentonstrange) {
+      Object.keys(fix.teams).forEach(t => { fix.teams[t] = fix.teams[t].filter(p => !/Brenton Strange|Tyler Warren/.test(p.name)); });
+      fix.teams[sw] = fix.teams[sw].concat([{ name: "Tyler Warren", pos: "TE", team: "IND", irOk: true, slot: "TE" }]);
+      T.setRosters(fix); T.setTeamParam("team=" + encodeURIComponent(sw));
+      const tm = T.getRosters().teams[sw].map(T.info), war = tm.find(p => /Tyler Warren/.test(p.name)), lov = tm.find(p => /Loveland/.test(p.name));
+      const str = T.freeAgents().find(f => /Brenton Strange/.test(f.name));
+      if (str && war && lov && lov.onBye && T.thisWeekLineup(tm).used.has(war.n) && str.mu != null && str.mu < war.mu + T.STREAM_TIE) {
+        const g = T.swapGain(tm, war, str);
+        assert(g != null && g < T.STREAM_TIE, "the trap is real in this snapshot: Strange for Warren nets " + g + " this week (Strange just takes Warren's TE slot)");
+        const LS = T.lastSheet(), wt = d.getElementById("tab-waivers").textContent.replace(/\s+/g, " ");
+        assert(!LS.holeRows.some(r => r.drop && r.drop.n === war.n) && !LS.sugg.some(s => s.drop.n === war.n && s.add.n === str.n), "no claim row drops Warren for Strange");
+        const sheet = wt.slice(wt.indexOf("Your claim sheet"), wt.indexOf("Your drop order"));
+        assert(!/Add Brenton Strange[^➖]{0,200}➖ Drop Tyler Warren/.test(sheet), "the sheet never says Add Strange / Drop Warren");
+        const row = (wt.match(/Brenton Strange.{0,900}?Verdict: ([^·]+)/) || [])[1] || "";
+        assert(row && !/1-week rental/.test(row), "Strange's streamer row is not sold as a 1-week rental over Warren (" + row.trim() + ")");
+        assert(/no gain|pass/.test(row), "Strange's row says the swap nets nothing (" + row.trim() + ")");
+        assert(/once Tyler Warren is dropped/.test(wt), "the row shows the net once Warren is dropped");
+      } else console.log("  (fixture skipped: Strange/Warren/Loveland-on-bye trap not reproducible in this snapshot)");
+      T.setRosters(rosters); T.setTeamParam("team=" + encodeURIComponent(rosters.me));
+    } else console.log("  (fixture skipped: SACK OF WHEAT / players not in snapshot)");
+  }
+
   console.log(failures ? failures + " FAILED" : "ALL SEASON TESTS PASSED"); process.exit(failures ? 1 : 0);
 })().catch(e => { console.error("crash", e); process.exit(1); });

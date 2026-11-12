@@ -1987,7 +1987,7 @@
     // Order of the sheet: holes first (this week, then "if he sits", then next week's byes), then season-long
     // upgrades, then weekly K/DST streams. Drops are handed out down the ladder so no two rows spend the same man.
     const ctx = [];        // one-line context, rendered above the sheet
-    const holeRows = [];   // { why, when, cands:[{f, note}], kick:bool, drop }
+    let holeRows = [];     // { why, when, cands:[{f, note}], kick:bool, drop, base, minGain }
     const fmtBack = p => { const t = backDate(p); return t ? "~"+new Date(t).toLocaleDateString("en-US",{month:"numeric",day:"numeric"}) : "his return"; };
     // --- out this week (starters only; Jose 2026-11-01 Egbuka: hurt bench depth is not a hole) ---
     const outs = me.filter(p=>onActive(p) && isOut(p) && (irMoves(me).includes(p) || wouldStartHealthy(me, p)));
@@ -1997,11 +1997,15 @@
         const note = p.injNote ? " · "+esc(p.injNote) : "";
         if (moves.includes(p)){ ctx.push("🩹 <b>"+esc(p.name)+"</b> out"+note+" → <b>move him to your IR slot</b> (opens a spot, no drop — do this first)"); return; }
         const L0 = optimalLineup(healthy, lineupKey());
+        // Cover bar — the questionable-starter rule (Jose 2026-11-03) applied to an OUT starter too (2026-11-12, Tate): when the
+        // bench already covers his slot a rental must beat the cover by STREAM_BAR; only an EMPTY slot makes any starter worth a row.
+        // Before this a +0.3 coin flip (Strange over Shakir) was Priority 1.
+        const hole0 = L0.slots.some(s=>!s.p), minGain = hole0 ? 0.05 : STREAM_BAR;
         const rentals = fa.filter(f=>FLEX.includes(f.pos) && f.mu!=null && f.pPlay>0 && !f.onBye && !liveState(f)).map(f=>({ f, L: optimalLineup(healthy.concat([f]), lineupKey()) })).filter(x=>x.L.used.has(x.f.n))
-          .map(x=>({ f:x.f, gain: Math.round((lineupPts(x.L)-lineupPts(L0))*10)/10, slot: (x.L.slots.find(y=>y.p && y.p.n===x.f.n)||{}).slot })).sort((a,b)=>b.gain-a.gain || b.f.mu-a.f.mu).slice(0,3);
+          .map(x=>({ f:x.f, gain: Math.round((lineupPts(x.L)-lineupPts(L0))*10)/10, slot: (x.L.slots.find(y=>y.p && y.p.n===x.f.n)||{}).slot })).filter(x=>x.gain>=minGain).sort((a,b)=>b.gain-a.gain || b.f.mu-a.f.mu).slice(0,3);
         const line = "🩹 <b>"+esc(p.name)+"</b> out"+note+" · 0 pts this week (ROS #"+(p.ros!=null?p.ros:"–")+", back "+fmtBack(p)+")";
-        if (!rentals.length){ ctx.push(line+" · nothing on the wire would start for you — keep him"); return; }
-        holeRows.push({ why: esc(p.name)+" out", when: "this week", kick: true, ctxIndex: ctx.length, cands: rentals.map(x=>({ f:x.f, score:x.gain, note:"+"+x.gain.toFixed(1)+" to your lineup this week · starts "+x.slot })) });
+        if (!rentals.length){ ctx.push(line+" · "+(hole0 ? "nothing on the wire would start for you — keep him" : "your bench covers his slot — nothing on the wire beats the cover by "+STREAM_BAR.toFixed(0)+"+ points, no move")); return; }
+        holeRows.push({ why: esc(p.name)+" out", when: "this week", kick: true, ctxIndex: ctx.length, base: healthy, minGain, cands: rentals.map(x=>({ f:x.f, score:x.gain, note:"+"+x.gain.toFixed(1)+" to your lineup this week · starts "+x.slot })) });
         ctx.push(line);
       });
     }
@@ -2024,7 +2028,7 @@
         let line = "🤕 <b>"+esc(p.name)+"</b> "+esc(p.injLive)+" · "+pct+"%"+(p.injNote?" · "+esc(p.injNote.split(" · ")[0]):"")+(p.game && p.game.kick ? " · kicks "+esc(kickText(p.game)) : "")
           + " · If he sits: "+(hole ? "<b>"+hole.slot+" empty — 0 pts</b>" : stepIn ? "<b>"+esc(stepIn.name)+"</b> steps in"+(stepIn.mu!=null?" ("+stepIn.mu.toFixed(1)+")":"") : "lineup unchanged");
         if (!fills.length){ ctx.push(line+" · "+(hole || !stepIn ? "nothing on the wire would start in his place" : "nothing on the wire beats "+esc(stepIn.name)+" by enough ("+STREAM_BAR.toFixed(0)+"+ points) — no move")); return; }
-        holeRows.push({ why: "if "+esc(p.name)+" sits", when: "this week", kick: true, ctxIndex: ctx.length, cands: fills.map(x=>({ f:x.f, score:(x.gain!=null?x.gain:0), note:(x.gain!=null?"+"+x.gain.toFixed(1)+" if he sits":"only if he sits")+" · bench if he plays" })) });
+        holeRows.push({ why: "if "+esc(p.name)+" sits", when: "this week", kick: true, ctxIndex: ctx.length, base: rest, minGain: hole ? 0.05 : STREAM_BAR, cands: fills.map(x=>({ f:x.f, score:(x.gain!=null?x.gain:0), note:(x.gain!=null?"+"+x.gain.toFixed(1)+" if he sits":"only if he sits")+" · bench if he plays" })) });
         ctx.push(line);
       });
     }
@@ -2052,7 +2056,16 @@
     let ladder = bench.slice(); const holeAdds = new Set();
     holeRows.forEach(r=>{
       const pc = pickChain(r.cands, c => c.score, c => batchAt(c.f)); r.cands = pc.chain; r.other = pc.other;
-      r.drop = dropCandidate(ladder, me, r.cands[0].f, lineupImpact(me, r.cands[0].f)); if (r.drop) ladder = ladder.filter(p=>p.n!==r.drop.n); r.cands.concat(r.other).forEach(c=>holeAdds.add(c.f.n)); });
+      const f0 = r.cands[0].f, tw = r.when==="this week" && !!P;
+      // A this-week row is judged on the ACTUAL swap (swapGain): a ladder man who is in this week's lineup is spendable only if
+      // dropping him still nets the row's bar. 2026-11-12 Strange/Warren: the ladder's worst man was this week's TE.
+      const lad = tw ? ladder.filter(p=>{ const g = swapGain(r.base||me, p, f0); return g==null || g >= r.minGain; }) : ladder;
+      r.drop = dropCandidate(lad, me, f0, lineupImpact(me, f0));
+      if (r.drop && tw){ const g = swapGain(r.base||me, r.drop, f0); if (g!=null && g < r.minGain) r.drop = null; }   // starter path can bypass lad
+      if (!r.drop && openSpots(me)===0){ r.dead = true; ctx[r.ctxIndex] += " · <b>no claim</b> — every man you could drop costs more this week than "+esc(f0.name)+" adds"; return; }
+      if (tw && r.drop) r.cands.forEach(c=>{ const g = swapGain(r.base||me, r.drop, c.f); if (g!=null) c.note += " · "+(g>=0?"+":"")+g.toFixed(1)+" net once "+r.drop.name+" is dropped"; });
+      if (r.drop) ladder = ladder.filter(p=>p.n!==r.drop.n); r.cands.concat(r.other).forEach(c=>holeAdds.add(c.f.n)); });
+    holeRows = holeRows.filter(r=>!r.dead);
     const { sugg, marginal, needs: N } = waiverSuggestions(me, ladder, fa.filter(f=>!holeAdds.has(f.n)));
     // Is a hole fill ALSO a season-long upgrade (full-bench lens), or just a rental? Say so on his row.
     const fullSL = {}; waiverSuggestions(me, bench, fa).sugg.forEach(x=>{ fullSL[x.add.n] = x; });
@@ -2157,13 +2170,21 @@
     const rentalDecor = (b)=>{
       const ri = rentalImpact(me, b.fa, wkey), names = xs => xs.map(x=>esc(x.name)).join(" and ");
       const late = kicksBeforeClaim(b.fa) ? " <span class='tag warn' title='Instant add only: a free agent can be added until his game kicks; a waiver claim filed now lands after it.'>⚠ kicks "+esc(kickText(b.fa.game))+" — instant add only</span>" : "";
-      const tag = (ri.now ? "<span class='tag good'>starts this week"+(ri.now.displaced ? " over "+esc(ri.now.displaced.name) : " — fills your empty "+ri.now.slot)+(ri.now.gain!=null?" · +"+ri.now.gain.toFixed(1):"")+"</span>"
+      let tag = (ri.now ? "<span class='tag good'>starts this week"+(ri.now.displaced ? " over "+esc(ri.now.displaced.name) : " — fills your empty "+ri.now.slot)+(ri.now.gain!=null?" · +"+ri.now.gain.toFixed(1):"")+"</span>"
         : ri.ifSit ? "<span class='tag warn'>starts only if "+names(ri.ifSit.risky)+" sit"+(ri.ifSit.risky.length>1?"":"s")+(ri.ifSit.fillsEmpty ? " — fills an empty "+ri.ifSit.slot : ri.ifSit.displaced ? " (over "+esc(ri.ifSit.displaced.name)+")" : "")+(ri.ifSit.gain!=null?" · +"+ri.ifSit.gain.toFixed(1):"")+"</span>"
         : "<span class='tag'>bench this week</span>") + late;
       if (!["K","DST"].includes(b.fa.pos) && !["add","marginal","split"].includes(b.verdict.key) && (ri.now || ri.ifSit) && b.drop){
         const how = ri.now ? "starts "+ri.now.slot+(ri.now.displaced ? " over "+ri.now.displaced.name : "")+(ri.now.gain!=null?" (+"+ri.now.gain.toFixed(1)+")":"")
                            : "only if "+ri.ifSit.risky.map(x=>x.name).join(" & ")+" sit"+(ri.ifSit.risky.length>1?"":"s")+(ri.ifSit.fillsEmpty?", fills empty "+ri.ifSit.slot:"")+(ri.ifSit.gain!=null?" (+"+ri.ifSit.gain.toFixed(1)+")":"");
-        b.verdict = Object.assign({}, b.verdict, { key:"rental", text:"1-week rental — "+how+" · drop "+b.drop.name+" (ROS "+(b.drop.ros!=null?"#"+b.drop.ros:"unranked")+(isOut(b.drop)?", out":"")+")" });
+        // Net of the drop (swapGain, 2026-11-12 Strange/Warren): when the ladder's man is in this week's lineup the add's gross gain is fiction.
+        const base = ri.now ? me : me.filter(p=>!ri.ifSit.risky.includes(p));
+        const net = swapGain(base, b.drop, b.fa), dropIn = thisWeekLineup(base).used.has(b.drop.n);
+        if (net!=null && net < STREAM_TIE){
+          b.verdict = Object.assign({}, b.verdict, { key:"pass", text:"no gain — "+how+", but dropping "+b.drop.name+(dropIn && b.drop.mu!=null ? " ("+b.drop.mu.toFixed(1)+" proj, in your lineup this week)" : "")+" nets "+(net>=0?"+":"")+net.toFixed(1)+" this week — keep yours" });
+          tag += " <span class='tag warn'>"+(net>=0?"+":"")+net.toFixed(1)+" once "+esc(b.drop.name)+" is dropped</span>";
+        } else {
+          b.verdict = Object.assign({}, b.verdict, { key:"rental", text:"1-week rental — "+how+(net!=null && dropIn ? " · "+(net>=0?"+":"")+net.toFixed(1)+" net of the drop" : "")+" · drop "+b.drop.name+" (ROS "+(b.drop.ros!=null?"#"+b.drop.ros:"unranked")+(isOut(b.drop)?", out":"")+")" });
+        }
       }
       return tag;
     };
@@ -2828,6 +2849,16 @@
   // add fills nothing this week. The starter stays the right drop — see the two-step in dropCandidate.
   const NW_BASE = new WeakMap(), TW_BASE = new WeakMap();
   function opensHole(me, drop, fa){ return holeWeek(me, drop, fa) != null; }
+  // This-week rows (out / if-he-sits / rental) are judged on the ACTUAL swap: this week's lineup with the add in and the drop
+  // out, versus today's. 2026-11-12 (Jose, SACK OF WHEAT): Strange read "+0.3 · starts FLEX over Shakir" and Priority 1 said
+  // drop Tyler Warren — this week's TE, yet the drop ladder's worst man because Loveland (TE4, on bye W10) holds TE in the
+  // rest-of-season lens. The real swap put Strange at TE and Shakir back in FLEX: −0.3 this week and −30 ROS spots, sold as a
+  // +0.3 rental. Jose made the move; the next render then offered Warren back over Strange. Null without live projections.
+  function swapGain(me, drop, fa){
+    if (!P) return null;
+    const after = me.filter(p=>!drop || p.n!==drop.n).concat([fa]);
+    return Math.round((lineupPts(thisWeekLineup(after)) - lineupPts(thisWeekLineup(me)))*10)/10;
+  }
   // "this" | "next" | null — which week the swap would leave emptier (this week checked first).
   function holeWeek(me, drop, fa){
     if (!drop || !fa || !S || S.week==null) return null;
@@ -3080,7 +3111,7 @@
     weeklyStreamClaims:()=>{ const me = myTeam(); return weeklyStreamClaims(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
     weeklyStreamStatus:()=>{ const me = myTeam(); return weeklyStreamStatus(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
     streamStatusRaw:(me,fa,wkey)=>weeklyStreamStatus(me, fa, wkey||"mu"), ROSTER_ACTIVE, STREAM_BAR, STREAM_TIE, openSpots, activeCount, IR_SLOTS, isOut, irMoves, outSpots, parkable, backDate,
-    dropOrder:()=>{ const me = myTeam(); const bench = ladderBench(me); return dropOrder(me, bench); }, fitNote, scarcityPool, ladderBench, lineupImpact, dropCandidate, dropVerdict, opensHole, holeWeek, thisWeekHoles, thisWeekLineup, weekLive, keptNote, keptForNextWeek,
+    dropOrder:()=>{ const me = myTeam(); const bench = ladderBench(me); return dropOrder(me, bench); }, fitNote, scarcityPool, ladderBench, lineupImpact, dropCandidate, dropVerdict, opensHole, holeWeek, swapGain, thisWeekHoles, thisWeekLineup, weekLive, keptNote, keptForNextWeek,
     winProbAt, winProbSeries, winLogPoints, setWinLog:(w)=>{ WPL=w||null; }, wouldStartHealthy, rentalImpact, setWaiverSub:(sub,pos)=>{ if (sub) WSUB = sub; if (pos!=null) WALLPOS = pos; renderWaivers(); }, getWaiverSub:()=>({ sub:WSUB, pos:WALLPOS }), topScorersThisWeek:(qb)=>{ const me = myTeam(); return topScorersThisWeek(me, freeAgents().filter(p=>!undraftable(p)), lineupKey(), !!qb); }, TOP_WEEK, TOP_WEEK_QB, rentalRows:(pos)=>rentalRows(myTeam(), freeAgents().filter(p=>!undraftable(p)), pos, lineupKey()), shakyStarters:()=>weekStarters(myTeam(), lineupKey()).filter(s=>shaky(s.p) && !["K","DST"].includes(s.p.pos)), STREAM_ROWS,
     setTeamParam:(qs)=>{ applyTeamParam(qs); buildIndex(); renderAll(); },
     benchSkill:()=>{ const me = myTeam(); const bench = ladderBench(me); return bench.filter(p=>!["K","DST"].includes(p.pos)); },
