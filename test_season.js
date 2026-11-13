@@ -1772,7 +1772,13 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
         const row = (wt.match(/Brenton Strange.{0,900}?Verdict: ([^·]+)/) || [])[1] || "";
         assert(row && !/1-week rental/.test(row), "Strange's streamer row is not sold as a 1-week rental over Warren (" + row.trim() + ")");
         assert(/no gain|pass/.test(row), "Strange's row says the swap nets nothing (" + row.trim() + ")");
-        assert(/once Tyler Warren is dropped/.test(wt), "the row shows the net once Warren is dropped");
+        // The net-of-drop tag belongs only to a man who would START this week (rentalDecor runs on ri.now / ri.ifSit). On 11/12
+        // Strange (11.3) took FLEX over Shakir; on 11/13 the refresh put him at 10.9 under Shakir 11.6, so he is "bench this week"
+        // and the honest row is the season-long pass with no rental sale at all. Assert whichever state the snapshot is in.
+        const rowAll = (wt.match(/Brenton Strange.{0,900}?Verdict: [^·]+/) || [""])[0];
+        const startsNow = T.optimalLineup(tm.concat([str]), "mu").used.has(str.n), startsIfSit = /starts only if/.test(rowAll);
+        if (startsNow || startsIfSit) assert(/once Tyler Warren is dropped/.test(rowAll), "Strange would start, so his row shows the net once Warren is dropped");
+        else assert(/bench this week/.test(rowAll) && !/once Tyler Warren is dropped/.test(rowAll), "Strange would not start this week, so his row is tagged bench this week with no net-of-drop line (" + (startsNow ? "starts" : "bench") + ")");
       } else console.log("  (fixture skipped: Strange/Warren/Loveland-on-bye trap not reproducible in this snapshot)");
       T.setRosters(rosters); T.setTeamParam("team=" + encodeURIComponent(rosters.me));
     } else console.log("  (fixture skipped: SACK OF WHEAT / players not in snapshot)");
