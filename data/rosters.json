@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-11-12",
- "source": "ESPN league 882823976 sync 2026-11-12 02:00 CST",
+ "updated": "2026-11-13",
+ "source": "ESPN league 882823976 sync 2026-11-13 07:47 CST",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -105,11 +105,11 @@
     "slot": "BN"
    },
    {
-    "name": "Devaughn Vele",
-    "pos": "WR",
-    "team": "NO",
+    "name": "Indianapolis Colts",
+    "pos": "DST",
+    "team": "IND",
     "irOk": true,
-    "slot": "BN"
+    "slot": "DST"
    }
   ],
   "SACK OF WHEAT": [
@@ -164,13 +164,6 @@
     "slot": "WR"
    },
    {
-    "name": "Emeka Egbuka",
-    "pos": "WR",
-    "team": "TB",
-    "irOk": true,
-    "slot": "BN"
-   },
-   {
     "name": "Trevor Lawrence",
     "pos": "QB",
     "team": "JAX",
@@ -199,13 +192,6 @@
     "slot": "K"
    },
    {
-    "name": "Tyler Warren",
-    "pos": "TE",
-    "team": "IND",
-    "irOk": true,
-    "slot": "TE"
-   },
-   {
     "name": "Jonah Coleman",
     "pos": "RB",
     "team": "DEN",
@@ -218,6 +204,20 @@
     "team": "BUF",
     "irOk": true,
     "slot": "FLEX"
+   },
+   {
+    "name": "Colston Loveland",
+    "pos": "TE",
+    "team": "CHI",
+    "irOk": true,
+    "slot": "BN"
+   },
+   {
+    "name": "Brenton Strange",
+    "pos": "TE",
+    "team": "JAX",
+    "irOk": true,
+    "slot": "TE"
    }
   ],
   "Resting Blitz Face": [
@@ -372,18 +372,11 @@
     "slot": "K"
    },
    {
-    "name": "Marvin Harrison Jr.",
-    "pos": "WR",
-    "team": "HOU",
-    "irOk": true,
-    "slot": "BN"
-   },
-   {
     "name": "Harold Fannin Jr.",
     "pos": "TE",
     "team": "CLE",
     "irOk": true,
-    "slot": "TE"
+    "slot": "BN"
    },
    {
     "name": "Chuba Hubbard",
@@ -398,13 +391,6 @@
     "team": "HOU",
     "irOk": true,
     "slot": "FLEX"
-   },
-   {
-    "name": "Matt Gay",
-    "pos": "K",
-    "team": "LV",
-    "irOk": true,
-    "slot": "BN"
    },
    {
     "name": "Washington Commanders",
@@ -441,7 +427,7 @@
     "pos": "RB",
     "team": "PHI",
     "irOk": true,
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "Mike Evans",
@@ -455,7 +441,7 @@
     "pos": "QB",
     "team": "KC",
     "irOk": true,
-    "slot": "BN"
+    "slot": "QB"
    },
    {
     "name": "Seattle Seahawks",
@@ -476,7 +462,7 @@
     "pos": "QB",
     "team": "CHI",
     "irOk": true,
-    "slot": "QB"
+    "slot": "BN"
    },
    {
     "name": "Isaiah Likely",
@@ -484,13 +470,6 @@
     "team": "NYG",
     "irOk": true,
     "slot": "TE"
-   },
-   {
-    "name": "Emanuel Wilson",
-    "pos": "RB",
-    "team": "SEA",
-    "irOk": true,
-    "slot": "BN"
    },
    {
     "name": "Braelon Allen",
@@ -504,14 +483,14 @@
     "pos": "K",
     "team": "PIT",
     "irOk": true,
-    "slot": "BN"
+    "slot": "K"
    },
    {
     "name": "Rome Odunze",
     "pos": "WR",
     "team": "CHI",
     "irOk": true,
-    "slot": "FLEX"
+    "slot": "BN"
    },
    {
     "name": "Dalton Kincaid",
@@ -521,11 +500,18 @@
     "slot": "BN"
    },
    {
-    "name": "Cairo Santos",
-    "pos": "K",
-    "team": "CHI",
+    "name": "Keenan Allen",
+    "pos": "WR",
+    "team": "SF",
     "irOk": true,
-    "slot": "K"
+    "slot": "FLEX"
+   },
+   {
+    "name": "Devin Singletary",
+    "pos": "RB",
+    "team": "NYG",
+    "irOk": true,
+    "slot": "RB"
    }
   ],
   "BlitzAndGiggles": [
@@ -648,7 +634,7 @@
     "pos": "RB",
     "team": "BAL",
     "irOk": true,
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "Malik Nabers",
@@ -712,7 +698,7 @@
     "pos": "RB",
     "team": "SEA",
     "irOk": true,
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Darren Waller",
