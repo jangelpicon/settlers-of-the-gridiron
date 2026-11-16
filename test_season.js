@@ -172,7 +172,12 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   // Ruling 2026-10-21 (Kincaid/Juwan): the drop is the scarcity-aware bench worst, OR the starter the add pushes out when that starter is worth less than the bench worst.
   const rightDrop = (add, drop) => { const sd = scarceDrop(add.pos, add); const imp = T.lineupImpact(me, add); if (imp.starts && imp.displaced && (!sd || rosOf(imp.displaced) > rosOf(sd))) return drop.n === imp.displaced.n; return !!sd && drop.n === sd.n; };
   assert(paid.concat(WS.marginal).every(s => !["K","DST"].includes(s.add.pos) && (s.add.pos === "QB" ? s.drop.pos === "QB" : rightDrop(s.add, s.drop))), "suggestions drop your least-valuable spareable bench player (scarcity-aware) — or the starter the add replaces when he's worth less than that; a QB suggestion is a straight QB swap; K/DST never suggested");
-  assert(WS.sugg.every(s => T.waiverBoard([s.add])[0].verdict.key === "add") && WS.marginal.every(s => ["marginal","split"].includes(T.waiverBoard([s.add])[0].verdict.key)), "suggestion box and per-player verdict column agree (one rule)");
+  // The column is the board over the WHOLE pool: with an open roster spot the free-add set is the top-10 by ROS plus
+  // anyone who beats my weakest spare, capped at 12 rows. A one-man board puts every lone skill player in that set
+  // (he is always "top 10" of one), so Price/Washington/Allgeier read "free ADD" there while the real column, like
+  // the box, says paid add / split / marginal (2026-11-16: Maye OUT -> IR move opened the spot, held the deploy).
+  const fullBoard = new Map(T.waiverBoard().map(b => [b.fa.n, b.verdict.key]));
+  assert(WS.sugg.every(s => fullBoard.get(s.add.n) === "add") && WS.marginal.every(s => ["marginal","split"].includes(fullBoard.get(s.add.n))), "suggestion box and per-player verdict column agree (one rule)");
   assert(me.every(p => typeof p.seasonProj === "number"), "every rostered player has a live ESPN full-season projection");
   const wtxt = d.getElementById("tab-waivers").textContent;
   assert(/season-long only/.test(wtxt) && /never a reason to drop/.test(wtxt), "waiver tab states the season-long rule in plain language");
@@ -1162,7 +1167,8 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   // the two tabs must agree on my game: same win probability, same lineup
   const mWp = (() => { const m = d.getElementById("tab-matchup").textContent.match(/Win probability\s*(\d+)%/); return m ? +m[1] : null; })();
   assert(mWp != null && sbWp(sbPanels[0]) === mWp, "my game's win probability matches the Matchup tab (" + mWp + "%)");
-  const names = pn => [...pn.querySelectorAll(".gm .row.grid")].map(r => r.children[1].textContent.replace(/\s*(locked|Q|D|DTD|O|IR|SUSP)\s*$/, "").trim());
+  // A locked injured starter carries two tags ("Drake Maye O locked", Monday 2026-11-16) — strip every trailing tag, not one.
+  const names = pn => [...pn.querySelectorAll(".gm .row.grid")].map(r => r.children[1].textContent.replace(/(\s*(locked|Q|D|DTD|O|IR|SUSP))+\s*$/, "").trim());
   const mNames = [...d.querySelectorAll("#tab-matchup .gm .row.grid")].map(r => { const s = r.querySelector("select.pick"); return (s ? s.value : (r.querySelector("b") || {}).textContent || "").trim(); });
   assert(names(sbPanels[0]).every((n, i) => n === mNames[i]), "my game's lineup on the Scoreboard is the Matchup tab's lineup, slot for slot");
   // overview odds are complementary and sum to 100 for every game
@@ -1420,6 +1426,10 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
         const st = T.tradeStats(fx.t, q.name, g.name); if (!st) return;
         const oldGain = T.strength(present(them.filter(p => p.n !== g.n).concat([q]))) - T.strength(present(them));
         const noHoleGain = T.strength(present(them.concat([repl]).filter(p => p.n !== g.n).concat([q]))) - T.strength(present(them.concat([repl])));
+        // The oracle fills only the QB hole at replacement. A deal that also strips their only startable man at another
+        // position (Goff for Goedert, 2026-11-16: their lone TE) opens a SECOND hole the oracle scores 0 but the page fills
+        // at replacement (+39 vs -262) — a different rule, guarded by the strips label. Keep this invariant to one-hole deals.
+        if (st.strips.length) return;
         if (oldGain >= 0 && noHoleGain < 0) pure.push({ q: q.name, g: g.name, oldGain, st });
       }));
       // Live-data fixture: whether any QB-for-player deal flips from "easy yes" to a loss depends on this week's rosters
@@ -1756,6 +1766,9 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     console.log("  net-of-drop invariant checked on " + n + " this-week claim rows across " + Object.keys(rosters.teams).length + " teams");
     // exact 11/12 state: SACK OF WHEAT with Warren at TE, Loveland (bye W10) on the bench, Strange on the wire
     const fix = JSON.parse(JSON.stringify(rosters)); const sw = Object.keys(fix.teams).find(t => /SACK OF WHEAT/i.test(t));
+    // Decision test -> pre-lock world. On Monday (2026-11-16) every game was final: the row read "locked · scored 8.9 final"
+    // with no this-week tag at all, and the "bench this week" assertion held the deploy on a state that vanishes by design.
+    T.inject(season, rosters, exclusions, tradeLog, unlockedProjections, espnPool, matchups, histReal);
     if (sw && projections.players.tylerwarren && projections.players.brentonstrange) {
       Object.keys(fix.teams).forEach(t => { fix.teams[t] = fix.teams[t].filter(p => !/Brenton Strange|Tyler Warren/.test(p.name)); });
       fix.teams[sw] = fix.teams[sw].concat([{ name: "Tyler Warren", pos: "TE", team: "IND", irOk: true, slot: "TE" }]);
@@ -1782,6 +1795,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
       } else console.log("  (fixture skipped: Strange/Warren/Loveland-on-bye trap not reproducible in this snapshot)");
       T.setRosters(rosters); T.setTeamParam("team=" + encodeURIComponent(rosters.me));
     } else console.log("  (fixture skipped: SACK OF WHEAT / players not in snapshot)");
+    T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, histReal); // back to the real snapshot
   }
 
   console.log(failures ? failures + " FAILED" : "ALL SEASON TESTS PASSED"); process.exit(failures ? 1 : 0);
