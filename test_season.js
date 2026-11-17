@@ -1464,9 +1464,10 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
       const qbSlot = T.tradeLineup(ps).slots.find(s => s.slot === "QB");
       assert(qbSlot.p && T.replFill(T.tradeLineup(ps).slots).every(h => h.slot !== "QB"), t + ": not flagged as an empty QB slot (" + (qbSlot.p ? qbSlot.p.name : "EMPTY") + " starts in trade math)");
       if (qbSlot.p && qbSlot.p.n === qb.n){ // he's their starter: his value to them = his ROS value over what replaces him
-        const without = ps.filter(p => p.n !== qb.n), own = T.tradeTalent(ps) - T.tradeTalent(without), full = 420 - qb.ros;
+        const vr = p => p.rosEff != null ? p.rosEff : p.ros; // valuation rank: role check / playoff lens may move it off the FP rank (Maye, back W12, 2026-11-17)
+        const without = ps.filter(p => p.n !== qb.n), own = T.tradeTalent(ps) - T.tradeTalent(without), full = 420 - vr(qb);
         const after = T.tradeLineup(without).slots.find(s => s.slot === "QB"), hole = T.replFill(T.tradeLineup(without).slots).find(h => h.slot === "QB");
-        const repl = after.p ? 420 - after.p.ros : hole.v, oldOwn = T.strength(ps) - T.strength(without);
+        const repl = after.p ? 420 - vr(after.p) : hole.v, oldOwn = T.strength(ps) - T.strength(without);
         assert(own > 0 && own === full - repl && oldOwn === 0, t + ": " + qb.name + " is not valued near 0 to his own team — worth +" + own + " (ROS " + full + " − replacement " + (after.p ? after.p.name : hole.src) + " " + repl + "); bye-skipping math had him at " + oldOwn);
       } else assert(qbSlot.p && qbSlot.p.ros < qb.ros, t + ": " + qb.name + " is a backup (" + qbSlot.p.name + " starts), so his ~0 marginal value to them is correct, not the bye bug");
       assert(T.strength(ps) === T.strength(ps.filter(p => p.n !== qb.n)) || !qb.onBye, t + ": strength() fence intact — still skips the bye-week QB this week (Roster talent column unchanged)");
@@ -1591,7 +1592,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     const flagged = everyone.filter(p => p.roleDoubt);
     assert(flagged.length <= Math.ceil(everyone.length * 0.15), "role check flags a minority of rostered skill players (" + flagged.length + " of " + everyone.length + ")");
     assert(flagged.every(p => p.rosEff > p.ros && p.roleDoubt.gap >= 15 && /^(QB|RB|WR|TE)\d+$/.test(p.roleDoubt.espn)), "every flagged player is valued WORSE than his consensus rank, by a 15+ spot position gap (" + flagged.map(p => p.name + " " + p.roleDoubt.fp + "→" + p.roleDoubt.espn).join(", ") + ")");
-    assert(everyone.filter(p => !p.roleDoubt).every(p => p.rosEff === p.ros), "unflagged players keep their consensus rank as the valuation rank");
+    assert(everyone.filter(p => !p.roleDoubt && !p.horizon).every(p => p.rosEff === p.ros), "unflagged players keep their consensus rank as the valuation rank (role check and playoff lens are the only movers)");
     // Cam Skattebo regression (2026-10-20): FantasyPros RB25 while ESPN's season projection sat in the RB50s after he lost the job —
     // the trade engine kept pricing him as a starter. Data-driven: asserts only while the feeds still disagree.
     const sk = T.info({ name: "Cam Skattebo", pos: "RB", team: "NYG" });
@@ -1807,6 +1808,76 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
       T.setRosters(rosters); T.setTeamParam("team=" + encodeURIComponent(rosters.me));
     } else console.log("  (fixture skipped: SACK OF WHEAT / players not in snapshot)");
     T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, histReal); // back to the real snapshot
+  }
+
+  // ======================= Playoff lens (Jose 2026-11-17: "we have to start thinking playoffs rather than ROS") =======================
+  // FP's rest-of-season rank weighs every week the same; a (nearly) locked team cares about Weeks 16–18, a week it sits
+  // counts 0, and a hurt player with a return date before the playoffs is valued at his healthy rate, not as a dead spot.
+  console.log("== Playoff lens ==");
+  {
+    T.setSettings(settings);
+    T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, histReal);
+    const H = T.horizonWeights(rosters.me);
+    assert(H && H.odds!=null && H.odds>=0 && H.odds<=1, "lens reads my playoff odds from the simulator (" + (H && H.odds) + ")");
+    const regW = Object.keys(H.weeks).map(Number).filter(k=>k<=H.reg && !H.sits.includes(k)), poW = Object.keys(H.weeks).map(Number).filter(k=>H.playoff.includes(k));
+    assert(poW.length>0 && poW.every(k=>Math.abs(H.weeks[k]-H.odds)<1e-9), "a playoff week weighs my playoff odds (" + poW.join(",") + ")");
+    assert(regW.every(k=>Math.abs(H.weeks[k]-(1-T.LENS_REG*H.odds))<1e-9), "a regular-season week weighs 1 − " + T.LENS_REG + " × odds (the seeding term)");
+    assert(H.sits.every(k=>H.weeks[k]===0), "a week I sit weighs 0 (" + (H.sits.join(",")||"none left") + ")");
+    const sitRow = (histReal.schedule||[]).find(r=>r.w===histReal.currentWeek && ((r.home===rosters.me && r.away==null) || (r.away===rosters.me && r.home==null)));
+    if (sitRow) assert(H.sits.includes(histReal.currentWeek) && H.weeks[histReal.currentWeek]===0, "real case: I sit Week " + histReal.currentWeek + " and that week counts 0");
+    const kick = Math.min(...Object.values(projections.games).map(g=>Date.parse(g.kick)));
+    assert(T.weekOfDate(kick)===season.week && T.weekOfDate(kick+7*86400000)===season.week+1 && T.weekOfDate(kick-7*86400000)===season.week-1, "'back ~M/D' maps to an NFL week off the live kickoffs (W" + T.weekOfDate(kick) + " now)");
+    T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, null);
+    const H0 = T.horizonWeights(rosters.me);
+    assert(H0 && H0.odds==null && Object.values(H0.weeks).every(v=>v===1), "no league schedule → neutral weights (every week 1), the lens is plain availability");
+    T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, histReal);
+    const firstPO = Math.min(...H.playoff);
+    const dated = []; Object.keys(rosters.teams).forEach(t=>rosters.teams[t].forEach(p=>{ const q = T.infoFor(p, t); if (q.horizon) dated.push({ t, q }); }));
+    const datedBefore = dated.filter(x=>x.q.horizon.ret < firstPO);
+    assert(dated.every(x=>x.q.horizon.team===x.t && (x.q.horizon.odds==null || Math.abs(x.q.horizon.odds - T.playoffOddsOf(x.t))<1e-9)), "the lens uses the owning team's own playoff odds (" + dated.length + " dated players league-wide)");
+    assert(dated.every(x=>x.q.horizon.ret > season.week), "a player already back carries no lens");
+    // healthy rate better than FP's number → he is valued at it, scaled by the weeks he plays, never below FP; a healthy rate
+    // that is NOT better (A.J. Brown 6.1/g) leaves FP's number in charge and only re-weights it
+    const lifted = datedBefore.filter(x=>x.q.horizon.healthy && x.q.horizon.healthy.used);
+    assert(lifted.every(x=>x.q.rosEff <= x.q.ros), "a healthy rate better than FP lifts a pre-playoff returner, never below FP (" + lifted.map(x=>x.q.name+" #"+x.q.ros+"→#"+x.q.rosEff).join(", ") + ")");
+    assert(dated.filter(x=>!(x.q.horizon.healthy && x.q.horizon.healthy.used)).every(x=>x.q.horizon.f===0 ? x.q.rosEff===420 : x.q.rosEff===x.q.horizon.from), "without a better healthy rate FP's number stands (floor only for a return after the final week)");
+    assert(lifted.every(x=>{ const h = x.q.horizon; return Math.abs((420 - x.q.rosEff) - (420 - h.healthy.rank) * h.f) <= 1; }), "a lifted player's value = healthy value × share of the weighted weeks he plays");
+    const withRate = dated.find(x=>x.q.horizon.healthy);
+    if (withRate){ const h = withRate.q.horizon.healthy; assert(h.n >= T.LENS_FORM_N && h.rate>0 && h.posRank>=1 && h.rank>=1, "healthy rate needs " + T.LENS_FORM_N + "+ games (" + withRate.q.name + ": " + h.rate + "/g over " + h.n + " = " + withRate.q.pos + h.posRank + " → #" + h.rank + ")"); }
+    else console.log("  (no dated player with a healthy-rate sample in this snapshot)");
+    // the Maye case, kept general: my QB with a pre-playoff return and a healthy rate is never the drop for a wire QB no better on the lens
+    const myQB = dated.filter(x=>x.t===rosters.me && x.q.pos==="QB" && x.q.horizon.ret < firstPO && x.q.horizon.healthy).map(x=>x.q)[0];
+    if (myQB){
+      const WS = T.waiverSuggestions();
+      assert(WS.sugg.every(s=>!(s.drop && s.drop.n===myQB.n && (s.add.rosEff!=null?s.add.rosEff:s.add.ros) >= myQB.rosEff)), myQB.name + " (back W" + myQB.horizon.ret + ", valued #" + myQB.rosEff + " from FP #" + myQB.ros + ") is not dropped for a QB who is no better on the lens");
+      const wt = d.getElementById("tab-waivers").textContent.replace(/\s+/g, " ");
+      assert(new RegExp("Playoff lens.*" + rx(myQB.name).source + " back W" + myQB.horizon.ret + " → #" + myQB.rosEff).test(wt), "the Waivers tab lens line names him with return week and valued rank");
+      const bare = dated.filter(x=>x.t===rosters.me).map(x=>x.q).filter(p=>new RegExp(rx(p.name).source + "[^#]{0,60}ROS #" + p.ros + "(?! → valued #" + p.rosEff + ")").test(wt));
+      assert(bare.length===0, "wherever a lensed player's FP rank prints on the Waivers tab (claim rows, ladder) the valued rank follows it" + (bare.length ? " (bare: " + bare.map(p=>p.name).join(", ") + ")" : ""));
+    } else console.log("  (no QB of mine with a pre-playoff return date in this snapshot — Maye case not reproducible)");
+    const wt2 = d.getElementById("tab-waivers").textContent.replace(/\s+/g, " ");
+    assert(/🎯 Playoff lens · in \d+(\.\d+)?% ·/.test(wt2) && /Wk \d+(–\d+)? ×[\d.]+/.test(wt2), "Waivers tab shows the lens line: odds + per-span week weights");
+    // synthetic: the same hurt player, locked team vs long shot — a return for the playoffs is worth more to the locked team
+    {
+      const fx = { name: "Lens Fixture", pos: "RB", team: "DET" };
+      const S2 = JSON.parse(JSON.stringify(season)), MU2 = JSON.parse(JSON.stringify(matchups));
+      const row = S2.ros.find(r=>r.pos==="RB" && r.rank>=60 && r.rank<=120); row.name = fx.name; row.n = T.norm(fx.name); row.team = "DET";
+      // six healthy games at an RB1 clip, then the injury game — the median (18.0) ignores the 2.1
+      MU2.playerForm[row.n] = { pos: "RB", team: "DET", n: 7, actAvg: 15.7, log: [[2,"X",18.0],[3,"X",18.0],[4,"X",17.5],[5,"X",19.2],[6,"X",16.9],[7,"X",18.0],[8,"X",2.1]] };
+      const mdy = ms => new Date(ms).toLocaleDateString("en-US", { month: "numeric", day: "numeric" });
+      S2.injuries[row.n] = { code: "O", note: "Knee · back ~" + mdy(kick + 7*86400000*(firstPO - season.week)) };
+      T.inject(S2, rosters, exclusions, tradeLog, projections, espnPool, MU2, histReal);
+      const byOdds = Object.keys(rosters.teams).map(t=>({ t, o: T.playoffOddsOf(t) })).filter(x=>x.o!=null).sort((a,b)=>b.o-a.o);
+      const lock = T.infoFor(fx, byOdds[0].t), shot = T.infoFor(fx, byOdds[byOdds.length-1].t);
+      assert(lock.horizon && shot.horizon && lock.horizon.ret===firstPO, "fixture: a return in Week " + firstPO + " reads as a playoff-week return (" + (lock.horizon && lock.horizon.ret) + ")");
+      assert(lock.horizon.f > shot.horizon.f && lock.rosEff < shot.rosEff, "a player back for the playoffs is worth more to the locked team (" + byOdds[0].t + ": f " + lock.horizon.f + " → #" + lock.rosEff + ") than to the long shot (" + byOdds[byOdds.length-1].t + ": f " + shot.horizon.f + " → #" + shot.rosEff + ")");
+      assert(lock.horizon.healthy && lock.horizon.healthy.used && Math.abs(lock.horizon.healthy.rate - 18.0) < 0.05 && lock.rosEff >= lock.horizon.healthy.rank, "healthy rate is the MEDIAN of his games (18.0, the 2.1 injury game ignored) and he is never valued above that healthy rank (#" + lock.horizon.healthy.rank + " → #" + lock.rosEff + ")");
+      S2.injuries[row.n] = { code: "IR", note: "ACL · back ~" + mdy(kick + 7*86400000*(H.last + 2 - season.week)) };
+      T.inject(S2, rosters, exclusions, tradeLog, projections, espnPool, MU2, histReal);
+      const gone = T.infoFor(fx, byOdds[0].t);
+      assert(gone.horizon && gone.horizon.f===0 && gone.rosEff===420, "a return after the final week values him at the floor (#" + gone.rosEff + ")");
+      T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, histReal);
+    }
   }
 
   console.log(failures ? failures + " FAILED" : "ALL SEASON TESTS PASSED"); process.exit(failures ? 1 : 0);

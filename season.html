@@ -697,8 +697,8 @@
     const inj = S.injuries[n] || null;
     const bye = ros ? ros.bye : null;
     const onBye = bye != null && S.week != null && bye === S.week;
-    return roleCheck(predict({ ...p, n, ros: ros?ros.rank:null, tier: ros?ros.tier:null, posRank: ros?(ros.posRank||null):null, bye, onBye,
-      wkRank: wk?wk.rank:null, wkStd: wk&&wk.std!=null?wk.std:null, wkMin: wk&&wk.rankMin!=null?wk.rankMin:null, wkMax: wk&&wk.rankMax!=null?wk.rankMax:null, opp: wk?wk.opp:null, grade: wk?wk.grade:null, inj }));
+    return horizonCheck(roleCheck(predict({ ...p, n, ros: ros?ros.rank:null, tier: ros?ros.tier:null, posRank: ros?(ros.posRank||null):null, bye, onBye,
+      wkRank: wk?wk.rank:null, wkStd: wk&&wk.std!=null?wk.std:null, wkMin: wk&&wk.rankMin!=null?wk.rankMin:null, wkMax: wk&&wk.rankMax!=null?wk.rankMax:null, opp: wk?wk.opp:null, grade: wk?wk.grade:null, inj })));
   }
   // FantasyPros overall rank held by the k-th player at a position (how FP itself interleaves positions).
   function fpOverallAtPosRank(pos, k){ const l = (idx.posList && idx.posList[pos]) || []; const e = l[k-1]; return e ? e.rank : ROS_MAX; }
@@ -717,6 +717,107 @@
   // Valuation rank: the ESPN-implied rank when the role check fired, else the consensus rank.
   const rosR = p => p.rosEff!=null ? p.rosEff : p.ros;
   function rosVal(p){ const r = rosR(p); return r!=null ? ROS_MAX - r : 0; }
+  // ================= Playoff lens (Jose 2026-11-17: "we have to start thinking playoffs rather than ROS") =================
+  // FantasyPros' rest-of-season rank weighs every remaining week the same. A team that has (nearly) locked a playoff spot
+  // cares about the playoff weeks; the regular-season weeks left are a seeding term; a week the team SITS counts for
+  // nothing. So a hurt player with a return date before the playoffs is not a dead roster spot: he is valued at what he
+  // does when healthy (his per-game average this season, read against this week's position curve), scaled by the share
+  // of the weeks that matter he is actually available for. Flows through rosR(), so the drop ladder, scarcity pool,
+  // waiver gate, chained claims, trade talent and ROS lineups all see it. Every team gets it through its own playoff odds
+  // (?team= switches). Only players with a return date move — healthy players have no per-week projections to re-weight,
+  // so FP's rank stands for them. Maye case: D, "back ~11/29" (W12), FP ROS #181 → ten wire QBs read as upgrades on a
+  // team that sits W11, is 99.7% in, and would start him W16–18.
+  const LENS_REG = 0.75;   // a regular-season week's weight = 1 − LENS_REG × playoff odds (seeding still matters a little)
+  const LENS_FORM_N = 4;   // games played this season before his own median is trusted as the healthy rate (the injury game is usually one of them)
+  let HZ_TEAM = null, HZ_BUSY = false, HZ_CACHE = null;
+  const flatPO = () => { const pp = (SETTINGS && SETTINGS.playoffScoringPeriods) || []; return [].concat(...pp).filter(x=>typeof x==="number"); };
+  function lastNflWeek(){ const f = flatPO(); return f.length ? Math.max(...f) : 18; }
+  function playoffWeeks(){ return flatPO(); }
+  // This team's playoff odds from the championship simulator. The simulator's own talent pass calls info() → here, so
+  // inside it (HZ_BUSY) the lens runs with neutral weights — one pass, no recursion. Cached per page state (identity).
+  function playoffOddsOf(team){
+    if (HZ_BUSY || !R) return null;
+    const same = HZ_CACHE && HZ_CACHE.R===R && HZ_CACHE.S===S && HZ_CACHE.P===P && HZ_CACHE.HIST===HIST && HZ_CACHE.SET===SETTINGS && HZ_CACHE.me===R.me;
+    if (!same){
+      HZ_BUSY = true; let sim = null; try { sim = leagueSim(); } catch(e){ sim = null; } finally { HZ_BUSY = false; }
+      HZ_CACHE = { R, S, P, HIST, SET: SETTINGS, me: R.me, odds: {} };
+      if (sim && sim.byTeam) Object.entries(sim.byTeam).forEach(([t,v])=>{ if (typeof v.playoff==="number") HZ_CACHE.odds[t] = v.playoff; });
+    }
+    return HZ_CACHE.odds[team]!=null ? HZ_CACHE.odds[team] : null;
+  }
+  // The Tuesday that opens the current NFL week, from the live kickoffs — so "back ~11/29" maps to a week number.
+  function weekStartMs(){
+    if (!P || !P.games || !S || S.week==null) return null;
+    const ks = Object.values(P.games).map(g=>Date.parse(g && g.kick)).filter(x=>!isNaN(x)); if (!ks.length) return null;
+    const d = new Date(Math.min(...ks)); d.setHours(0,0,0,0); while (d.getDay()!==2) d.setDate(d.getDate()-1); return d.getTime();
+  }
+  function weekOfDate(ms){ const ws = weekStartMs(); if (ws==null || ms==null) return null; return S.week + Math.floor((ms - ws) / (7*86400000)); }
+  // Weight of every remaining NFL week for a team: 0 when it sits, 1 − LENS_REG×odds in the regular season, odds in the
+  // playoffs; all 1 when there is no simulator (no schedule/settings) — then the lens is plain availability.
+  function horizonWeights(team){
+    if (!S || S.week==null) return null;
+    const last = lastNflWeek(), reg = (SETTINGS && SETTINGS.regularSeasonWeeks) || last, po = new Set(playoffWeeks());
+    const odds = team ? playoffOddsOf(team) : null;
+    const sits = new Set(((HIST && HIST.schedule) || []).filter(r=>r.w>=S.week && r.w<=reg && ((r.home===team && r.away==null) || (r.away===team && r.home==null))).map(r=>r.w));
+    const weeks = {}; for (let k=S.week; k<=last; k++) weeks[k] = sits.has(k) ? 0 : odds==null ? 1 : po.has(k) ? odds : k<=reg ? 1 - LENS_REG*odds : 1;
+    return { weeks, odds, sits:[...sits].sort((a,b)=>a-b), reg, playoff:[...po].sort((a,b)=>a-b), last };
+  }
+  // Healthy position rank: his per-game average this season (games he actually played), read against this week's
+  // ESPN/Sleeper consensus at his position; players without a game this week are scaled back in.
+  function healthyPosRank(p){
+    const f = MU && MU.playerForm && MU.playerForm[p.n]; if (!f || !(f.n>=LENS_FORM_N) || !(f.actAvg>0)) return null;
+    // median of his games, not the mean: the game he got hurt in (Maye 3.0 at DET) is not a healthy data point
+    const pts = (f.log || []).map(r=>+r[2]).filter(x=>!isNaN(x)).sort((a,b)=>a-b);
+    const rate = pts.length>=LENS_FORM_N ? (pts.length%2 ? pts[(pts.length-1)/2] : (pts[pts.length/2-1]+pts[pts.length/2])/2) : f.actAvg;
+    if (!(rate>0)) return null;
+    const list = (idx.posList && idx.posList[p.pos]) || []; if (!list.length || !P || !P.players) return null;
+    let all = 0, withGame = 0, better = 0;
+    list.forEach(e=>{ all++; const q = P.players[e.n || norm(e.name)]; if (!q) return; const v = [q.espn, q.sleeper].filter(x=>typeof x==="number" && x>0); if (!v.length) return; withGame++; if (v.reduce((a,b)=>a+b,0)/v.length >= rate) better++; });
+    if (!withGame) return null;
+    return { rank: Math.max(1, Math.round(1 + better * all / withGame)), rate: Math.round(rate*10)/10, n: f.n };
+  }
+  function horizonCheck(p){
+    p.horizon = null;
+    if (!P || !S || S.week==null || p.ros==null || !["QB","RB","WR","TE"].includes(p.pos)) return p;
+    const back = backDate(p); if (back==null) return p;
+    const ret = weekOfDate(back); if (ret==null || ret <= S.week) return p;       // already back, or no calendar: FP's rank stands
+    const team = HZ_TEAM || R.me, H = horizonWeights(team); if (!H) return p;
+    let num = 0, den = 0, eq = 0, eqd = 0;
+    Object.keys(H.weeks).forEach(k=>{ const wk = +k, wt = H.weeks[k]; if (wk===p.bye) return; den += wt; eqd++; if (wk>=ret){ num += wt; eq++; } });
+    if (!(den>0)) return p;
+    const f = num/den, fEq = eqd ? eq/eqd : 1;
+    const hp = healthyPosRank(p), base = p.rosEff!=null ? p.rosEff : p.ros;
+    const hRank = hp ? fpOverallAtPosRank(p.pos, hp.rank) : null, lift = hRank!=null && hRank < base;
+    // Healthy rate better than FP's number: value = healthy value × share of the weeks that matter he plays. Otherwise FP's
+    // own number stands (it is the only signal we have, and how much of it already prices the absence is unknowable), except
+    // that a return after the final week is zero availability → the floor.
+    const val = lift ? (ROS_MAX - hRank) * f : (f>0 ? (ROS_MAX - base) : 0);
+    const eff = Math.min(ROS_MAX, Math.max(1, Math.round(ROS_MAX - val)));
+    p.horizon = { ret, f: Math.round(f*100)/100, fEq: Math.round(fEq*100)/100, healthy: hp ? { rank: hRank, posRank: hp.rank, rate: hp.rate, n: hp.n, used: lift } : null, from: base, rosEff: eff, odds: H.odds, team };
+    p.rosEff = eff;
+    return p;
+  }
+  const lensNote = p => p.horizon ? " → valued #"+p.rosEff+" (back W"+p.horizon.ret+")" : "";
+  function lensTag(p){
+    if (!p.horizon) return "";
+    const h = p.horizon, hp = h.healthy;
+    return "<span class='tag' title='Playoff lens: back ~W"+h.ret+(hp && hp.used ? "; healthy rate "+hp.rate.toFixed(1)+"/g over "+hp.n+" games = "+esc(p.pos)+hp.posRank : hp ? "; his "+hp.rate.toFixed(1)+"/g over "+hp.n+" games is no better than FantasyPros, so their number stands" : "; no healthy-rate sample yet, FantasyPros number stands")+"; plays "+Math.round(h.f*100)+"% of the weeks that matter to "+esc(h.team)+(h.odds!=null ? " ("+pct1(h.odds)+" to make the playoffs)" : "")+" → valued ROS #"+p.rosEff+" (FantasyPros #"+p.ros+")'>lens #"+p.rosEff+"</span>";
+  }
+  // One labelled line on the Waivers tab: the weights in force for the viewed team and who they move.
+  function lensLine(me){
+    const H = horizonWeights(R.me); if (!H) return "";
+    const ks = Object.keys(H.weeks).map(Number);
+    const span = ws => ws.length ? "Wk "+(ws.length>1 ? ws[0]+"–"+ws[ws.length-1] : ws[0]) : "";
+    const regW = ks.filter(k=>k<=H.reg && !H.sits.includes(k)), poW = ks.filter(k=>H.playoff.includes(k));
+    const dated = me.filter(p=>p.horizon);
+    const bits = ["🎯 <b>Playoff lens</b>"];
+    if (H.odds!=null) bits.push("in "+pct1(H.odds));
+    if (H.sits.length) bits.push(span(H.sits)+" sit ×0");
+    if (regW.length) bits.push(span(regW)+" ×"+(H.odds==null ? "1" : (1-LENS_REG*H.odds).toFixed(2)));
+    if (poW.length) bits.push(span(poW)+" ×"+(H.odds==null ? "1" : H.odds.toFixed(2)));
+    bits.push(dated.length ? dated.map(p=>esc(p.name)+" back W"+p.horizon.ret+" → #"+p.rosEff+" (FP #"+p.ros+")").join(", ") : "no hurt player with a return date");
+    return "<div class='suggest lens'>"+bits.join(" · ")+fold("how the lens works", "Rest-of-season rank weighs every week the same. The lens weighs each remaining week by what it is worth to this team: a week you sit counts 0, a regular-season week counts 1 − "+LENS_REG+" × your playoff odds (seeding), a playoff week counts your playoff odds. A hurt player with a return date is valued at his healthy rate (the median of his games this season on this week's position curve) times the share of those weighted weeks he plays; without "+LENS_FORM_N+" games of his own (or when his rate is no better than FantasyPros' view) their number stands, and a return after the final week is the floor. Healthy players keep their FantasyPros rank. Every drop, claim, chain, trade and ROS lineup on this page uses the valued rank.")+"</div>";
+  }
   // Startability follows the LIVE designation (injLive = worst of ESPN/Sleeper feeds, which already
   // falls back to the weekly injury file only when he's in neither) — not the weekly file directly,
   // which goes stale mid-week (e.g. OUT on Monday, upgraded to Questionable by Saturday).
@@ -1104,7 +1205,7 @@
   }
 
   function myTeam(){ return R.teams[R.me].map(info); }
-  function teamOf(name){ return R.teams[name].map(info); }
+  function teamOf(name){ const prev = HZ_TEAM; HZ_TEAM = name; try { return R.teams[name].map(info); } finally { HZ_TEAM = prev; } } // the lens weighs weeks by THIS team's playoff odds
   function allRostered(){ const s = new Set(); Object.values(R.teams).forEach(t=>t.forEach(p=>s.add(norm(p.name)))); return s; }
 
   function injBadge(p){
@@ -1137,7 +1238,7 @@
       : num("<span class='proj'>"+p.mu.toFixed(1)+"</span>");
     const range = (!P || p.mu==null || liveState(p)) ? num("") : num(p.floor.toFixed(0)+"–"+p.ceil.toFixed(0));
     const roleTag = p.roleDoubt ? "<span class='tag warn' title='Role in doubt: FantasyPros still ranks him "+esc(p.roleDoubt.fp)+", but ESPN&#39;s live season projection puts him at "+esc(p.roleDoubt.espn)+" ("+p.roleDoubt.gap+" spots worse). Lost or shrinking role, or an injury the consensus hasn&#39;t priced. Until the two agree he is valued here at ROS #"+p.roleDoubt.rosEff+", not #"+p.ros+".'>role? "+esc(p.roleDoubt.espn)+"</span>" : "";
-    const status = roleTag+(p.onBye ? "<span class='tag bad'>BYE</span>" : "")+(p.noTeam ? "<span class='tag bad' title='Released by his NFL team; the live feed lists him as FA. Unusable until he signs somewhere.'>NO TEAM</span>" : "")+(P && p.locked ? "<span class='tag warn'>locked</span>" : "")+injBadge(p)+(extra||"");
+    const status = roleTag+lensTag(p)+(p.onBye ? "<span class='tag bad'>BYE</span>" : "")+(p.noTeam ? "<span class='tag bad' title='Released by his NFL team; the live feed lists him as FA. Unusable until he signs somewhere.'>NO TEAM</span>" : "")+(P && p.locked ? "<span class='tag warn'>locked</span>" : "")+injBadge(p)+(extra||"");
     const cells = {
       "Slot": "<span class='slot'>"+esc(slot||"")+"</span>",
       "Pos": posTag(p.pos),
@@ -1980,6 +2081,7 @@
     const subOpen = k => "<div class='panel wsub"+(WSUB===k?"":" hidden")+"' data-sub='"+k+"'>";
     let h = "<div class='logf' id='wsubs'>"+WSUBS.map(([k,l])=>"<button class='tb wsub-btn"+(WSUB===k?" on":"")+"' data-sub='"+k+"'>"+l+"</button>").join("")+"</div>";
     h += subOpen("season")+"<h2>Waiver moves that beat your bench — season-long only</h2><div style='margin-bottom:6px'>"+fold("how this list is built", "An add/drop is suggested only when the free agent is better for the <b>rest of the season</b>, judged two ways at once: FantasyPros rest-of-season rank (refreshed Tuesdays) must be at least "+ROS_MARGIN+" spots better, and ESPN's live full-season projection must agree. This week's matchup is never a reason to drop a player. Smaller edges are listed as marginal so you don't churn.")+"</div>";
+    h += lensLine(me);
     const NV = nextWeekView(me, true); // next week's byes/holes — every claim row prints its bye fit against this
     // ===== ONE LIST (Jose 2026-11-03: "this is confusing, I just want one list") =====
     // Everything that used to be its own stack of cards — out starters, questionable starters, next week's bye holes —
@@ -2097,7 +2199,7 @@
       // Live designation, same source as the lineup rows (2026-10-20: DJ Moore flipped OUT→Q on ESPN mid-afternoon; the
       // row printed the 2 AM injury file's "O" while the claim logic, correctly, used the live Q — looked like a bug).
       const claimInj = p => { const code = P ? p.injLive : (p.inj ? p.inj.code : null); if (!code || code==="ACT") return ""; const note = p.injNote || (p.inj && p.inj.note) || ""; const pct = (P && p.pPlay>0 && p.pPlay<1) ? " "+Math.round(p.pPlay*100)+"%" : ""; return ", "+esc(code==="O"?"OUT":code)+pct+(note?" · "+esc(note):""); };
-      const player = (p, dropSide) => "<b"+(dropSide?"":" class='hl'")+">"+esc(p.name)+"</b>, "+esc(p.team||"?")+" "+p.pos+" <span class='muted'>(ROS "+(p.ros!=null?"#"+p.ros:"unranked")+(p.seasonProj!=null?", "+p.seasonProj.toFixed(0)+" season pts":"")+claimInj(p)+")</span>";
+      const player = (p, dropSide) => "<b"+(dropSide?"":" class='hl'")+">"+esc(p.name)+"</b>, "+esc(p.team||"?")+" "+p.pos+" <span class='muted'>(ROS "+(p.ros!=null?"#"+p.ros:"unranked")+lensNote(p)+(p.seasonProj!=null?", "+p.seasonProj.toFixed(0)+" season pts":"")+claimInj(p)+")</span>";
       const openN = openSpots(me);
       if (openN>0){ const mv = irMoves(me);
         h += "<div class='suggest'>🟢 <b>You have "+openN+" open roster spot"+(openN>1?"s":"")+"</b> ("+activeCount(me)+" of "+ROSTER_ACTIVE+" filled"+(mv.length?", IR slot empty":"")+") — the first claim is free, nobody has to be dropped."+(mv.length?" <b>Step 0: move "+mv.map(p=>esc(p.name)+" (OUT"+(p.injNote?", "+esc(p.injNote):"")+")").join(" and ")+" to your IR slot</b>":"")
@@ -2162,7 +2264,7 @@
     if (dorder.length){
       h += "<h3>Your drop order</h3><div style='margin-bottom:6px'>"+fold("how the ladder works", "Least season-long value first — when a claim needs a roster spot, this is the sequence. Claim 1 costs #1; land a second add and it costs #2, and so on. Your kicker and defense only ever swap for another K/DST, your QB for a QB. A <b>starter</b> is the drop only when a free agent at his position would start over him and he's worth less for the season than anyone on your bench (the Kincaid/Juwan Johnson case) — otherwise he just slides to the bench and the drop comes from this ladder. Rest-of-season lens: a bench man who only starts this week because your regulars are on bye is still a bench man here, and the men on bye are not drops. <b>Scarcity guard:</b> your only bench player at a position never drops for a different position — depth you can't replace beats a player who'd never crack your lineup. <b>Next-week guard:</b> a bench man who starts next week (bye cover) is never the drop for an add who wouldn't take his place that week.")+"</div>";
       const dcounts = {}; dorder.forEach(p=>{ dcounts[p.pos]=(dcounts[p.pos]||0)+1; });
-      dorder.forEach((p,i)=>{ h += "<div class='suggest'>➖ <b>#"+(i+1)+" "+esc(p.name)+"</b> <span class='muted'>"+p.pos+" · ROS "+(p.ros!=null?"#"+p.ros:"unranked")+(p.seasonProj!=null?" · "+p.seasonProj.toFixed(0)+" season pts":"")+(p.inj?" · "+esc(p.inj.code):"")+(p.bye!=null?" · bye "+p.bye:"")+"</span>"+(dcounts[p.pos]===1?" <span class='tag warn'>only "+p.pos+" on your bench — drops only for another "+p.pos+"</span>":"")+(isOut(p)?" <span class='tag warn'>OUT"+(p.injNote?" · "+esc(p.injNote):"")+" — zero this week"+(irMoves(me).includes(p)?"; park him on IR instead of dropping":"")+"</span>":"")+"</div>"; });
+      dorder.forEach((p,i)=>{ h += "<div class='suggest'>➖ <b>#"+(i+1)+" "+esc(p.name)+"</b> <span class='muted'>"+p.pos+" · ROS "+(p.ros!=null?"#"+p.ros:"unranked")+lensNote(p)+(p.seasonProj!=null?" · "+p.seasonProj.toFixed(0)+" season pts":"")+(p.inj?" · "+esc(p.inj.code):"")+(p.bye!=null?" · bye "+p.bye:"")+"</span>"+(dcounts[p.pos]===1?" <span class='tag warn'>only "+p.pos+" on your bench — drops only for another "+p.pos+"</span>":"")+(isOut(p)?" <span class='tag warn'>OUT"+(p.injNote?" · "+esc(p.injNote):"")+" — zero this week"+(irMoves(me).includes(p)?"; park him on IR instead of dropping":"")+"</span>":"")+"</div>"; });
     }
     // One decoration for every rental row (shared by the all-positions list and the per-position tables): the lineup
     // tag (starts / starts only if X sits / bench), the instant-add warning, and — for skill positions that are not a
@@ -3114,6 +3216,7 @@
     dropOrder:()=>{ const me = myTeam(); const bench = ladderBench(me); return dropOrder(me, bench); }, fitNote, scarcityPool, ladderBench, lineupImpact, dropCandidate, dropVerdict, opensHole, holeWeek, swapGain, thisWeekHoles, thisWeekLineup, weekLive, keptNote, keptForNextWeek,
     winProbAt, winProbSeries, winLogPoints, setWinLog:(w)=>{ WPL=w||null; }, wouldStartHealthy, rentalImpact, setWaiverSub:(sub,pos)=>{ if (sub) WSUB = sub; if (pos!=null) WALLPOS = pos; renderWaivers(); }, getWaiverSub:()=>({ sub:WSUB, pos:WALLPOS }), topScorersThisWeek:(qb)=>{ const me = myTeam(); return topScorersThisWeek(me, freeAgents().filter(p=>!undraftable(p)), lineupKey(), !!qb); }, TOP_WEEK, TOP_WEEK_QB, rentalRows:(pos)=>rentalRows(myTeam(), freeAgents().filter(p=>!undraftable(p)), pos, lineupKey()), shakyStarters:()=>weekStarters(myTeam(), lineupKey()).filter(s=>shaky(s.p) && !["K","DST"].includes(s.p.pos)), STREAM_ROWS,
     setTeamParam:(qs)=>{ applyTeamParam(qs); buildIndex(); renderAll(); },
+    horizonWeights, weekOfDate, playoffOddsOf, healthyPosRank, horizonCheck, LENS_REG, LENS_FORM_N, lensLine:()=>lensLine(myTeam()), infoFor:(p,team)=>{ const prev = HZ_TEAM; HZ_TEAM = team; try { return info(p); } finally { HZ_TEAM = prev; } },
     benchSkill:()=>{ const me = myTeam(); const bench = ladderBench(me); return bench.filter(p=>!["K","DST"].includes(p.pos)); },
     waiverBoard:(list)=>{ const me = myTeam(); const bench = ladderBench(me); return waiverBoard(me, bench, list || freeAgents().filter(p=>!undraftable(p))); } };
   if (!window.__seasonNoAutoLoad) load();
