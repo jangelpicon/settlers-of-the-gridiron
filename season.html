@@ -97,6 +97,7 @@
     <dl>
       <dt>Proj</dt><dd>Predicted fantasy points <b>this week</b>: the average of ESPN's projection, Sleeper's projection and what a player at his expert-consensus rank usually scores (the rank's vote shrinks, down to 10%, when the experts are split on him — typical for a player coming off injury — or when ESPN and Sleeper agree with each other and the rank number sits far from both; the detail line then shows "(x% vote)"), blended (up to half weight) with the <b>matchup view</b> — his own per-game production scaled by how generous this week's defense really is to his position, from actual box scores — then nudged by the Vegas line and his chance of playing. The consensus is slow to reprice a broken or surging situation; the matchup view catches it.</dd>
       <dt>Next 4</dt><dd>His team's next four opponents, each with the fantasy points that defense actually gives up per game to his position. <span class="good">Green</span> = soft matchup coming, <span class="bad">red</span> = stingy. Early season this runs on few games, so treat middling numbers as noise.</dd>
+      <dt>lens #N</dt><dd>His valued rest-of-season rank under the playoff lens, when it differs from FantasyPros': weeks are weighted by what they are worth to this team (a sat week 0, regular season 1 − 0.75 × playoff odds, playoff weeks the odds), a hurt player with a return date is valued at his healthy rate for the weeks he plays, and every remaining opponent is graded by what that defense gives up to his position. Tap the tag for the breakdown. Every drop, claim, trade and rest-of-season lineup uses this rank.</dd>
       <dt>Floor–Ceil</dt><dd>A bad week and a good week for him (20th and 80th percentile). Wide range = boom-or-bust. The width is refit every refresh from this season's logged results per position (a floor of a few points plus a share of his projection), so the band catches the real score about 60% of the time.</dd>
       <dt>Wk rank</dt><dd>FantasyPros expert consensus rank for this week. QB, K and DST are ranked within their position; RB/WR/TE are ranked together (that's the flex pool). Lower is better.</dd>
       <dt>Opp</dt><dd>This week's opponent. "vs." = home, "at" = away.</dd>
@@ -108,7 +109,7 @@
       <dt>Odds (start/sit)</dt><dd>Chance the bench player outscores the starter he would replace. Under 35% leave it; 35–55% coin flip, check news; over 55% the tool already swapped him in.</dd>
       <dt>Title % (league)</dt><dd><b>The ranking.</b> Chance a team wins the championship, from 10,000 simulated seasons: every remaining matchup on the real schedule, then the playoff bracket exactly as the league settings define it (playoff teams, seeding tiebreaker, reseeding). Playoff % = chance it makes the bracket; Proj seed = its average final standing (1 = top seed).</dd>
       <dt>Scoring rate (league)</dt><dd>A team's expected points per week from here on: a blend of its <b>actual</b> weekly average (real matchups only — points scored in a sat week count for nothing, same as ESPN's points-for) and its <b>roster talent</b> converted to points. Early on talent carries more weight; every real week shifts the weight toward actual scoring (the % in brackets). The blend weight is measured from the league's own scores, not chosen.</dd>
-      <dt>Roster talent (ROS)</dt><dd>Paper strength: sum over a team's 9 best starters of (420 − rest-of-season rank), so +10 ≈ upgrading one starter by 10 rank spots. It is an <b>input</b> to the scoring rate — it ignores record and real scoring, so it never ranks teams on its own. "This week" = that team's projected points with its best lineup.</dd>
+      <dt>Roster talent (ROS)</dt><dd>Paper strength: sum over a team's 9 best starters of (420 − FantasyPros rest-of-season rank, before the playoff lens), so +10 ≈ upgrading one starter by 10 rank spots. It is an <b>input</b> to the scoring rate — it ignores record and real scoring, so it never ranks teams on its own. "This week" = that team's projected points with its best lineup.</dd>
       <dt>Title Δ (trades, waivers, start/sit)</dt><dd>How much a move changes <b>your</b> title %, re-simulated with both rosters' talent updated (same random seasons, so the difference is the move itself). Shown in percentage points (pp). Talent you / them = the roster-talent change on each side — the other manager judges the offer on that, so it drives the odds they accept.</dd>
       <dt>EV (trades)</dt><dd>Title Δ × the chance they say yes. The one number to sort trades by.</dd>
       <dt>Waiver log</dt><dd>Every add, drop and waiver claim in the league this season, straight from ESPN's transaction feed (lineup shuffles and the draft left out). <b>Claimed</b> = waiver claim went through; <b>lost claim</b> = someone with better waiver priority took the player first (the row says who); <b>drop gone</b> = the player you meant to drop was already off your roster when the claim ran; <b>canceled</b> = the manager pulled the claim before it processed; <b>FA add</b> = picked up as a free agent (no waiver wait). Your rows are shaded.</dd>
@@ -730,6 +731,9 @@
   const LENS_REG = 0.75;   // a regular-season week's weight = 1 − LENS_REG × playoff odds (seeding still matters a little)
   const LENS_FORM_N = 4;   // games played this season before his own median is trusted as the healthy rate (the injury game is usually one of them)
   let HZ_TEAM = null, HZ_BUSY = false, HZ_CACHE = null;
+  // Lens off for a block: the championship simulator's talent prior (strength + talentSlope) is FantasyPros paper talent,
+  // odds-free and deterministic — the lens needs the odds the simulator produces, so it cannot also feed it.
+  function lensOff(fn){ const prev = HZ_BUSY; HZ_BUSY = true; try { return fn(); } finally { HZ_BUSY = prev; } }
   const flatPO = () => { const pp = (SETTINGS && SETTINGS.playoffScoringPeriods) || []; return [].concat(...pp).filter(x=>typeof x==="number"); };
   function lastNflWeek(){ const f = flatPO(); return f.length ? Math.max(...f) : 18; }
   function playoffWeeks(){ return flatPO(); }
@@ -776,32 +780,69 @@
     if (!withGame) return null;
     return { rank: Math.max(1, Math.round(1 + better * all / withGame)), rate: Math.round(rate*10)/10, n: f.n };
   }
+  // Remaining-slate grade: each remaining week's opponent for his NFL team, graded by what that defense gives up to his
+  // position (the shrunk "adj" DvP vs league average, capped 0.5x–1.6x like the weekly blend), weighted by what the week
+  // is worth to the fantasy team and skipped when he does not play it (bye, before his return). The grade moves his value
+  // by the position's MEASURED trust in the matchup view (fittedW.use, the same weight the weekly projection earns), so a
+  // soft W16–18 slate on a locked team is a handful of ranks, not a re-draft.
+  function schedGrade(p, H, ret){
+    if (!MU || !MU.defVsPos || !MU.leagueAvg || !H) return null;
+    const tm = teamCode(p.liveTeam||p.team); const rows = (MU.schedule && MU.schedule[tm]) || null;
+    const lg = MU.leagueAvg[p.pos]; if (!rows || !rows.length || !lg) return null;
+    const fw = MU.fittedW && MU.fittedW[p.pos] && MU.fittedW[p.pos].use!=null ? MU.fittedW[p.pos].use : 0.5;
+    let num = 0, den = 0; const weeks = [];
+    rows.forEach(o=>{ const wt = H.weeks[o.w]; if (!(wt>0) || o.bye || (ret!=null && o.w<ret)) return;
+      const dv = (MU.defVsPos[o.opp]||{})[p.pos]; if (!dv || dv.avg==null) return;
+      const allows = dv.adj!=null ? dv.adj : dv.avg, ratio = Math.min(1.6, Math.max(0.5, allows/lg));
+      num += wt*ratio; den += wt; weeks.push({ w:o.w, opp:o.opp, home:!!o.home, ratio: Math.round(ratio*100)/100, wt: Math.round(wt*100)/100 }); });
+    if (!(den>0)) return null;
+    const adj = num/den, mult = 1 + (adj-1)*fw;
+    return { adj: Math.round(adj*1000)/1000, fw, mult: Math.round(mult*1000)/1000, weeks };
+  }
   function horizonCheck(p){
-    p.horizon = null;
-    if (!P || !S || S.week==null || p.ros==null || !["QB","RB","WR","TE"].includes(p.pos)) return p;
-    const back = backDate(p); if (back==null) return p;
-    const ret = weekOfDate(back); if (ret==null || ret <= S.week) return p;       // already back, or no calendar: FP's rank stands
+    p.horizon = null; p.sched = null;
+    if (HZ_BUSY || !P || !S || S.week==null || p.ros==null || !["QB","RB","WR","TE"].includes(p.pos)) return p;
     const team = HZ_TEAM || R.me, H = horizonWeights(team); if (!H) return p;
-    let num = 0, den = 0, eq = 0, eqd = 0;
-    Object.keys(H.weeks).forEach(k=>{ const wk = +k, wt = H.weeks[k]; if (wk===p.bye) return; den += wt; eqd++; if (wk>=ret){ num += wt; eq++; } });
-    if (!(den>0)) return p;
-    const f = num/den, fEq = eqd ? eq/eqd : 1;
-    const hp = healthyPosRank(p), base = p.rosEff!=null ? p.rosEff : p.ros;
-    const hRank = hp ? fpOverallAtPosRank(p.pos, hp.rank) : null, lift = hRank!=null && hRank < base;
-    // Healthy rate better than FP's number: value = healthy value × share of the weeks that matter he plays. Otherwise FP's
-    // own number stands (it is the only signal we have, and how much of it already prices the absence is unknowable), except
-    // that a return after the final week is zero availability → the floor.
-    const val = lift ? (ROS_MAX - hRank) * f : (f>0 ? (ROS_MAX - base) : 0);
-    const eff = Math.min(ROS_MAX, Math.max(1, Math.round(ROS_MAX - val)));
-    p.horizon = { ret, f: Math.round(f*100)/100, fEq: Math.round(fEq*100)/100, healthy: hp ? { rank: hRank, posRank: hp.rank, rate: hp.rate, n: hp.n, used: lift } : null, from: base, rosEff: eff, odds: H.odds, team };
-    p.rosEff = eff;
+    const base = p.rosEff!=null ? p.rosEff : p.ros;
+    let val = ROS_MAX - base, ret = null;
+    // (1) a return date: valued at his healthy rate × the share of the weeks that matter he plays
+    const back = backDate(p), rw = back!=null ? weekOfDate(back) : null;
+    if (rw!=null && rw > S.week){                                                  // already back, or no calendar: FP's rank stands
+      ret = rw;
+      let num = 0, den = 0, eq = 0, eqd = 0;
+      Object.keys(H.weeks).forEach(k=>{ const wk = +k, wt = H.weeks[k]; if (wk===p.bye) return; den += wt; eqd++; if (wk>=ret){ num += wt; eq++; } });
+      if (den>0){
+        const f = num/den, fEq = eqd ? eq/eqd : 1;
+        const hp = healthyPosRank(p);
+        const hRank = hp ? fpOverallAtPosRank(p.pos, hp.rank) : null, lift = hRank!=null && hRank < base;
+        // Healthy rate better than FP's number: value = healthy value × share of the weeks that matter he plays. Otherwise FP's
+        // own number stands (it is the only signal we have, and how much of it already prices the absence is unknowable), except
+        // that a return after the final week is zero availability → the floor.
+        val = lift ? (ROS_MAX - hRank) * f : (f>0 ? (ROS_MAX - base) : 0);
+        p.horizon = { ret, f: Math.round(f*100)/100, fEq: Math.round(fEq*100)/100, healthy: hp ? { rank: hRank, posRank: hp.rank, rate: hp.rate, n: hp.n, used: lift } : null, from: base, rosEff: null, odds: H.odds, team };
+      }
+    }
+    // (2) the remaining slate, weighted by the same week weights
+    const sg = schedGrade(p, H, ret);
+    if (sg && Math.abs(sg.mult-1) >= 0.0005){ val = val * sg.mult; p.sched = sg; }
+    if (p.horizon || p.sched){
+      const eff = Math.min(ROS_MAX, Math.max(1, Math.round(ROS_MAX - val)));
+      if (p.horizon) p.horizon.rosEff = eff;
+      p.rosEff = eff;
+    }
     return p;
   }
-  const lensNote = p => p.horizon ? " → valued #"+p.rosEff+" (back W"+p.horizon.ret+")" : "";
+  const LENS_SHOW = 5;     // slate-only moves print the valued rank when they shift him this many ranks or more (a return date always prints)
+  const lensBase = p => p.roleDoubt ? p.roleDoubt.rosEff : p.ros;   // the rank the lens started from (the role check may already have moved it)
+  const lensOn = p => !!(p.horizon || (p.sched && lensBase(p)!=null && Math.abs(p.rosEff - lensBase(p)) >= LENS_SHOW));
+  const lensWhy = p => [p.horizon ? "back W"+p.horizon.ret : "", p.sched ? "slate ×"+p.sched.mult.toFixed(2) : ""].filter(Boolean).join(", ");
+  const lensNote = p => lensOn(p) ? " → valued #"+p.rosEff+" ("+lensWhy(p)+")" : "";
+  const slateTxt = p => p.sched ? p.sched.weeks.map(k=>"W"+k.w+" "+(k.home?"vs ":"@")+k.opp+" "+k.ratio.toFixed(2)).join(" · ")+" → ×"+p.sched.mult.toFixed(2)+" (trust "+p.sched.fw.toFixed(2)+")" : "";
   function lensTag(p){
-    if (!p.horizon) return "";
-    const h = p.horizon, hp = h.healthy;
-    return "<span class='tag' title='Playoff lens: back ~W"+h.ret+(hp && hp.used ? "; healthy rate "+hp.rate.toFixed(1)+"/g over "+hp.n+" games = "+esc(p.pos)+hp.posRank : hp ? "; his "+hp.rate.toFixed(1)+"/g over "+hp.n+" games is no better than FantasyPros, so their number stands" : "; no healthy-rate sample yet, FantasyPros number stands")+"; plays "+Math.round(h.f*100)+"% of the weeks that matter to "+esc(h.team)+(h.odds!=null ? " ("+pct1(h.odds)+" to make the playoffs)" : "")+" → valued ROS #"+p.rosEff+" (FantasyPros #"+p.ros+")'>lens #"+p.rosEff+"</span>";
+    if (!lensOn(p)) return "";
+    const h = p.horizon, hp = h && h.healthy;
+    if (!h) return "<span class='tag "+(p.rosEff < p.ros ? "good" : "bad")+"' title='Playoff lens — remaining slate, graded by what each defense gives up to "+esc(p.pos)+"s, weighted by what each week is worth to "+esc(HZ_TEAM||R.me)+": "+esc(slateTxt(p))+" → valued ROS #"+p.rosEff+" (FantasyPros #"+p.ros+")'>lens #"+p.rosEff+"</span>";
+    return "<span class='tag' title='Playoff lens: back ~W"+h.ret+(hp && hp.used ? "; healthy rate "+hp.rate.toFixed(1)+"/g over "+hp.n+" games = "+esc(p.pos)+hp.posRank : hp ? "; his "+hp.rate.toFixed(1)+"/g over "+hp.n+" games is no better than FantasyPros, so their number stands" : "; no healthy-rate sample yet, FantasyPros number stands")+"; plays "+Math.round(h.f*100)+"% of the weeks that matter to "+esc(h.team)+(h.odds!=null ? " ("+pct1(h.odds)+" to make the playoffs)" : "")+(p.sched ? "; slate "+esc(slateTxt(p)) : "")+" → valued ROS #"+p.rosEff+" (FantasyPros #"+p.ros+")'>lens #"+p.rosEff+"</span>";
   }
   // One labelled line on the Waivers tab: the weights in force for the viewed team and who they move.
   function lensLine(me){
@@ -815,8 +856,11 @@
     if (H.sits.length) bits.push(span(H.sits)+" sit ×0");
     if (regW.length) bits.push(span(regW)+" ×"+(H.odds==null ? "1" : (1-LENS_REG*H.odds).toFixed(2)));
     if (poW.length) bits.push(span(poW)+" ×"+(H.odds==null ? "1" : H.odds.toFixed(2)));
+    if (MU && MU.schedule) bits.push("slate graded");
     bits.push(dated.length ? dated.map(p=>esc(p.name)+" back W"+p.horizon.ret+" → #"+p.rosEff+" (FP #"+p.ros+")").join(", ") : "no hurt player with a return date");
-    return "<div class='suggest lens'>"+bits.join(" · ")+fold("how the lens works", "Rest-of-season rank weighs every week the same. The lens weighs each remaining week by what it is worth to this team: a week you sit counts 0, a regular-season week counts 1 − "+LENS_REG+" × your playoff odds (seeding), a playoff week counts your playoff odds. A hurt player with a return date is valued at his healthy rate (the median of his games this season on this week's position curve) times the share of those weighted weeks he plays; without "+LENS_FORM_N+" games of his own (or when his rate is no better than FantasyPros' view) their number stands, and a return after the final week is the floor. Healthy players keep their FantasyPros rank. Every drop, claim, chain, trade and ROS lineup on this page uses the valued rank.")+"</div>";
+    const moved = me.filter(p=>!p.horizon && lensOn(p)).sort((a,b)=>(a.rosEff-a.ros)-(b.rosEff-b.ros));
+    if (moved.length) bits.push("slate moves: "+moved.map(p=>esc(p.name)+" #"+p.ros+"→#"+p.rosEff).join(", "));
+    return "<div class='suggest lens'>"+bits.join(" · ")+fold("how the lens works", "Rest-of-season rank weighs every week the same. The lens weighs each remaining week by what it is worth to this team: a week you sit counts 0, a regular-season week counts 1 − "+LENS_REG+" × your playoff odds (seeding), a playoff week counts your playoff odds. A hurt player with a return date is valued at his healthy rate (the median of his games this season on this week's position curve) times the share of those weighted weeks he plays; without "+LENS_FORM_N+" games of his own (or when his rate is no better than FantasyPros' view) their number stands, and a return after the final week is the floor. Then every player's remaining slate is graded: each week's opponent by what that defense gives up to his position (shrunk, capped 0.5x–1.6x, vs league average), weighted by the same week weights and skipping weeks he does not play; the grade moves his value by the position's measured trust in matchups ("+(MU && MU.fittedW ? ["QB","RB","WR","TE"].map(x=>x+" "+((MU.fittedW[x]||{}).use!=null ? MU.fittedW[x].use.toFixed(2) : "0.50")).join(", ") : "0.50")+" — the same weight the weekly projection earns from backtests), so a soft playoff slate is a few ranks, not a re-draft. Players moved "+LENS_SHOW+"+ ranks print the valued rank. Every drop, claim, chain, trade and ROS lineup on this page uses the valued rank.")+"</div>";
   }
   // Startability follows the LIVE designation (injLive = worst of ESPN/Sleeper feeds, which already
   // falls back to the weekly injury file only when he's in neither) — not the weekly file directly,
@@ -1121,7 +1165,7 @@
     const key = simKey();
     if (!key) return null;
     if (SIMC && SIMC.key===key) return SIMC.out;
-    const out = buildLeagueSim();
+    const out = lensOff(buildLeagueSim);
     SIMC = { key, out };
     return out;
   }
@@ -3088,7 +3132,8 @@
   function renderLeague(){
     const L = leagueSim();
     const wkProj = tm => P ? lockAwareLineup(tm,"mu").slots.reduce((s,x)=>s+effPts(x.p),0) : null;
-    const rows = Object.keys(R.teams).map(t=>{ const tm = teamOf(t); return { team:t, s: strength(tm), wk: wkProj(tm), sim: L ? L.byTeam[t] : null }; });
+    // Roster talent = FantasyPros paper strength with the lens off: the simulator's own prior, odds-free (legend says so)
+    const rows = Object.keys(R.teams).map(t=>{ const tm = teamOf(t); return { team:t, s: lensOff(()=>strength(teamOf(t))), wk: wkProj(tm), sim: L ? L.byTeam[t] : null }; });
     let h = "";
     if (L){
       rows.sort((a,b)=> b.sim.champ-a.sim.champ || b.sim.playoff-a.sim.playoff || a.sim.seed-b.sim.seed);
@@ -3216,7 +3261,7 @@
     dropOrder:()=>{ const me = myTeam(); const bench = ladderBench(me); return dropOrder(me, bench); }, fitNote, scarcityPool, ladderBench, lineupImpact, dropCandidate, dropVerdict, opensHole, holeWeek, swapGain, thisWeekHoles, thisWeekLineup, weekLive, keptNote, keptForNextWeek,
     winProbAt, winProbSeries, winLogPoints, setWinLog:(w)=>{ WPL=w||null; }, wouldStartHealthy, rentalImpact, setWaiverSub:(sub,pos)=>{ if (sub) WSUB = sub; if (pos!=null) WALLPOS = pos; renderWaivers(); }, getWaiverSub:()=>({ sub:WSUB, pos:WALLPOS }), topScorersThisWeek:(qb)=>{ const me = myTeam(); return topScorersThisWeek(me, freeAgents().filter(p=>!undraftable(p)), lineupKey(), !!qb); }, TOP_WEEK, TOP_WEEK_QB, rentalRows:(pos)=>rentalRows(myTeam(), freeAgents().filter(p=>!undraftable(p)), pos, lineupKey()), shakyStarters:()=>weekStarters(myTeam(), lineupKey()).filter(s=>shaky(s.p) && !["K","DST"].includes(s.p.pos)), STREAM_ROWS,
     setTeamParam:(qs)=>{ applyTeamParam(qs); buildIndex(); renderAll(); },
-    horizonWeights, weekOfDate, playoffOddsOf, healthyPosRank, horizonCheck, LENS_REG, LENS_FORM_N, lensLine:()=>lensLine(myTeam()), infoFor:(p,team)=>{ const prev = HZ_TEAM; HZ_TEAM = team; try { return info(p); } finally { HZ_TEAM = prev; } },
+    horizonWeights, weekOfDate, playoffOddsOf, healthyPosRank, horizonCheck, schedGrade, lensOn, lensBase, lensOff, LENS_REG, LENS_FORM_N, LENS_SHOW, lensLine:()=>lensLine(myTeam()), infoFor:(p,team)=>{ const prev = HZ_TEAM; HZ_TEAM = team; try { return info(p); } finally { HZ_TEAM = prev; } },
     benchSkill:()=>{ const me = myTeam(); const bench = ladderBench(me); return bench.filter(p=>!["K","DST"].includes(p.pos)); },
     waiverBoard:(list)=>{ const me = myTeam(); const bench = ladderBench(me); return waiverBoard(me, bench, list || freeAgents().filter(p=>!undraftable(p))); } };
   if (!window.__seasonNoAutoLoad) load();

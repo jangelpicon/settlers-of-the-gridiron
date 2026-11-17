@@ -14,6 +14,9 @@ What it computes, from real box scores (ESPN league scoring) + the NFL schedule:
               scaled by how much softer or stingier this week's defense is than the ones he
               already faced, with the multiplier hard-capped so tiny samples can't run away.
   outlook     per NFL team: the next 4 weeks (opponent, home/away; missing week = bye).
+  schedule    per NFL team: EVERY remaining week through 18 (same row shape) — the page's playoff lens grades
+              each team's remaining opponents by defense-vs-position, weighted by what each week is worth to
+              the fantasy team (Jose 2026-11-17: "start thinking playoffs rather than ROS").
   fittedW     per position: the consensus-vs-matchup blend weight FITTED on this season's own
               walk-forward prediction log instead of hand-picked. For every completed week w >= 2
               we rebuild the matchup view using ONLY weeks < w (no hindsight), pair it with the
@@ -252,7 +255,7 @@ def main():
     played = list(range(1, wk))
     if not played:
         sys.exit("no completed weeks yet — nothing to compute")
-    sched = {w: schedule_week(w) for w in played + list(range(wk, min(wk + OUTLOOK_WEEKS, 19)))}
+    sched = {w: schedule_week(w) for w in played + list(range(wk, 19))}   # every remaining week: outlook (next 4) + schedule (all)
     weeks = {w: espn_week(w) for w in played}
     sleeper = {w: sleeper_week(w) for w in range(2, wk)}
 
@@ -262,6 +265,11 @@ def main():
     for tm in TEAM_NAME:
         outlook[tm] = [{"w": w, "opp": sched[w][tm]["opp"], "home": sched[w][tm]["home"]} if tm in sched[w]
                        else {"w": w, "bye": True} for w in range(wk, min(wk + OUTLOOK_WEEKS, 19))]
+
+    schedule = {}
+    for tm in TEAM_NAME:
+        schedule[tm] = [{"w": w, "opp": sched[w][tm]["opp"], "home": sched[w][tm]["home"]} if tm in sched[w]
+                        else {"w": w, "bye": True} for w in range(wk, 19)]
 
     rows = backfill_log(weeks, sched, sleeper, wk)
     fitted = fit_weights(rows)
@@ -273,7 +281,7 @@ def main():
     out = {"generated": now.strftime("%Y-%m-%d %-I:%M %p CT"), "generatedMs": int(now.timestamp() * 1000),
            "season": SEASON, "currentWeek": wk, "weeksSampled": played,
            "leagueAvg": league_avg, "defVsPos": def_vs_pos, "playerForm": player_form,
-           "outlook": outlook, "fittedW": fitted, "sigma": sigma}
+           "outlook": outlook, "schedule": schedule, "fittedW": fitted, "sigma": sigma}
     (HERE / "data" / "matchups.json").write_text(json.dumps(out, separators=(",", ":")))
     (HERE / "data" / "predlog.json").write_text(json.dumps(
         {"generated": out["generated"], "season": SEASON, "weeksScored": list(range(2, wk)), "rows": rows},

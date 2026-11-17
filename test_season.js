@@ -17,6 +17,7 @@ Object.values(unlockedProjections.players || {}).forEach(p => { if (p && typeof 
 let failures = 0;
 const assert = (c, m) => { console.log((c ? "  ok - " : "  FAIL - ") + m); if (!c) failures++; };
 const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+const vr = p => p.rosEff != null ? p.rosEff : p.ros; // valuation rank — what the page sorts and gates on (role check / playoff lens may move it off FP's rank)
 (async () => {
   const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://localhost/", beforeParse(w){ w.__seasonNoAutoLoad = true; } });
   await new Promise(r => setTimeout(r, 30));
@@ -165,9 +166,9 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(paid.every(s => s.gain >= T.ROS_MARGIN), "every add/drop suggestion is at least " + T.ROS_MARGIN + " rest-of-season rank spots better (" + paid.length + " suggestions)");
   assert(paid.concat(WS.marginal).filter(s => s.key !== "split").every(s => s.add.seasonProj == null || s.drop.seasonProj == null || s.add.seasonProj >= s.drop.seasonProj), "no ADD/marginal suggestion drops a player with a higher ESPN full-season projection than the add (split rows are the one allowed exception — FantasyPros yes, ESPN no, shown as a judgment call)");
   assert(WS.marginal.filter(s => s.key === "split").every(s => s.gain >= T.ROS_MARGIN && s.add.seasonProj != null && s.drop.seasonProj != null && s.add.seasonProj < s.drop.seasonProj), "every split row clears the FantasyPros bar and loses on ESPN season projection (that is what split means)");
-  const benchSkill = T.benchSkill().slice().sort((a, b) => (b.ros || 420) - (a.ros || 420));
+  const benchSkill = T.benchSkill().slice().sort((a, b) => (vr(b) || 420) - (vr(a) || 420));
   // scarcityPool with me + add applies the next-week-cover guard (Jose 2026-11-04, Kamara): the oracle must see what the page sees.
-  const scarceDrop = (pos, add) => T.scarcityPool(T.benchSkill(), pos, add ? me : null, add || null).sort((a, b) => (b.ros || 420) - (a.ros || 420))[0];
+  const scarceDrop = (pos, add) => T.scarcityPool(T.benchSkill(), pos, add ? me : null, add || null).sort((a, b) => (vr(b) || 420) - (vr(a) || 420))[0];
   const rosOf = p => (p.rosEff != null ? p.rosEff : p.ros) || 420;
   // Ruling 2026-10-21 (Kincaid/Juwan): the drop is the scarcity-aware bench worst, OR the starter the add pushes out when that starter is worth less than the bench worst.
   const rightDrop = (add, drop) => { const sd = scarceDrop(add.pos, add); const imp = T.lineupImpact(me, add); if (imp.starts && imp.displaced && (!sd || rosOf(imp.displaced) > rosOf(sd))) return drop.n === imp.displaced.n; return !!sd && drop.n === sd.n; };
@@ -316,7 +317,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   console.log("== Waivers: drop order & roster fit ==");
   const DO = T.dropOrder();
   assert(DO.length > 0 && DO.every(p => !["K","DST"].includes(p.pos)), "drop order lists bench skill players only (K/DST swap for their own slot, never drop)");
-  assert(DO.every((p, i) => i === 0 || (DO[i-1].ros || 420) >= (p.ros || 420)), "drop order runs least season-long value first");
+  assert(DO.every((p, i) => i === 0 || (vr(DO[i-1]) || 420) >= (vr(p) || 420)), "drop order runs least season-long value first (valued rank)");
   assert(paid.concat(WS.marginal).filter(s => s.add.pos !== "QB").every(s => rightDrop(s.add, s.drop)), "every claim names the scarcity-aware top of the drop order (or the out-valued starter it replaces) — the ladder explains multi-add drops");
   const wtxt2 = d.getElementById("tab-waivers").textContent;
   assert(/Your drop order/.test(wtxt2) && ((WS.sugg.length || SC.length) ? /Your claim sheet — enter exactly this in ESPN/.test(wtxt2) : /Nothing on the wire is a clear season-long upgrade/.test(wtxt2)), "waiver tab shows the drop order plus the claim sheet (or the empty-wire note when there are no season-long OR weekly K/DST moves)");
@@ -507,8 +508,8 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     assert(rows.every(r => { const m = wtxt2.indexOf("Priority " + r[0]); if (m < 0) return false; const seg = wtxt2.slice(m, wtxt2.indexOf("Priority " + (r[0]+1)) > 0 ? wtxt2.indexOf("Priority " + (r[0]+1)) : m + 400); return rx(r[1]).test(seg) && rx(r[2]).test(seg); }), "claim sheet renders every row as 'Priority N · add X · drop Y' in exact order, backups included (" + rows.map(r => r[0] + ":" + r[1] + "/" + r[2]).join(", ") + ")");
     assert(WS.sugg.every(s => !s.chain || !s.chain.worth || /backup for Priority/.test(wtxt2)), "a worth-it deeper drop becomes its own backup claim row, ESPN-style");
   }
-  const meTEbest = me.filter(p => p.pos === "TE").sort((a, b) => (a.ros || 420) - (b.ros || 420))[0];
-  assert(meTEbest && T.fitNote({ pos: "TE", ros: (meTEbest.ros || 0) + 5, name: "Backup Te" }, me) != null && T.fitNote({ pos: "WR", ros: 10, name: "Some Wr" }, me) == null, "fit note flags a TE stuck behind your better TE, never a WR");
+  const meTEbest = me.filter(p => p.pos === "TE").sort((a, b) => (vr(a) || 420) - (vr(b) || 420))[0];
+  assert(meTEbest && T.fitNote({ pos: "TE", ros: (vr(meTEbest) || 0) + 5, name: "Backup Te" }, me) != null && T.fitNote({ pos: "WR", ros: 10, name: "Some Wr" }, me) == null, "fit note flags a TE stuck behind your better TE, never a WR");
   const firstFit = WS.sugg.findIndex(s => s.fit), lastClean = WS.sugg.map((s, i) => s.fit ? -1 : i).reduce((a, b) => Math.max(a, b), -1);
   assert(firstFit === -1 || lastClean === -1 || firstFit > lastClean, "bench-clog adds rank below clean adds in the claim ladder");
   console.log("== Waivers: chained claims ==");
@@ -517,7 +518,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(WS.sugg.every(s => !s.chain || (s.chain.worth === (s.chain.verdict.key === "add"))), "the deeper drop gets its own season-long verdict — worth it only on a real ADD");
   if (WS.sugg.length >= 2 && WS.sugg[0].drop && WS.sugg[0].add.pos !== "QB" && WS.sugg[1].chain && !WS.sugg[1].free){
     const sim = benchRos.filter(p => p.n !== WS.sugg[0].drop.n); // the landed add is NOT in the pool — he can't be filed as a drop
-    const expect = T.scarcityPool(sim, WS.sugg[1].add.pos, me, WS.sugg[1].add).sort((a, b) => (b.ros || 420) - (a.ros || 420))[0];
+    const expect = T.scarcityPool(sim, WS.sugg[1].add.pos, me, WS.sugg[1].add).sort((a, b) => (vr(b) || 420) - (vr(a) || 420))[0];
     assert(WS.sugg[1].chain.drop.n === expect.n, "when claim 1 lands, claim 2's chained drop is the scarcity-aware next man up from TODAY's roster, never the landed add (" + expect.name + ")");
   }
   {
@@ -1280,7 +1281,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   T.inject(season, rosters, exclusions, tradeLog, projections, null, matchups, histReal);
   const lgRows = [...d.querySelectorAll("#tab-league .gl .row")];
   const talentCol = r => +r.children[8].textContent.trim().split(" ")[0];
-  assert(lgRows.length === 9 && lgRows.every(r => { const t = r.children[1].textContent.replace(" 🐑", "").trim(); return talentCol(r) === T.strength(rosters.teams[t].map(T.info)); }), "League tab 'Roster talent (ROS)' column is exactly strength() for every team (relabeled, not recomputed)");
+  assert(lgRows.length === 9 && lgRows.every(r => { const t = r.children[1].textContent.replace(" 🐑", "").trim(); return talentCol(r) === T.lensOff(() => T.strength(rosters.teams[t].map(T.info))); }), "League tab 'Roster talent (ROS)' column is exactly strength() for every team — FantasyPros paper talent, lens off (relabeled, not recomputed)");
 
   // --- determinism with the fixed seed ---
   const L1 = T.leagueSim(); const c1 = Object.keys(L1.byTeam).map(t => L1.byTeam[t].champ);
@@ -1592,7 +1593,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     const flagged = everyone.filter(p => p.roleDoubt);
     assert(flagged.length <= Math.ceil(everyone.length * 0.15), "role check flags a minority of rostered skill players (" + flagged.length + " of " + everyone.length + ")");
     assert(flagged.every(p => p.rosEff > p.ros && p.roleDoubt.gap >= 15 && /^(QB|RB|WR|TE)\d+$/.test(p.roleDoubt.espn)), "every flagged player is valued WORSE than his consensus rank, by a 15+ spot position gap (" + flagged.map(p => p.name + " " + p.roleDoubt.fp + "→" + p.roleDoubt.espn).join(", ") + ")");
-    assert(everyone.filter(p => !p.roleDoubt && !p.horizon).every(p => p.rosEff === p.ros), "unflagged players keep their consensus rank as the valuation rank (role check and playoff lens are the only movers)");
+    assert(everyone.filter(p => !p.roleDoubt && !p.horizon && !p.sched).every(p => p.rosEff === p.ros) && everyone.filter(p => !p.roleDoubt && !p.horizon && p.sched).every(p => Math.abs(p.rosEff - Math.max(1, Math.min(420, Math.round(420 - (420 - p.ros) * p.sched.mult)))) <= 1), "unflagged players keep their consensus rank as the valuation rank (role check and playoff lens are the only movers)");
     // Cam Skattebo regression (2026-10-20): FantasyPros RB25 while ESPN's season projection sat in the RB50s after he lost the job —
     // the trade engine kept pricing him as a starter. Data-driven: asserts only while the feeds still disagree.
     const sk = T.info({ name: "Cam Skattebo", pos: "RB", team: "NYG" });
@@ -1840,8 +1841,9 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     // that is NOT better (A.J. Brown 6.1/g) leaves FP's number in charge and only re-weights it
     const lifted = datedBefore.filter(x=>x.q.horizon.healthy && x.q.horizon.healthy.used);
     assert(lifted.every(x=>x.q.rosEff <= x.q.ros), "a healthy rate better than FP lifts a pre-playoff returner, never below FP (" + lifted.map(x=>x.q.name+" #"+x.q.ros+"→#"+x.q.rosEff).join(", ") + ")");
-    assert(dated.filter(x=>!(x.q.horizon.healthy && x.q.horizon.healthy.used)).every(x=>x.q.horizon.f===0 ? x.q.rosEff===420 : x.q.rosEff===x.q.horizon.from), "without a better healthy rate FP's number stands (floor only for a return after the final week)");
-    assert(lifted.every(x=>{ const h = x.q.horizon; return Math.abs((420 - x.q.rosEff) - (420 - h.healthy.rank) * h.f) <= 1; }), "a lifted player's value = healthy value × share of the weighted weeks he plays");
+    const sm = q => q.sched ? q.sched.mult : 1;
+    assert(dated.filter(x=>!(x.q.horizon.healthy && x.q.horizon.healthy.used)).every(x=>x.q.horizon.f===0 ? x.q.rosEff===420 : Math.abs((420 - x.q.rosEff) - (420 - x.q.horizon.from) * sm(x.q)) <= 1), "without a better healthy rate FP's number stands (× his slate grade; floor only for a return after the final week)");
+    assert(lifted.every(x=>{ const h = x.q.horizon; return Math.abs((420 - x.q.rosEff) - (420 - h.healthy.rank) * h.f * sm(x.q)) <= 1; }), "a lifted player's value = healthy value × share of the weighted weeks he plays × his slate grade");
     const withRate = dated.find(x=>x.q.horizon.healthy);
     if (withRate){ const h = withRate.q.horizon.healthy; assert(h.n >= T.LENS_FORM_N && h.rate>0 && h.posRank>=1 && h.rank>=1, "healthy rate needs " + T.LENS_FORM_N + "+ games (" + withRate.q.name + ": " + h.rate + "/g over " + h.n + " = " + withRate.q.pos + h.posRank + " → #" + h.rank + ")"); }
     else console.log("  (no dated player with a healthy-rate sample in this snapshot)");
@@ -1871,11 +1873,69 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
       const lock = T.infoFor(fx, byOdds[0].t), shot = T.infoFor(fx, byOdds[byOdds.length-1].t);
       assert(lock.horizon && shot.horizon && lock.horizon.ret===firstPO, "fixture: a return in Week " + firstPO + " reads as a playoff-week return (" + (lock.horizon && lock.horizon.ret) + ")");
       assert(lock.horizon.f > shot.horizon.f && lock.rosEff < shot.rosEff, "a player back for the playoffs is worth more to the locked team (" + byOdds[0].t + ": f " + lock.horizon.f + " → #" + lock.rosEff + ") than to the long shot (" + byOdds[byOdds.length-1].t + ": f " + shot.horizon.f + " → #" + shot.rosEff + ")");
-      assert(lock.horizon.healthy && lock.horizon.healthy.used && Math.abs(lock.horizon.healthy.rate - 18.0) < 0.05 && lock.rosEff >= lock.horizon.healthy.rank, "healthy rate is the MEDIAN of his games (18.0, the 2.1 injury game ignored) and he is never valued above that healthy rank (#" + lock.horizon.healthy.rank + " → #" + lock.rosEff + ")");
+      assert(lock.horizon.healthy && lock.horizon.healthy.used && Math.abs(lock.horizon.healthy.rate - 18.0) < 0.05 && Math.abs((420 - lock.rosEff) - (420 - lock.horizon.healthy.rank) * lock.horizon.f * (lock.sched ? lock.sched.mult : 1)) <= 1, "healthy rate is the MEDIAN of his games (18.0, the 2.1 injury game ignored); value = healthy value × weighted share × slate (#" + lock.horizon.healthy.rank + " → #" + lock.rosEff + ")");
       S2.injuries[row.n] = { code: "IR", note: "ACL · back ~" + mdy(kick + 7*86400000*(H.last + 2 - season.week)) };
       T.inject(S2, rosters, exclusions, tradeLog, projections, espnPool, MU2, histReal);
       const gone = T.infoFor(fx, byOdds[0].t);
       assert(gone.horizon && gone.horizon.f===0 && gone.rosEff===420, "a return after the final week values him at the floor (#" + gone.rosEff + ")");
+      T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, histReal);
+    }
+  }
+
+  // ======================= Playoff lens: remaining-slate grade =======================
+  // Every remaining opponent graded by what that defense gives up to his position, weighted by the week weights above,
+  // moved by the position's measured trust in matchups (fittedW.use). tools/refresh_matchups.py now writes `schedule`.
+  console.log("== Playoff lens: remaining-slate grade ==");
+  {
+    T.setSettings(settings);
+    T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, histReal);
+    const sch = matchups.schedule, cw = matchups.currentWeek;
+    assert(sch && Object.keys(sch).length===32 && Object.values(sch).every(r=>r.length===18-cw+1 && r[0].w===cw && r[r.length-1].w===18), "data/matchups.json carries every NFL team's remaining schedule through Week 18 (" + (sch?Object.keys(sch).length:0) + " teams, W" + cw + "–18)");
+    assert(Object.values(sch).every(r=>r.filter(o=>o.bye).every(o=>o.w<=14)), "no NFL bye after Week 14 in the schedule");
+    assert(Object.entries(sch).every(([tm,r])=>r.every(o=>o.bye || (sch[o.opp]||[]).some(x=>x.w===o.w && x.opp===tm && x.home===!o.home))), "every scheduled game is reciprocal (A @ B ↔ B vs A)");
+    const H = T.horizonWeights(rosters.me);
+    const everyone = Object.keys(rosters.teams).flatMap(t=>rosters.teams[t].map(p=>T.infoFor(p, t))).concat(T.freeAgents());
+    const graded = everyone.filter(p=>p.sched);
+    assert(graded.length > 50 && graded.every(p=>["QB","RB","WR","TE"].includes(p.pos)), "the slate grade reaches skill players league-wide and on the wire (" + graded.length + "), never K/DST");
+    assert(graded.every(p=>p.sched.weeks.length>0 && p.sched.weeks.every(k=>k.ratio>=0.5 && k.ratio<=1.6 && k.wt>0) && Math.abs(p.sched.mult - (1+(p.sched.adj-1)*p.sched.fw)) < 0.002), "each week's grade is the shrunk DvP vs league average, capped 0.5x–1.6x; the multiplier moves by the position's fitted trust");
+    assert(graded.every(p=>p.sched.fw===((matchups.fittedW[p.pos]||{}).use!=null ? matchups.fittedW[p.pos].use : 0.5)), "trust = fittedW.use per position (QB " + matchups.fittedW.QB.use + ", RB " + matchups.fittedW.RB.use + ", WR " + matchups.fittedW.WR.use + ", TE " + matchups.fittedW.TE.use + ")");
+    const mine = rosters.teams[rosters.me].map(T.info).filter(p=>p.sched);
+    assert(mine.every(p=>p.sched.weeks.every(k=>!H.sits.includes(k.w))), "a week I sit is not in my players' slate grade (" + (H.sits.join(",")||"none") + ")");
+    assert(mine.filter(p=>!p.horizon && !p.roleDoubt).every(p=>Math.abs(p.rosEff - Math.max(1, Math.min(420, Math.round(420 - (420-p.ros)*p.sched.mult)))) <= 1), "a healthy player's valued rank = FP value × slate multiplier (clamped to 1..420)");
+    assert(mine.filter(p=>p.horizon).every(p=>p.sched.weeks.every(k=>k.w>=p.horizon.ret)), "weeks before a hurt player's return are not in his slate grade");
+    const wt = d.getElementById("tab-waivers").textContent.replace(/\s+/g, " ");
+    assert(/Playoff lens[^·]*·.*slate graded/.test(wt), "the Waivers lens line says the remaining slate is graded");
+    const big = everyone.filter(p=>!p.horizon && T.lensOn(p));
+    const small = everyone.filter(p=>!p.horizon && p.sched && !T.lensOn(p));
+    assert(big.every(p=>Math.abs(p.rosEff-T.lensBase(p))>=T.LENS_SHOW) && small.every(p=>Math.abs(p.rosEff-T.lensBase(p))<T.LENS_SHOW), "slate-only moves print the valued rank only at " + T.LENS_SHOW + "+ ranks from where the lens started (role check excluded; " + big.length + " shown, " + small.length + " quiet)");
+    const clampR = v => Math.max(1, Math.min(420, Math.round(420 - v))); // the page clamps the valued rank to 1..420 (a #1 with a soft slate stays #1)
+    assert(everyone.filter(p=>p.sched && !p.horizon).every(p=>Math.abs(p.rosEff - clampR((420-T.lensBase(p))*p.sched.mult)) <= 1), "the slate multiplies the rank the lens started from — FP's, or the role check's when it fired (clamped to 1..420)");
+    // the simulator's talent prior is FP paper talent, lens off, so odds never feed the odds
+    assert(T.lensOff(() => T.strength(rosters.teams[rosters.me].map(T.info))) === T.leagueSim().byTeam[rosters.me].talent, "simulator talent prior = strength() with the lens off (odds-free, deterministic)");
+    if (big.some(p=>T.freeAgents().some(f=>f.n===p.n))) assert(/lens #\d+/.test(d.getElementById("tab-waivers").textContent), "a free agent moved " + T.LENS_SHOW + "+ ranks by his slate shows the lens tag on the wire");
+    // synthetic: twins at one FP rank — soft W16–18 / tough W12–15 vs the reverse. The locked team prefers the soft playoff
+    // slate; the long shot, whose weeks are the regular season, prefers the other twin.
+    {
+      const MU2 = JSON.parse(JSON.stringify(matchups)), S2 = JSON.parse(JSON.stringify(season));
+      const byWR = Object.entries(MU2.defVsPos).filter(([,v])=>v.WR && v.WR.adj!=null).sort((a,b)=>b[1].WR.adj-a[1].WR.adj).map(([k])=>k);
+      const soft = byWR.slice(0,3), tough = byWR.slice(-3);
+      const slate = (reg, po) => [{ w: season.week, bye: true }].concat([12,13,14,15].map((w,i)=>({ w, opp: reg[i%3], home: true })), [16,17,18].map((w,i)=>({ w, opp: po[i%3], home: true }))).filter(o=>o.w>=season.week);
+      MU2.schedule.DET = slate(tough, soft); MU2.schedule.GB = slate(soft, tough);
+      const base = S2.ros.filter(r=>r.pos==="WR" && r.rank>=70 && r.rank<=110).slice(0,2);
+      base[0].name = "Soft Playoffs"; base[0].n = T.norm(base[0].name); base[0].team = "DET"; base[0].bye = 11;
+      base[1].name = "Tough Playoffs"; base[1].n = T.norm(base[1].name); base[1].team = "GB"; base[1].bye = 11; base[1].rank = base[0].rank; base[1].posRank = base[0].posRank;
+      T.inject(S2, rosters, exclusions, tradeLog, projections, espnPool, MU2, histReal);
+      const odds = Object.keys(rosters.teams).map(t=>({ t, o: T.playoffOddsOf(t) })).filter(x=>x.o!=null).sort((a,b)=>b.o-a.o);
+      const lockT = odds[0].t, shotT = odds[odds.length-1].t;
+      const A = T.infoFor({ name: "Soft Playoffs", pos: "WR", team: "DET" }, lockT), B = T.infoFor({ name: "Tough Playoffs", pos: "WR", team: "GB" }, lockT);
+      assert(A.sched && B.sched && A.sched.weeks.every(k=>k.w>=12) && A.sched.weeks.filter(k=>k.w>=16).every(k=>soft.includes(k.opp)), "fixture: twins graded on W12–18 only (bye W" + season.week + "), soft W16–18 slate = " + soft.join("/"));
+      assert(A.rosEff < B.rosEff && A.ros === B.ros, "same FP rank (#" + A.ros + "): the locked team (" + lockT + ") values the soft-playoff twin higher (#" + A.rosEff + " vs #" + B.rosEff + ")");
+      const A2 = T.infoFor({ name: "Soft Playoffs", pos: "WR", team: "DET" }, shotT), B2 = T.infoFor({ name: "Tough Playoffs", pos: "WR", team: "GB" }, shotT);
+      assert(B2.rosEff < A2.rosEff, "the long shot (" + shotT + "), whose weeks are the regular season, values the other twin higher (#" + B2.rosEff + " vs #" + A2.rosEff + ")");
+      assert(Math.abs(A.sched.mult - (1 + (A.sched.adj-1) * matchups.fittedW.WR.use)) < 0.002 && A.sched.mult <= 1 + 0.6*matchups.fittedW.WR.use + 1e-9 && B.sched.mult >= 1 - 0.5*matchups.fittedW.WR.use - 1e-9, "the move is bounded by the caps × trust (soft ×" + A.sched.mult + ", tough ×" + B.sched.mult + ")");
+      T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, null, histReal);
+      const none = T.info(rosters.teams[rosters.me][0]);
+      assert(!none.sched && (none.roleDoubt || none.horizon || none.rosEff === none.ros), "no matchups file → no slate grade, FP's rank stands");
       T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, histReal);
     }
   }
