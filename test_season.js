@@ -521,8 +521,11 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     assert(WS.sugg[1].chain.drop.n === expect.n, "when claim 1 lands, claim 2's chained drop is the scarcity-aware next man up from TODAY's roster, never the landed add (" + expect.name + ")");
   }
   {
-    const usedDrops = WS.sugg.map(s => s.chain ? (s.chain.worth ? s.chain.drop.n : null) : (s.drop && s.drop.n)).filter(Boolean);
-    assert(new Set(usedDrops).size === usedDrops.length, "in the all-claims-land scenario no player is dropped twice");
+    // Rows that share a drop are alternates for ONE swap (same add position, no backup row): ESPN runs them in priority
+    // order and every later one simply fails once the drop is gone. Week 11 2026: ten QBs over Maye (D, ROS #181).
+    const byDrop = {}; WS.sugg.forEach(s => { const n = s.chain ? (s.chain.worth ? s.chain.drop.n : null) : (s.drop && s.drop.n); if (n) (byDrop[n] = byDrop[n] || []).push(s); });
+    const dupDrops = Object.entries(byDrop).filter(([, g]) => g.length > 1 && !g.every(s => s.add.pos === g[0].add.pos && !s.chain)).map(([n]) => n);
+    assert(dupDrops.length === 0, "in the all-claims-land scenario no player is dropped twice — a shared drop is only alternates for one straight swap (same position, no backup)" + (dupDrops.length ? " (" + dupDrops.join(", ") + ")" : ""));
     const nowRoster = new Set(rosters.teams[rosters.me].map(p => T.norm(p.name)));
     assert(WS.sugg.every(s => (!s.drop || nowRoster.has(s.drop.n)) && (!s.chain || nowRoster.has(s.chain.drop.n))), "every drop and every backup drop is a player on the roster RIGHT NOW — ESPN can't file a claim dropping someone you don't own yet (2026-10-26 Priority-4 Mason bug)");
     assert(!WS.sugg.some(s => s.chain && WS.sugg.some(o => o.add.n === s.chain.drop.n)), "no backup row drops another claim's add");
@@ -980,7 +983,7 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   assert(anyQB.length > 0 && anyQB.every(p => p.matchup == null && p.mu != null), "without matchups.json every projection still computes, consensus-only");
   const consensusMu = {}; anyQB.forEach(p => consensusMu[p.n] = p.mu);
   // synthetic fixture: opponent allows exactly 2x what he faced -> matchup view doubles his average, half weight
-  const fxP = anyQB[0], fxTeam = w.__seasonTest.norm ? null : null;
+  const fxP = anyQB.find(p => !p.onBye && (projections.games[p.liveTeam] || {}).opp) || anyQB[0]; // Week 11 2026: Maye (QB1) on bye, Goff plays
   const fxOpp = (projections.games[fxP.liveTeam] || {}).opp;
   if (fxOpp) {
     const fx = { generated: "fixture", weeksSampled: [1,2,3], leagueAvg: { QB: 20 }, outlook: {},
@@ -1168,8 +1171,10 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const mWp = (() => { const m = d.getElementById("tab-matchup").textContent.match(/Win probability\s*(\d+)%/); return m ? +m[1] : null; })();
   assert(mWp != null && sbWp(sbPanels[0]) === mWp, "my game's win probability matches the Matchup tab (" + mWp + "%)");
   // A locked injured starter carries two tags ("Drake Maye O locked", Monday 2026-11-16) — strip every trailing tag, not one.
-  const names = pn => [...pn.querySelectorAll(".gm .row.grid")].map(r => r.children[1].textContent.replace(/(\s*(locked|Q|D|DTD|O|IR|SUSP))+\s*$/, "").trim());
-  const mNames = [...d.querySelectorAll("#tab-matchup .gm .row.grid")].map(r => { const s = r.querySelector("select.pick"); return (s ? s.value : (r.querySelector("b") || {}).textContent || "").trim(); });
+  // An empty slot (Packers DST on bye, Week 11 2026) renders "— empty —" with no <b>; both tabs normalize it to "".
+  const slotName = t => /— empty —/.test(t) ? "" : t.replace(/(\s*(locked|Q|D|DTD|O|IR|SUSP))+\s*$/, "").trim();
+  const names = pn => [...pn.querySelectorAll(".gm .row.grid")].map(r => slotName(r.children[1].textContent));
+  const mNames = [...d.querySelectorAll("#tab-matchup .gm .row.grid")].map(r => { const s = r.querySelector("select.pick"); return s ? s.value.trim() : slotName(r.children[1].textContent); });
   assert(names(sbPanels[0]).every((n, i) => n === mNames[i]), "my game's lineup on the Scoreboard is the Matchup tab's lineup, slot for slot");
   // overview odds are complementary and sum to 100 for every game
   assert([...sbEl().querySelectorAll(".sb-sum")].every(r => { const t = [...r.querySelectorAll(".tag.edge")].map(x => parseInt(x.textContent)); return t.length === 2 && t[0] + t[1] === 100; }), "overview: each game's two win odds sum to 100%");
@@ -1649,7 +1654,13 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, hx);
     assert(T.weeklyStreamClaims().length === 0 && /You sit this week/.test(d.getElementById("tab-waivers").textContent), "when I sit, the claim sheet has no K/DST stream and says why");
     T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, histReal);
-    assert(T.streamStatusRaw(rosters.teams[rosters.me].map(T.info), T.freeAgents(), "mu").every(st => st.verdict !== "sat"), "with a real matchup the K/DST stream logic is back (no sat verdicts)");
+    { // when I am the one sitting (ur done, Week 11 2026) judge a team that plays — the verdicts are about the viewed team
+      const playing = (histReal.schedule || []).find(r => r.w === histReal.currentWeek && r.home && r.away);
+      const tm = sitters.includes(rosters.me) && playing ? playing.home : rosters.me;
+      if (tm !== rosters.me) T.setTeamParam("?team=" + encodeURIComponent(tm).replace(/%20/g, "+"));
+      assert(T.streamStatusRaw(rosters.teams[tm].map(T.info), T.freeAgents(), "mu").every(st => st.verdict !== "sat"), "with a real matchup the K/DST stream logic is back (no sat verdicts" + (tm !== rosters.me ? ", judged on " + tm + " while I sit" : "") + ")");
+      if (tm !== rosters.me) T.setTeamParam("");
+    }
     T.inject(season, rosters, exclusions, tradeLog, unlockedProjections);
   }
   // ======================= Waiver log tab (Jose 2026-10-30: "a tab that shows waiver log") =======================
@@ -1729,8 +1740,8 @@ const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const LR = T.optimalLineup(meR, "mu");
   assert(!/running consensus-only/.test(d.getElementById("tab-lineup").textContent), "report uses the matchup view (data/matchups.json loaded), same as the page");
   assert(!espnPool || !espnPool.players || !espnPool.players.length || T.freeAgents().every(p => espnPool.players.includes(p.n)), "report free agents are restricted to this league's ESPN pool, same as the page");
-  { const mine = meR.filter(p => ["K","DST"].includes(p.pos) && p.mu != null);
-    assert(mine.length > 0 && mine.every(p => p.srcs && p.srcs.length >= 2), "my K/DST projections in the report carry the same multi-source blend the page shows"); }
+  { const mine = meR.filter(p => ["K","DST"].includes(p.pos) && p.mu != null && !p.onBye); // a unit on NFL bye (Packers, Week 11 2026) has one zeroed source by design
+    assert(mine.length > 0 && mine.every(p => p.srcs && p.srcs.length >= 2), "my K/DST projections in the report carry the same multi-source blend the page shows (" + mine.map(p => p.name + ":" + (p.srcs || []).length).join(", ") + ")"); }
   console.log("\n--- OPTIMAL TRADES ---");
   { const seen = new Set();
     T.findTrades().filter(t => { const k = t.team + "|" + t.get.n; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 8).forEach((t, i) =>
