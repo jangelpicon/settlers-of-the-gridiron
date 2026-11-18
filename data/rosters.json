@@ -1,7 +1,7 @@
 {
  "me": "ur done",
  "updated": "2026-11-17",
- "source": "ESPN league 882823976 sync 2026-11-17 07:20 CST",
+ "source": "ESPN league 882823976 sync 2026-11-17 18:16 CST",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -147,7 +147,7 @@
     "pos": "QB",
     "team": "DAL",
     "irOk": true,
-    "slot": "BN"
+    "slot": "QB"
    },
    {
     "name": "Carnell Tate",
@@ -168,7 +168,7 @@
     "pos": "QB",
     "team": "JAX",
     "irOk": true,
-    "slot": "QB"
+    "slot": "BN"
    },
    {
     "name": "Luther Burden III",
@@ -226,7 +226,7 @@
     "pos": "RB",
     "team": "ATL",
     "irOk": true,
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "A.J. Brown",
@@ -262,7 +262,7 @@
     "pos": "WR",
     "team": "CAR",
     "irOk": true,
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Brock Purdy",
@@ -290,7 +290,7 @@
     "pos": "WR",
     "team": "GB",
     "irOk": true,
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Will Reichard",
@@ -318,14 +318,14 @@
     "pos": "RB",
     "team": "TEN",
     "irOk": true,
-    "slot": "FLEX"
+    "slot": "RB"
    },
    {
     "name": "Emeka Egbuka",
     "pos": "WR",
     "team": "TB",
     "irOk": true,
-    "slot": "BN"
+    "slot": "WR"
    }
   ],
   "Unnecessary Sanctions": [
