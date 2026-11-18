@@ -1,7 +1,7 @@
 {
  "me": "ur done",
  "updated": "2026-11-17",
- "source": "ESPN league 882823976 sync 2026-11-17 22:00 CST",
+ "source": "ESPN league 882823976 sync 2026-11-17 22:30 CST",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -649,7 +649,7 @@
     "pos": "RB",
     "team": "BAL",
     "irOk": true,
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Malik Nabers",
@@ -663,8 +663,7 @@
     "pos": "RB",
     "team": "NO",
     "irOk": true,
-    "ir": true,
-    "slot": "IR"
+    "slot": "BN"
    },
    {
     "name": "Quinshon Judkins",
@@ -692,14 +691,14 @@
     "pos": "QB",
     "team": "GB",
     "irOk": true,
-    "slot": "QB"
+    "slot": "BN"
    },
    {
     "name": "Pittsburgh Steelers",
     "pos": "DST",
     "team": "PIT",
     "irOk": true,
-    "slot": "BN"
+    "slot": "DST"
    },
    {
     "name": "Deebo Samuel Sr.",
@@ -713,7 +712,7 @@
     "pos": "RB",
     "team": "SEA",
     "irOk": true,
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "Darren Waller",
@@ -721,20 +720,6 @@
     "team": "CAR",
     "irOk": true,
     "slot": "TE"
-   },
-   {
-    "name": "Corey Kiner",
-    "pos": "RB",
-    "team": "NE",
-    "irOk": true,
-    "slot": "BN"
-   },
-   {
-    "name": "Baltimore Ravens",
-    "pos": "DST",
-    "team": "BAL",
-    "irOk": true,
-    "slot": "DST"
    }
   ],
   "ur done": [
