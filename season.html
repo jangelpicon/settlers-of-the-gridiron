@@ -819,7 +819,7 @@
         // own number stands (it is the only signal we have, and how much of it already prices the absence is unknowable), except
         // that a return after the final week is zero availability → the floor.
         val = lift ? (ROS_MAX - hRank) * f : (f>0 ? (ROS_MAX - base) : 0);
-        p.horizon = { ret, f: Math.round(f*100)/100, fEq: Math.round(fEq*100)/100, healthy: hp ? { rank: hRank, posRank: hp.rank, rate: hp.rate, n: hp.n, used: lift } : null, from: base, rosEff: null, odds: H.odds, team };
+        p.horizon = { ret, f, fEq, healthy: hp ? { rank: hRank, posRank: hp.rank, rate: hp.rate, n: hp.n, used: lift } : null, from: base, rosEff: null, odds: H.odds, team };
       }
     }
     // (2) the remaining slate, weighted by the same week weights
@@ -1798,7 +1798,7 @@
     sugg.forEach((s,i)=>{
       s.chain = null;
       if (s.free) return;
-      if (s.add.pos==="QB") return;                                  // QB swaps never touch the bench
+      if (s.add.pos==="QB"){ if (s.drop) sim = sim.filter(p=>p.n!==s.drop.n); return; } // a QB swap never chains, but it SPENDS your QB — he is gone for every later backup (2026-11-17: Mason's backup named Maye after Priority 1 had dropped him)
       const d = scarcityPool(sim, s.add.pos, me, s.add).sort((a,b)=>(rosR(b)||ROS_MAX)-(rosR(a)||ROS_MAX))[0];
       if (!d) return;
       if (i>0 && s.drop && d.n!==s.drop.n){

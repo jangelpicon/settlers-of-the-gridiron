@@ -221,7 +221,9 @@ const vr = p => p.rosEff != null ? p.rosEff : p.ros; // valuation rank — what 
     T.setWaiverSub("all", "RB");
     const rbRows = [...wtab.querySelectorAll(".wsub[data-sub=all] .row.grid")], rbFa = faRos.filter(p => p.pos === "RB"), rbN = new Set(rbFa.map(p => p.name));
     assert(vis().join(",") === "all" && rbRows.length === rbFa.length && rbRows.every(r => rbFa.some(p => rx(p.name).test(r.textContent))), "the RB pill filters the all list to RBs only (" + rbRows.length + " = " + rbFa.length + ")");
-    const ord = { add:0, marginal:1, split:1, rental:2, pass:3, none:4 }, WB2 = T.waiverBoard(rbFa).sort((a, b) => (ord[a.verdict.key] - ord[b.verdict.key]) || (a.fa.ros - b.fa.ros));
+    // the page lists a sidelined man (IR / OUT by either feed / suspended) as "stash only" = pass, never by his raw verdict (Monangai, Sleeper O, 2026-11-17 PM)
+    const sidelined = p => ["IR","O","SUSP"].includes(p.injLive || "") || (p.pPlay === 0 && !p.onBye);
+    const ord = { add:0, marginal:1, split:1, rental:2, pass:3, none:4 }, WB2 = T.waiverBoard(rbFa).map(b => sidelined(b.fa) ? Object.assign({}, b, { verdict: { key: "pass" } }) : b).sort((a, b) => (ord[a.verdict.key] - ord[b.verdict.key]) || (a.fa.ros - b.fa.ros));
     assert(rbRows.length > 1 && rx(WB2[0].fa.name).test(rbRows[0].textContent) && rx(WB2[WB2.length - 1].fa.name).test(rbRows[rbRows.length - 1].textContent), "all list order: adds first, then rest-of-season rank (" + WB2[0].fa.name + " … " + WB2[WB2.length - 1].fa.name + ")");
     T.setWaiverSub("season", ""); assert(vis().join(",") === "season", "back to Long-term picks"); }
   // Top scorers this week in one list, QBs on their own (Jose 2026-11-10: "for cases where I need a streamer" / "do not include QBs in this, make a separate QB list")
@@ -294,7 +296,11 @@ const vr = p => p.rosEff != null ? p.rosEff : p.ros; // valuation rank — what 
   assert(starterDrops.every(b => b.drop.pos === b.fa.pos || T.optimalLineup(me, "ros").slots.some(s => s.slot === "FLEX" && s.p && s.p.n === b.drop.n)) && starterDrops.every(b => rosOf(b.drop) > rosOf(scarceDrop(b.fa.pos, b.fa))), "a starter is only ever the drop for a free agent who takes his slot AND when he's worth less than the spareable bench worst (" + starterDrops.length + " such rows)");
   const benchCounts = {}; benchRos.forEach(p => benchCounts[p.pos] = (benchCounts[p.pos] || 0) + 1);
   const allSole = benchRos.every(p => benchCounts[p.pos] === 1);
-  assert(WB.filter(b => ["RB","WR","TE"].includes(b.fa.pos) && b.drop && b.drop.pos !== b.fa.pos).every(b => benchCounts[b.drop.pos] > 1 || allSole), "a cross-position add never drops your only bench player at a position (scarcity guard)");
+  // The pool is the bench minus the men who cover next week's holes (opensHole); a sole-position man is spent cross-position
+  // only when every man left in THAT pool is someone's last depth piece (the documented raw-value fallback). 2026-11-17 PM:
+  // with ur done sitting W11 and W12 byes covered by the bench, the TE rows' pool was [Maye, Concepcion] — both sole.
+  const crossRows = WB.filter(b => ["RB","WR","TE"].includes(b.fa.pos) && b.drop && b.drop.pos !== b.fa.pos && !b.verdict.later && !(b.verdict.starts && !T.benchSkill().some(p => p.n === b.drop.n)));
+  assert(crossRows.every(b => { const pool = T.scarcityPool(T.benchSkill(), b.fa.pos, me, b.fa); const c = {}; pool.forEach(p => c[p.pos] = (c[p.pos] || 0) + 1); return c[b.drop.pos] > 1 || pool.every(p => c[p.pos] === 1); }), "a cross-position add never drops your only bench player at a position (scarcity guard; raw-value fallback only when every spendable man is a last depth piece)");
   const soleRB = benchRos.filter(p => p.pos === "RB").length === 1 ? benchRos.find(p => p.pos === "RB") : null;
   if (soleRB) assert(WB.filter(b => ["WR","TE"].includes(b.fa.pos)).every(b => !b.drop || b.drop.n !== soleRB.n), "your only bench RB (" + soleRB.name + ") is never the drop for a WR/TE add — but a better RB can still replace him");
   assert(WB.filter(b => b.fa.pos === "QB").every(b => b.drop && b.drop.pos === "QB"), "QB free agents are a straight swap for your QB, never a bench drop");
@@ -524,14 +530,21 @@ const vr = p => p.rosEff != null ? p.rosEff : p.ros; // valuation rank — what 
   {
     // Rows that share a drop are alternates for ONE swap (same add position, no backup row): ESPN runs them in priority
     // order and every later one simply fails once the drop is gone. Week 11 2026: ten QBs over Maye (D, ROS #181).
-    const byDrop = {}; WS.sugg.forEach(s => { const n = s.chain ? (s.chain.worth ? s.chain.drop.n : null) : (s.drop && s.drop.n); if (n) (byDrop[n] = byDrop[n] || []).push(s); });
-    const dupDrops = Object.entries(byDrop).filter(([, g]) => g.length > 1 && !g.every(s => s.add.pos === g[0].add.pos && !s.chain)).map(([n]) => n);
-    assert(dupDrops.length === 0, "in the all-claims-land scenario no player is dropped twice — a shared drop is only alternates for one straight swap (same position, no backup)" + (dupDrops.length ? " (" + dupDrops.join(", ") + ")" : ""));
+    // Walk the sheet as ESPN would with every claim landing: the first row to name a drop spends him; a later row naming the
+    // same drop simply fails (that is fine and by design) unless it carries a worth-it backup drop, which must be a man nobody
+    // above has spent. 2026-11-17 PM: ten QB rows and twelve TE rows all named Maye; the TEs' backups (Concepcion) were not
+    // worth it, so they fail — nobody is dropped twice.
+    const spent = new Set(), twice = [];
+    WS.sugg.forEach(s => { const own = s.drop && s.drop.n; if (!own) return;
+      if (!spent.has(own)) spent.add(own);
+      else if (s.chain && s.chain.worth) { if (spent.has(s.chain.drop.n)) twice.push(s.add.name + "→" + s.chain.drop.name); else spent.add(s.chain.drop.n); } });
+    assert(twice.length === 0, "in the all-claims-land scenario no player is dropped twice — a re-used drop just fails unless its backup drop is a man nobody above has spent" + (twice.length ? " (" + twice.join(", ") + ")" : ""));
     const nowRoster = new Set(rosters.teams[rosters.me].map(p => T.norm(p.name)));
     assert(WS.sugg.every(s => (!s.drop || nowRoster.has(s.drop.n)) && (!s.chain || nowRoster.has(s.chain.drop.n))), "every drop and every backup drop is a player on the roster RIGHT NOW — ESPN can't file a claim dropping someone you don't own yet (2026-10-26 Priority-4 Mason bug)");
     assert(!WS.sugg.some(s => s.chain && WS.sugg.some(o => o.add.n === s.chain.drop.n)), "no backup row drops another claim's add");
   }
-  assert(WS.sugg.every(s => !s.chain || s.chain.worth || /isn't worth dropping for him, so this claim just fails/.test(d.getElementById("tab-waivers").textContent)), "a not-worth-it deeper drop gets no backup row and says the claim just fails");
+  { let fl = T.openSpots(me); const shown = WS.sugg.filter(s => !s.free || fl-- > 0).slice(0, 6 + Math.min(3 - Math.max(fl, 0), 3)); // the page's own row cap
+    assert(shown.every(s => !s.chain || s.chain.worth || /isn't worth dropping for him, so this claim just fails/.test(d.getElementById("tab-waivers").textContent)), "a not-worth-it deeper drop gets no backup row and says the claim just fails (" + shown.filter(s => s.chain && !s.chain.worth).length + " such rows on the sheet)"); }
   // fairness: a deal where they hand over the far bigger name craters the accept odds; landing the bigger name raises them
   assert(T.acceptOdds(0, 30).p <= 0.1 && T.acceptOdds(0, 15).p < T.acceptOdds(0, 0).p && T.acceptOdds(-4, -20).p > T.acceptOdds(-4, 0).p, "accept odds fall when the deal looks lopsided against them by consensus rank, rise when they land the bigger name");
   const whdr = [...d.querySelectorAll("#tab-waivers .hrow")];
