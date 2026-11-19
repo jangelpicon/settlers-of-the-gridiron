@@ -79,7 +79,14 @@ if [ "$DRY" = 0 ] && [ "$BR" != "main" ]; then NOTE="on branch $BR, Pages serves
 if git ls-files --error-unmatch .espn_auth.json >/dev/null 2>&1; then NOTE=".espn_auth.json is TRACKED"; log "ABORT: $NOTE"; exit 2; fi
 git check-ignore -q .espn_auth.json || { NOTE=".espn_auth.json is not gitignored"; log "ABORT: $NOTE"; exit 2; }
 if [ "$DRY" = 0 ]; then
-  git fetch -q origin main
+  # GitHub can be unreachable for a moment at 2 AM (2026-11-19: "Could not resolve host: github.com" → bare exit 128).
+  # Retry the fetch a few times and name the cause in the status note so the watchdog can report it.
+  FETCH_OK=0; FETCH_ERR=""
+  for try in 1 2 3 4; do
+    if FETCH_ERR="$(git fetch -q origin main 2>&1)"; then FETCH_OK=1; break; fi
+    log "preflight: git fetch failed (try $try/4): ${FETCH_ERR//$'\n'/ } — retrying in 30s"; sleep 30
+  done
+  [ "$FETCH_OK" = 1 ] || { NOTE="cannot reach origin: ${FETCH_ERR//$'\n'/ }"; log "ABORT: $NOTE"; exit 2; }
   git merge-base --is-ancestor origin/main HEAD || { NOTE="local main is behind/diverged from origin/main — pull first"; log "ABORT: $NOTE"; exit 2; }
 fi
 
