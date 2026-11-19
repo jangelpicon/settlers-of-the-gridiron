@@ -1483,7 +1483,7 @@ const vr = p => p.rosEff != null ? p.rosEff : p.ros; // valuation rank — what 
         const after = T.tradeLineup(without).slots.find(s => s.slot === "QB"), hole = T.replFill(T.tradeLineup(without).slots).find(h => h.slot === "QB");
         const repl = after.p ? 420 - vr(after.p) : hole.v, oldOwn = T.strength(ps) - T.strength(without);
         assert(own > 0 && own === full - repl && oldOwn === 0, t + ": " + qb.name + " is not valued near 0 to his own team — worth +" + own + " (ROS " + full + " − replacement " + (after.p ? after.p.name : hole.src) + " " + repl + "); bye-skipping math had him at " + oldOwn);
-      } else assert(qbSlot.p && qbSlot.p.ros < qb.ros, t + ": " + qb.name + " is a backup (" + qbSlot.p.name + " starts), so his ~0 marginal value to them is correct, not the bye bug");
+      } else assert(qbSlot.p && vr(qbSlot.p) < vr(qb), t + ": " + qb.name + " is a backup (" + qbSlot.p.name + " starts on valuation rank #" + vr(qbSlot.p) + " vs #" + vr(qb) + "), so his ~0 marginal value to them is correct, not the bye bug"); // valuation rank, not FP's: the slate lens moved Stafford #92→#105 behind Cousins #98→#93 (2026-11-19)
       assert(T.strength(ps) === T.strength(ps.filter(p => p.n !== qb.n)) || !qb.onBye, t + ": strength() fence intact — still skips the bye-week QB this week (Roster talent column unchanged)");
     });
   }
@@ -1910,7 +1910,12 @@ const vr = p => p.rosEff != null ? p.rosEff : p.ros; // valuation rank — what 
     const everyone = Object.keys(rosters.teams).flatMap(t=>rosters.teams[t].map(p=>T.infoFor(p, t))).concat(T.freeAgents());
     const graded = everyone.filter(p=>p.sched);
     assert(graded.length > 50 && graded.every(p=>["QB","RB","WR","TE"].includes(p.pos)), "the slate grade reaches skill players league-wide and on the wire (" + graded.length + "), never K/DST");
-    assert(graded.every(p=>p.sched.weeks.length>0 && p.sched.weeks.every(k=>k.ratio>=0.5 && k.ratio<=1.6 && k.wt>0) && Math.abs(p.sched.mult - (1+(p.sched.adj-1)*p.sched.fw)) < 0.002), "each week's grade is the shrunk DvP vs league average, capped 0.5x–1.6x; the multiplier moves by the position's fitted trust");
+    // wt prints rounded to 2 dp: a long shot's playoff weeks (The Brady Bunch at 0.41% odds, 2026-11-19) read 0.00 while the
+    // grade itself uses the real weight — schedGrade() skips only weeks whose real weight is 0, so a listed week is a graded week.
+    assert(graded.every(p=>p.sched.weeks.length>0 && p.sched.weeks.every(k=>k.ratio>=0.5 && k.ratio<=1.6 && k.wt>=0 && k.wt<=1) && Math.abs(p.sched.mult - (1+(p.sched.adj-1)*p.sched.fw)) < 0.002), "each week's grade is the shrunk DvP vs league average, capped 0.5x–1.6x; the multiplier moves by the position's fitted trust");
+    { const own = {}; Object.keys(rosters.teams).forEach(t=>rosters.teams[t].forEach(p=>own[T.norm(p.name||p.n)] = t));
+      const zero = graded.filter(p=>p.sched.weeks.some(k=>k.wt===0));
+      assert(zero.every(p=>{ const H2 = T.horizonWeights(own[p.n] || rosters.me); return p.sched.weeks.every(k=>k.wt>0 || (H2.weeks[k.w]>0 && H2.weeks[k.w]<0.005)); }), "a week printed at ×0.00 is a graded week whose real weight is under 0.005 (" + zero.length + " players, " + [...new Set(zero.map(p=>own[p.n]||"FA"))].join("/") + ")"); }
     assert(graded.every(p=>p.sched.fw===((matchups.fittedW[p.pos]||{}).use!=null ? matchups.fittedW[p.pos].use : 0.5)), "trust = fittedW.use per position (QB " + matchups.fittedW.QB.use + ", RB " + matchups.fittedW.RB.use + ", WR " + matchups.fittedW.WR.use + ", TE " + matchups.fittedW.TE.use + ")");
     const mine = rosters.teams[rosters.me].map(T.info).filter(p=>p.sched);
     assert(mine.every(p=>p.sched.weeks.every(k=>!H.sits.includes(k.w))), "a week I sit is not in my players' slate grade (" + (H.sits.join(",")||"none") + ")");
