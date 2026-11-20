@@ -1,7 +1,7 @@
 {
  "me": "ur done",
- "updated": "2026-11-19",
- "source": "ESPN league 882823976 sync 2026-11-19 05:11 CST",
+ "updated": "2026-11-20",
+ "source": "ESPN league 882823976 sync 2026-11-20 17:06 CST",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -33,13 +33,6 @@
     "irOk": true,
     "ir": true,
     "slot": "IR"
-   },
-   {
-    "name": "Ladd McConkey",
-    "pos": "WR",
-    "team": "LAC",
-    "irOk": true,
-    "slot": "BN"
    },
    {
     "name": "Jameson Williams",
@@ -95,7 +88,7 @@
     "pos": "QB",
     "team": "NO",
     "irOk": true,
-    "slot": "QB"
+    "slot": "BN"
    },
    {
     "name": "Blake Corum",
@@ -105,9 +98,16 @@
     "slot": "BN"
    },
    {
-    "name": "Makai Lemon",
+    "name": "Bo Nix",
+    "pos": "QB",
+    "team": "DEN",
+    "irOk": true,
+    "slot": "QB"
+   },
+   {
+    "name": "Josh Downs",
     "pos": "WR",
-    "team": "PHI",
+    "team": "KC",
     "irOk": true,
     "slot": "BN"
    }
@@ -321,9 +321,9 @@
     "slot": "FLEX"
    },
    {
-    "name": "Bo Nix",
-    "pos": "QB",
-    "team": "DEN",
+    "name": "Ladd McConkey",
+    "pos": "WR",
+    "team": "LAC",
     "irOk": true,
     "slot": "BN"
    }
@@ -456,7 +456,7 @@
     "pos": "DST",
     "team": "SEA",
     "irOk": true,
-    "slot": "DST"
+    "slot": "BN"
    },
    {
     "name": "Stefon Diggs",
@@ -491,7 +491,7 @@
     "pos": "WR",
     "team": "CHI",
     "irOk": true,
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Dalton Kincaid",
@@ -505,7 +505,7 @@
     "pos": "WR",
     "team": "SF",
     "irOk": true,
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Omarion Hampton",
@@ -527,6 +527,13 @@
     "team": "SF",
     "irOk": true,
     "slot": "FLEX"
+   },
+   {
+    "name": "Detroit Lions",
+    "pos": "DST",
+    "team": "DET",
+    "irOk": true,
+    "slot": "DST"
    }
   ],
   "BlitzAndGiggles": [
@@ -798,7 +805,7 @@
     "pos": "RB",
     "team": "PIT",
     "irOk": true,
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "KC Concepcion",
@@ -826,7 +833,7 @@
     "pos": "RB",
     "team": "KC",
     "irOk": true,
-    "slot": "BN"
+    "slot": "RB"
    }
   ],
   "PapasCabezas": [
@@ -849,7 +856,7 @@
     "pos": "RB",
     "team": "KC",
     "irOk": true,
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "Zay Flowers",
@@ -871,7 +878,7 @@
     "pos": "RB",
     "team": "NYG",
     "irOk": true,
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Christian Watson",
