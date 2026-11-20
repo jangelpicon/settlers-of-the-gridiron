@@ -1644,7 +1644,9 @@ const vr = p => p.rosEff != null ? p.rosEff : p.ros; // valuation rank — what 
       sQ.injuries[n] = { code: "O", note: "stale weekly file" };                 // weekly file says OUT
       if (pjQ.players[n]){ pjQ.players[n].injE = "Q"; pjQ.players[n].injS = "Q"; pjQ.players[n].injNote = "live says Q"; } // live feeds say Q
       T.inject(sQ, rosters, exclusions, tradeLog, pjQ, espnPool, matchups, histReal);
-      const row = [...d.querySelectorAll("#tab-waivers .suggest, #tab-waivers .row, #tab-waivers div")].map(x => x.textContent).find(x => /Priority 1/.test(x) && rx(first.add.name).test(x)) || "";
+      // the SMALLEST element holding the row, not the first in document order (that was the whole tab, whose text also carries
+      // other players' legitimate ", OUT" labels — Maye on 2026-11-20 — and tripped the negative check; oracle bug, not a page bug)
+      const row = [...d.querySelectorAll("#tab-waivers .suggest, #tab-waivers .row, #tab-waivers div")].map(x => x.textContent).filter(x => /Priority 1/.test(x) && rx(first.add.name).test(x)).sort((a, b) => a.length - b.length)[0] || "";
       const stillListed = T.waiverSuggestions().sugg.some(x => x.add.n === n);
       if (stillListed){
         assert(/, Q 75%|, Q ·|, Q\)|, Q /.test(row.replace(/\s+/g, " ")) && !/, O\)|, OUT/.test(row.replace(/\s+/g, " ")), "claim row prints the live designation (Q), not the stale weekly-file code (O) — " + first.add.name);
