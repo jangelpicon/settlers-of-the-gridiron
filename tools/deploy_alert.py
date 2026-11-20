@@ -64,7 +64,7 @@ def failing_checks(limit=6):
     for i, ln in enumerate(lines):
         if ln.startswith("=====") and "test_gate" in ln:
             start = i
-    fails = [ln.strip()[len("FAIL - "):] for ln in lines[start:] if ln.strip().startswith("FAIL - ")]
+    fails = [re.sub(r"^(HARD )?FAIL - ", "", ln.strip()) for ln in lines[start:] if re.match(r"^\s*(HARD )?FAIL - ", ln)]
     seen, uniq = set(), []
     for f_ in fails:
         if f_ not in seen:
@@ -105,13 +105,26 @@ def main():
         return
 
     if run.get("result") == "ok":
+        out = []
         last = state.get("last_alert")
         if last and not last.startswith("ok:") and state.get("recovered_for") != last:
             state["recovered_for"] = last
             state["last_alert"] = "ok:" + started
-            save(STATE, state)
             sha = (run.get("commit") or "")[:7]
-            print(f"✅ Fantasy dashboard refresh recovered: data stamped {run.get('stamp') or fmt(started)} is live{(' (commit ' + sha + ')') if sha else ''}. <{LIVE}>")
+            out.append(f"✅ Fantasy dashboard refresh recovered: data stamped {run.get('stamp') or fmt(started)} is live{(' (commit ' + sha + ')') if sha else ''}. <{LIVE}>")
+        # Soft gate (2026-11-20): the page DID deploy, but some live-data oracle checks failed. Post them once per run so the
+        # test gets fixed the same day instead of silently rotting; the page itself is fresh.
+        soft = int(run.get("soft") or 0)
+        if soft and state.get("soft_alert") != "soft:" + started:
+            state["soft_alert"] = "soft:" + started
+            fails = failing_checks()
+            msg = [f"🟡 Fantasy dashboard updated (data {run.get('stamp') or fmt(started)} is live), but {soft} test check{'s' if soft != 1 else ''} failed softly — these are checks over live data, not a page outage. Sheldon to triage."]
+            if fails:
+                msg += ["• " + f_ for f_ in fails]
+            out.append("\n".join(msg))
+        if out:
+            save(STATE, state)
+            print("\n".join(out))
         else:
             print("NO_REPLY")
         return

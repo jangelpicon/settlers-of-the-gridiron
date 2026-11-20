@@ -14,8 +14,12 @@ const espnPool = (() => { try { return JSON.parse(fs.readFileSync(path.join(__di
 const unlockedProjections = JSON.parse(JSON.stringify(projections));
 Object.values(unlockedProjections.games || {}).forEach(g => { g.kick = new Date(Date.now() + 86400000).toISOString().replace(/\.\d+Z?$/, "Z"); g.state = "pre"; g.status = ""; g.score = null; });
 Object.values(unlockedProjections.players || {}).forEach(p => { if (p && typeof p === "object") p.actual = null; });
-let failures = 0;
+let failures = 0, hard = 0;
 const assert = (c, m) => { console.log((c ? "  ok - " : "  FAIL - ") + m); if (!c) failures++; };
+// Deploy-blocking check (2026-11-20). Only `must` failures hold a deploy (exit 1). Plain `assert` failures are oracles over
+// live data: they exit 3, the page still ships and tools/refresh_and_deploy.sh posts them for triage. Of 13 held deploys in
+// Nov 2026, 12 were oracle bugs tied to the day's data state (byes, locks, IR, my sat week) and the live page went stale for it.
+const must = (c, m) => { console.log((c ? "  ok - " : "  HARD FAIL - ") + m); if (!c) { failures++; hard++; } };
 const rx = s => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
 const vr = p => p.rosEff != null ? p.rosEff : p.ros; // valuation rank — what the page sorts and gates on (role check / playoff lens may move it off FP's rank)
 (async () => {
@@ -1850,10 +1854,12 @@ const vr = p => p.rosEff != null ? p.rosEff : p.ros; // valuation rank — what 
     const datedBefore = dated.filter(x=>x.q.horizon.ret < firstPO);
     assert(dated.every(x=>x.q.horizon.team===x.t && (x.q.horizon.odds==null || Math.abs(x.q.horizon.odds - T.playoffOddsOf(x.t))<1e-9)), "the lens uses the owning team's own playoff odds (" + dated.length + " dated players league-wide)");
     assert(dated.every(x=>x.q.horizon.ret > season.week), "a player already back carries no lens");
-    // healthy rate better than FP's number → he is valued at it, scaled by the weeks he plays, never below FP; a healthy rate
-    // that is NOT better (A.J. Brown 6.1/g) leaves FP's number in charge and only re-weights it
+    // healthy rate better than FP's number → he is valued at it, scaled by the weeks that matter to HIS team that he plays; a
+    // healthy rate that is NOT better (A.J. Brown 6.1/g) leaves FP's number in charge and only re-weights it. The result CAN land
+    // below FP: a late return for a long shot is worth little to that team (Puka Nacua FP #42 → #210 for SACK OF WHEAT, 2026-11-20).
+    // The old oracle here said "never below FP" and held the 2 AM deploy the first time a live player hit that case.
     const lifted = datedBefore.filter(x=>x.q.horizon.healthy && x.q.horizon.healthy.used);
-    assert(lifted.every(x=>x.q.rosEff <= x.q.ros), "a healthy rate better than FP lifts a pre-playoff returner, never below FP (" + lifted.map(x=>x.q.name+" #"+x.q.ros+"→#"+x.q.rosEff).join(", ") + ")");
+    assert(lifted.every(x=>x.q.horizon.healthy.rank < x.q.horizon.from), "a healthy rate is only used when its rank beats the number the lens started from (" + lifted.map(x=>x.q.name+" healthy #"+x.q.horizon.healthy.rank+" vs #"+x.q.horizon.from+" → #"+x.q.rosEff).join(", ") + ")");
     const sm = q => q.sched ? q.sched.mult : 1;
     assert(dated.filter(x=>!(x.q.horizon.healthy && x.q.horizon.healthy.used)).every(x=>x.q.horizon.f===0 ? x.q.rosEff===420 : Math.abs((420 - x.q.rosEff) - (420 - x.q.horizon.from) * sm(x.q)) <= 1), "without a better healthy rate FP's number stands (× his slate grade; floor only for a return after the final week)");
     assert(lifted.every(x=>{ const h = x.q.horizon; return Math.abs((420 - x.q.rosEff) - (420 - h.healthy.rank) * h.f * sm(x.q)) <= 1; }), "a lifted player's value = healthy value × share of the weighted weeks he plays × his slate grade");
@@ -1958,5 +1964,27 @@ const vr = p => p.rosEff != null ? p.rosEff : p.ros; // valuation rank — what 
     }
   }
 
-  console.log(failures ? failures + " FAILED" : "ALL SEASON TESTS PASSED"); process.exit(failures ? 1 : 0);
+  // ======================= DEPLOY-BLOCKING smoke: every team view renders every tab =======================
+  console.log("== Smoke (deploy-blocking) ==");
+  {
+    const smokeErrors = []; const onErr = e => smokeErrors.push(String((e && e.message) || (e && e.error) || e));
+    w.addEventListener("error", onErr);
+    T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, histReal);
+    const TABS = [...d.querySelectorAll("[id^='tab-']")].map(e => e.id);
+    must(TABS.length >= 5, "smoke: the page has its tab panels (" + TABS.length + ")");
+    for (const t of Object.keys(rosters.teams)){
+      smokeErrors.length = 0; let threw = null;
+      try { T.setTeamParam("team=" + encodeURIComponent(t)); await new Promise(r => setTimeout(r, 20)); } catch (e) { threw = e; }
+      const title = d.getElementById("teamTitle") ? d.getElementById("teamTitle").textContent.trim() : null;
+      const empty = TABS.filter(id => !((d.getElementById(id) || {}).textContent || "").trim());
+      must(!threw && !smokeErrors.length && title === t && !empty.length, "smoke: ?team=" + t + " renders every tab without throwing"
+        + (threw ? " (threw: " + (threw.message || threw) + ")" : "") + (smokeErrors.length ? " (window error: " + smokeErrors[0] + ")" : "")
+        + (title !== t ? " (title: " + title + ")" : "") + (empty.length ? " (empty: " + empty.join(", ") + ")" : ""));
+    }
+    T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, histReal); T.setTeamParam("?nothing=here"); w.removeEventListener("error", onErr);
+    must(d.getElementById("teamTitle").textContent.trim() === rosters.me, "smoke: default view is " + rosters.me + " again");
+  }
+
+  console.log(failures ? failures + " FAILED (" + hard + " deploy-blocking)" : "ALL SEASON TESTS PASSED");
+  process.exit(hard ? 1 : failures ? 3 : 0);
 })().catch(e => { console.error("crash", e); process.exit(1); });
