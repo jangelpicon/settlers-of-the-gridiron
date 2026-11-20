@@ -8,6 +8,8 @@ const html = fs.readFileSync(path.join(dir, "season.html"), "utf8");
 const J = f => JSON.parse(fs.readFileSync(path.join(dir, "data", f), "utf8"));
 const season = J("season.json"), rosters = J("rosters.json"), exclusions = J("exclusions.json"),
   trades = J("trades.json"), proj = J("projections.json");
+// Team override (2026-11-20): FFL_TEAM="SACK OF WHEAT" targets Jose's second team; default is rosters.me ("ur done").
+if (process.env.FFL_TEAM) { if (!rosters.teams[process.env.FFL_TEAM]) throw new Error("FFL_TEAM not in league: "+process.env.FFL_TEAM); rosters.me = process.env.FFL_TEAM; }
 let matchups = null; try { matchups = J("matchups.json"); } catch (e) {} // optional — page degrades to consensus-only
 // Same inputs as the browser (Jose 2026-10-20: the dashboard is the source of truth): the league's ESPN pool
 // restricts streamers to players actually in this league, and the history feeds win odds / title stakes.
