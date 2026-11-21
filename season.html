@@ -521,6 +521,10 @@
     p.noTeam = !!(q && q.team==="FA"); // released by his NFL team: the rankings/ROS file still lists his old club, the live feed says FA
     p.espn = q && typeof q.espn==="number" ? q.espn : null;
     p.sleeper = q && typeof q.sleeper==="number" ? q.sleeper : null;
+    // next week's projections (refresh_projections.py pulls W+1 from ESPN/Sleeper; Jose 2026-11-20) — drive the next-week lineup
+    p.espnNext = q && typeof q.espnNext==="number" ? q.espnNext : null;
+    p.sleeperNext = q && typeof q.sleeperNext==="number" ? q.sleeperNext : null;
+    { const nv = [p.espnNext, p.sleeperNext].filter(v=>typeof v==="number"); p.muNext = nv.length ? Math.round(nv.reduce((a,b)=>a+b,0)/nv.length*10)/10 : null; }
     p.rankPts = rankPts(weeklyKey(p.pos), p.wkRank);
     p.actual = q && typeof q.actual==="number" ? q.actual : null;
     p.seasonProj = q && typeof q.espnSeason==="number" ? q.espnSeason : null; // ESPN full-season projection (live)
@@ -871,7 +875,7 @@
   // opts.byePresent: count a player on bye THIS week as rostered and present (trade math only — a bye is one
   // week, a trade is rest-of-season). Default (strength(), lineups) is unchanged: bye = not startable.
   function optimalLineup(players, key, opts){
-    const desc = key==="mu";
+    const desc = key==="mu" || key==="muNext";
     const byeOk = !!(opts && opts.byePresent);
     const kv = key==="ros" ? rosR : (p=>p[key]);
     const usable = players.filter(p=>(byeOk || !p.onBye) && !undraftable(p) && kv(p)!=null);
@@ -2181,7 +2185,7 @@
     // --- next week: byes + IR → holes, and the free agents who actually PLAY that week (Jose 2026-11-03) ---
     let nwIndex = -1;
     if (NV && (NV.out.length || NV.holes.length)){
-      let line = "📅 <b>Next week (W"+NV.week+")</b> · on bye: "+(NV.out.length ? NV.out.map(p=>esc(p.name)+" ("+p.pos+")").join(", ") : "nobody")
+      let line = "📅 <b>Next week (W"+NV.week+")</b> · "+(NV.key==="muNext" ? "by next-week projections" : "by rest-of-season rank (next-week projections not posted yet)")+" · on bye: "+(NV.out.length ? NV.out.map(p=>esc(p.name)+" ("+p.pos+")").join(", ") : "nobody")
         + " · "+(NV.holes.length ? "<b>hole: "+NV.holes.join(", ")+"</b>" : "bench covers it"+(NV.covers && NV.covers.length ? " — <b>"+NV.covers.map(p=>esc(p.name)).join(", ")+"</b> start"+(NV.covers.length>1?"":"s")+" that week and stay"+(NV.covers.length>1?"":"s")+" off the drop ladder" : ""));
       const byPos = {}; NV.holes.forEach(hl=>{ const b = hl==="FLEX" ? "FLEX" : hl.replace(/\d$/,""); byPos[b] = (byPos[b]||0)+1; });
       const none = [];
@@ -2975,13 +2979,23 @@
   // ---------- Byes tab ----------
   // Next week's lineup from byes + IR/OUT/SUSP — the same lens as the Bye-week map, exposed so the Waivers tab can use
   // it (Jose 2026-11-03: ur done had Swift AND Irving on bye W10 and the claim sheet still led with a W10-bye RB).
-  function nextWeekView(me, withCovers){
+  // Next week's lineup. Ranked by next-week projections (muNext = ESPN/Sleeper W+1, pulled by refresh_projections.py) when the
+  // feed carries them for every man who can play that week; otherwise by rest-of-season rank. Jose 2026-11-20: the W12 baseline
+  // had Goff over Watson and London over Washington on ROS rank while ESPN's W12 numbers said the opposite.
+  function nextWeekKey(remaining){ return P && P.nextWeek!=null && S && P.nextWeek===S.week+1 && remaining.length && remaining.every(p=>typeof p.muNext==="number") ? "muNext" : "ros"; }
+  function nextWeekLineup(me){
     const nw = S && S.week!=null ? S.week+1 : null; if (nw==null) return null;
     const out = me.filter(p=>p.bye===nw);
     const remaining = me.filter(p=>p.bye!==nw && !(p.inj && ["IR","O","SUSP"].includes(p.inj.code)));
-    const L = optimalLineup(remaining.map(p=>({...p, onBye:false, pPlay:1})), "ros");
+    const key = nextWeekKey(remaining);
+    const L = optimalLineup(remaining.map(p=>({...p, onBye:false, pPlay:1})), key);
+    return { week: nw, out, remaining, key, L };
+  }
+  function nextWeekView(me, withCovers){
+    const r = nextWeekLineup(me); if (!r) return null;
+    const { week: nw, out, remaining, key, L } = r;
     // used = who starts that week (incl. the bench men covering the byes); the drop ladder must not spend them
-    return { week: nw, out, holes: L.slots.filter(s=>!s.p).map(s=>s.slot), used: L.used, covers: withCovers ? (u => remaining.filter(p=>L.used.has(p.n) && !["K","DST"].includes(p.pos) && !u.has(p.n)))(optimalLineup(me, "ros").used) : null };
+    return { week: nw, out, key, holes: L.slots.filter(s=>!s.p).map(s=>s.slot), used: L.used, covers: withCovers ? (u => remaining.filter(p=>L.used.has(p.n) && !["K","DST"].includes(p.pos) && !u.has(p.n)))(optimalLineup(me, "ros").used) : null };
   }
   // Would dropping `drop` for `fa` open a hole in next week's bye-adjusted lineup? (Jose 2026-11-04, Kamara: ur done had
   // Swift AND Irving on bye W10, Kamara + Warren covered it, and the sheet spent Kamara — the W10 RB2 — for a WR, and for
@@ -3252,7 +3266,7 @@
   window.__seasonTest = { inject:(s,r,x,tl,pj,pool,mu,hist)=>{ S=s; R=JSON.parse(JSON.stringify(r)); X=x||{players:[]}; P=pj||null; POOL=pool||null; MU=mu||null; HIST=hist||null; LG=null; PSTAMP = pj ? {text:"snapshot "+pj.generated, cls:"stale"} : {text:"none", cls:""}; RSTAMP = {text:R.updated||"–", cls:""}; mergeLog((tl||{}).entries); applyAcceptedTrades(); buildIndex(); renderAll(); },
     setHistory:(h)=>{ HIST=h||null; renderMatchup(); renderScoreboard(); },
     setSettings:(st)=>{ SETTINGS=st||null; SIMC=null; }, setTransactions:(tx)=>{ TX=tx||null; LOGF={team:"",kind:"all"}; renderLog(); }, setLogFilter:(f)=>{ LOGF=Object.assign({team:"",kind:"all"},f||{}); renderLog(); }, txNormalize, getTransactions:()=>TX, leagueSim, simDelta, simDeltaFast, simWinProb, waiverChamp, simLeverage, simScoringModel, simRun, simPlayoffs, simSeedOrder, simBracketOrder, simNormals, simWidth, talentSlope, SIM_N, SIM_SEED, historyFromLeague, teamSeason, currentOpponent, allScores, scoringRank, effPts, effSd, gameFrac, liveState, scoreFrame, currentWeekProj,
-    nextWeekView, coversNextWeek, lastSheet:()=>LAST_SHEET, claimWhen, claimLateFor, batchAt, pickChain, rostersFromLeague, setRosters:(r)=>{ R = JSON.parse(JSON.stringify(r)); buildIndex(); renderAll(); },
+    nextWeekView, nextWeekLineup, coversNextWeek, lastSheet:()=>LAST_SHEET, claimWhen, claimLateFor, batchAt, pickChain, rostersFromLeague, setRosters:(r)=>{ R = JSON.parse(JSON.stringify(r)); buildIndex(); renderAll(); },
     setLineup, rankVote, logTrade, teamFloor, tradeTalent, tradeLineup, strippedPositions, replFill, getLog:()=>TL, getRosters:()=>R, info, optimalLineup, lockAwareLineup, strength, findTrades, findSurplus, surplusDeals, allSurplusDeals, freeAgents, norm, tradeStats, predict, pBeats, normalize, rankPts, acceptOdds, model:M, teamNeeds,
     waiverSuggestions:()=>{ const me = myTeam(); const bench = ladderBench(me); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,
     weeklyStreamClaims:()=>{ const me = myTeam(); return weeklyStreamClaims(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },

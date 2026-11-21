@@ -115,11 +115,33 @@ def main():
         q["sleeper"] = r["proj"]; q["injS"] = r["inj"]
         if r.get("injNote"): q["injNote"] = r["injNote"]
         if not q.get("team"): q["team"] = r["team"]
+    # Next week's projections (Jose 2026-11-20: ESPN posts W+1 as soon as the current week starts; the dashboard's
+    # Next-week box and any pre-set future lineup were falling back to rest-of-season rank). Non-fatal: a thin or
+    # missing feed just leaves espnNext/sleeperNext off and season.html falls back to ROS rank for next week.
+    nxt = week + 1
+    en, sn = {}, {}
+    if nxt <= 18:
+        try:
+            en = espn(nxt)
+            if len(en) < 200: print(f"next week ({nxt}): espn feed thin ({len(en)}) — ignoring"); en = {}
+        except Exception as ex:
+            print(f"next week ({nxt}): espn unavailable ({ex}) — continuing without espnNext")
+        try:
+            sn = sleeper(nxt)
+            if len(sn) < 200: print(f"next week ({nxt}): sleeper feed thin ({len(sn)}) — ignoring"); sn = {}
+        except Exception as ex:
+            print(f"next week ({nxt}): sleeper unavailable ({ex}) — continuing without sleeperNext")
+        for n, r in en.items():
+            if r["proj"] is None: continue
+            players.setdefault(n, {"name": r["name"], "pos": r["pos"], "team": r["team"]})["espnNext"] = r["proj"]
+        for n, r in sn.items():
+            players.setdefault(n, {"name": r["name"], "pos": r["pos"], "team": r["team"]})["sleeperNext"] = r["proj"]
     now = datetime.datetime.now(zoneinfo.ZoneInfo("America/Chicago"))
     out = {"generated": now.strftime("%Y-%m-%d %-I:%M %p CT"), "generatedMs": int(now.timestamp() * 1000), "week": week, "season": SEASON,
-           "sources": {"espn": len(e), "sleeper": len(s), "games": len(games)}, "games": games, "players": players}
+           "nextWeek": nxt if (en or sn) else None,
+           "sources": {"espn": len(e), "sleeper": len(s), "games": len(games), "espnNext": len(en), "sleeperNext": len(sn)}, "games": games, "players": players}
     (HERE / "data" / "projections.json").write_text(json.dumps(out, separators=(",", ":")))
-    print(f"week {week}: espn {len(e)}, sleeper {len(s)}, games {len(games)}, merged {len(players)} -> data/projections.json ({out['generated']})")
+    print(f"week {week}: espn {len(e)}, sleeper {len(s)}, games {len(games)}, merged {len(players)}; next week {nxt}: espn {len(en)}, sleeper {len(sn)} -> data/projections.json ({out['generated']})")
     # opponent-adjusted matchup data rides every projections refresh (Tue + Sun crons); non-fatal —
     # season.html degrades to consensus-only when data/matchups.json is stale or missing
     import subprocess

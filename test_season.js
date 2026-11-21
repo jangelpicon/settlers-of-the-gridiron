@@ -1966,6 +1966,27 @@ const vr = p => p.rosEff != null ? p.rosEff : p.ros; // valuation rank — what 
     }
   }
 
+  // ======================= Next-week projections drive the next-week lineup =======================
+  console.log("== Next-week lineup ==");
+  {
+    T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, histReal);
+    const me0n = rosters.teams[rosters.me].map(T.info);
+    const r0 = T.nextWeekLineup(me0n);
+    if (projections.nextWeek === season.week + 1){
+      assert(r0 && r0.key === "muNext", "next-week lineup ranks by next-week projections when the feed carries them (W" + projections.nextWeek + ", key " + (r0 && r0.key) + ")");
+      const sidelinedN = p => p.inj && ["IR","O","SUSP"].includes(p.inj.code);
+      const benchN = me0n.filter(p => r0 && !r0.L.used.has(p.n) && p.bye !== r0.week && !sidelinedN(p) && typeof p.muNext === "number");
+      const worse = r0 ? r0.L.slots.filter(s => s.p && s.slot !== "FLEX").flatMap(s => benchN.filter(b => b.pos === s.p.pos && b.muNext > s.p.muNext).map(b => b.name + " " + b.muNext + " > " + s.p.name + " " + s.p.muNext)) : [];
+      assert(worse.length === 0, "no bench man out-projects a same-position starter next week" + (worse.length ? " (" + worse.join(", ") + ")" : ""));
+      assert(/by next-week projections/.test(d.getElementById("tab-waivers").textContent) || !/📅/.test(d.getElementById("tab-waivers").textContent), "the Next-week box says it is built on next-week projections");
+    } else console.log("  (no next-week projections in this snapshot — W" + (season.week + 1) + " not posted)");
+    const pjNo = JSON.parse(JSON.stringify(projections)); delete pjNo.nextWeek; Object.values(pjNo.players).forEach(q => { if (q && typeof q === "object"){ delete q.espnNext; delete q.sleeperNext; } });
+    T.inject(season, rosters, exclusions, tradeLog, pjNo, espnPool, matchups, histReal);
+    const r1 = T.nextWeekLineup(rosters.teams[rosters.me].map(T.info));
+    assert(r1 && r1.key === "ros", "without next-week projections the next-week lineup falls back to rest-of-season rank");
+    T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, histReal);
+  }
+
   // ======================= DEPLOY-BLOCKING smoke: every team view renders every tab =======================
   console.log("== Smoke (deploy-blocking) ==");
   {
