@@ -1,7 +1,7 @@
 {
  "me": "ur done",
  "updated": "2026-11-20",
- "source": "ESPN league 882823976 sync 2026-11-20 17:15 CST",
+ "source": "ESPN league 882823976 sync 2026-11-20 19:56 CST",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -763,7 +763,8 @@
     "pos": "QB",
     "team": "NE",
     "irOk": true,
-    "slot": "BN"
+    "ir": true,
+    "slot": "IR"
    },
    {
     "name": "D'Andre Swift",
@@ -822,18 +823,25 @@
     "slot": "K"
    },
    {
-    "name": "Green Bay Packers",
-    "pos": "DST",
-    "team": "GB",
-    "irOk": true,
-    "slot": "DST"
-   },
-   {
     "name": "Emmett Johnson",
     "pos": "RB",
     "team": "KC",
     "irOk": true,
     "slot": "RB"
+   },
+   {
+    "name": "Tampa Bay Buccaneers",
+    "pos": "DST",
+    "team": "TB",
+    "irOk": true,
+    "slot": "DST"
+   },
+   {
+    "name": "Deshaun Watson",
+    "pos": "QB",
+    "team": "CLE",
+    "irOk": true,
+    "slot": "BN"
    }
   ],
   "PapasCabezas": [
