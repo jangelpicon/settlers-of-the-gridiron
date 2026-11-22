@@ -1677,7 +1677,12 @@
   // Irving were on bye, so the this-week lineup had Kamara (ROS #174) at RB2 and the ladder treated him as a starter —
   // shielded from every drop — while Charbonnet (ROS #148, +19 ESPN season pts) read "pass — worse than Concepcion".
   // A bench man who only starts because the regulars are on bye is still a bench man here; the bye starters are not drops.
-  function ladderBench(me){ return tradeLineup(me).bench; }
+  // IR-slot rule (2026-11-21, Nacua): a man parked in the IR slot is never on the ladder. ESPN's IR slot sits outside the
+  // 14-man active roster, so dropping him opens NO spot — the add still needs an active drop. The live page had him #1
+  // (lens #386, back W18) and every claim on SACK read "drop Nacua", a move that gains nothing. He is listed under the
+  // ladder as an IR holder instead; he only leaves when the IR slot itself is needed (irMoves) or by hand.
+  function irHolders(me){ return me.filter(p=>p.ir || p.slot==="IR"); }
+  function ladderBench(me){ return tradeLineup(me).bench.filter(p=>!(p.ir || p.slot==="IR")); }
   // Positional scarcity guard: your ONLY bench player at a position never drops for a different position —
   // an 8th WR who never cracks the lineup is worth less than your only RB insurance. Same-position swaps
   // are always allowed. If every bench player is someone's last depth piece, fall back to raw value.
@@ -1825,8 +1830,9 @@
     return { starts:true, displaced: me.find(p=>before.used.has(p.n) && !after.used.has(p.n)) || null };
   }
   function dropCandidate(bench, me, fa, imp){
-    if (["K","DST"].includes(fa.pos)) return me.filter(p=>p.pos===fa.pos)[0] || null;      // K/DST: straight swap for yours
-    if (fa.pos==="QB"){ const qbs = me.filter(p=>p.pos==="QB"); return qbs.length ? qbs.slice().sort((a,b)=>(rosR(b)||ROS_MAX)-(rosR(a)||ROS_MAX))[0] : null; } // QB: straight swap for your worst QB
+    const act = me.filter(p=>!(p.ir || p.slot==="IR")); // same-position swaps spend an ACTIVE man only — an IR-slot holder frees no spot (2026-11-21 IR-slot rule; Maye/Lamar Jackson read as the QB drop)
+    if (["K","DST"].includes(fa.pos)) return act.filter(p=>p.pos===fa.pos)[0] || null;      // K/DST: straight swap for yours
+    if (fa.pos==="QB"){ const qbs = act.filter(p=>p.pos==="QB"); return qbs.length ? qbs.slice().sort((a,b)=>(rosR(b)||ROS_MAX)-(rosR(a)||ROS_MAX))[0] : null; } // QB: straight swap for your worst active QB
     const pool = scarcityPool(bench, fa.pos, me, fa);
     const worst = pool.length ? pool.slice().sort((a,b)=>(rosR(b)||ROS_MAX)-(rosR(a)||ROS_MAX))[0] : null;
     // Ruling 2026-10-21 (Kincaid/Juwan Johnson): a STARTER is the drop when the free agent would start over him
@@ -2313,6 +2319,7 @@
       h += "<h3>Your drop order</h3><div style='margin-bottom:6px'>"+fold("how the ladder works", "Least season-long value first — when a claim needs a roster spot, this is the sequence. Claim 1 costs #1; land a second add and it costs #2, and so on. Your kicker and defense only ever swap for another K/DST, your QB for a QB. A <b>starter</b> is the drop only when a free agent at his position would start over him and he's worth less for the season than anyone on your bench (the Kincaid/Juwan Johnson case) — otherwise he just slides to the bench and the drop comes from this ladder. Rest-of-season lens: a bench man who only starts this week because your regulars are on bye is still a bench man here, and the men on bye are not drops. <b>Scarcity guard:</b> your only bench player at a position never drops for a different position — depth you can't replace beats a player who'd never crack your lineup. <b>Next-week guard:</b> a bench man who starts next week (bye cover) is never the drop for an add who wouldn't take his place that week.")+"</div>";
       const dcounts = {}; dorder.forEach(p=>{ dcounts[p.pos]=(dcounts[p.pos]||0)+1; });
       dorder.forEach((p,i)=>{ h += "<div class='suggest'>➖ <b>#"+(i+1)+" "+esc(p.name)+"</b> <span class='muted'>"+p.pos+" · ROS "+(p.ros!=null?"#"+p.ros:"unranked")+lensNote(p)+(p.seasonProj!=null?" · "+p.seasonProj.toFixed(0)+" season pts":"")+(p.inj?" · "+esc(p.inj.code):"")+(p.bye!=null?" · bye "+p.bye:"")+"</span>"+(dcounts[p.pos]===1?" <span class='tag warn'>only "+p.pos+" on your bench — drops only for another "+p.pos+"</span>":"")+(isOut(p)?" <span class='tag warn'>OUT"+(p.injNote?" · "+esc(p.injNote):"")+" — zero this week"+(irMoves(me).includes(p)?"; park him on IR instead of dropping":"")+"</span>":"")+"</div>"; });
+      irHolders(me).forEach(p=>{ h += "<div class='suggest muted'>🩹 <b>"+esc(p.name)+"</b> holds your IR slot"+(p.injNote?" · "+esc(p.injNote):"")+" — not on the ladder: dropping him opens no roster spot (IR sits outside the 14). He goes only when the IR slot is needed.</div>"; });
     }
     // One decoration for every rental row (shared by the all-positions list and the per-position tables): the lineup
     // tag (starts / starts only if X sits / bench), the instant-add warning, and — for skill positions that are not a
@@ -3272,7 +3279,7 @@
     weeklyStreamClaims:()=>{ const me = myTeam(); return weeklyStreamClaims(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
     weeklyStreamStatus:()=>{ const me = myTeam(); return weeklyStreamStatus(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
     streamStatusRaw:(me,fa,wkey)=>weeklyStreamStatus(me, fa, wkey||"mu"), ROSTER_ACTIVE, STREAM_BAR, STREAM_TIE, openSpots, activeCount, IR_SLOTS, isOut, irMoves, outSpots, parkable, backDate,
-    dropOrder:()=>{ const me = myTeam(); const bench = ladderBench(me); return dropOrder(me, bench); }, fitNote, scarcityPool, ladderBench, lineupImpact, dropCandidate, dropVerdict, opensHole, holeWeek, swapGain, thisWeekHoles, thisWeekLineup, weekLive, keptNote, keptForNextWeek,
+    dropOrder:()=>{ const me = myTeam(); const bench = ladderBench(me); return dropOrder(me, bench); }, fitNote, scarcityPool, ladderBench, irHolders, lineupImpact, dropCandidate, dropVerdict, opensHole, holeWeek, swapGain, thisWeekHoles, thisWeekLineup, weekLive, keptNote, keptForNextWeek,
     winProbAt, winProbSeries, winLogPoints, setWinLog:(w)=>{ WPL=w||null; }, wouldStartHealthy, rentalImpact, setWaiverSub:(sub,pos)=>{ if (sub) WSUB = sub; if (pos!=null) WALLPOS = pos; renderWaivers(); }, getWaiverSub:()=>({ sub:WSUB, pos:WALLPOS }), topScorersThisWeek:(qb)=>{ const me = myTeam(); return topScorersThisWeek(me, freeAgents().filter(p=>!undraftable(p)), lineupKey(), !!qb); }, TOP_WEEK, TOP_WEEK_QB, rentalRows:(pos)=>rentalRows(myTeam(), freeAgents().filter(p=>!undraftable(p)), pos, lineupKey()), shakyStarters:()=>weekStarters(myTeam(), lineupKey()).filter(s=>shaky(s.p) && !["K","DST"].includes(s.p.pos)), STREAM_ROWS,
     setTeamParam:(qs)=>{ applyTeamParam(qs); buildIndex(); renderAll(); },
     horizonWeights, weekOfDate, playoffOddsOf, healthyPosRank, horizonCheck, schedGrade, lensOn, lensBase, lensOff, LENS_REG, LENS_FORM_N, LENS_SHOW, lensLine:()=>lensLine(myTeam()), infoFor:(p,team)=>{ const prev = HZ_TEAM; HZ_TEAM = team; try { return info(p); } finally { HZ_TEAM = prev; } },

@@ -328,6 +328,24 @@ const vr = p => p.rosEff != null ? p.rosEff : p.ros; // valuation rank — what 
   const DO = T.dropOrder();
   assert(DO.length > 0 && DO.every(p => !["K","DST"].includes(p.pos)), "drop order lists bench skill players only (K/DST swap for their own slot, never drop)");
   assert(DO.every((p, i) => i === 0 || (vr(DO[i-1]) || 420) >= (vr(p) || 420)), "drop order runs least season-long value first (valued rank)");
+  // IR-slot rule (2026-11-21, Nacua): a man parked in the IR slot never appears as a drop — dropping him opens no active
+  // spot (ESPN IR sits outside the 14), so the claim would still need a real drop. League-wide: every team, every surface.
+  { const save = T.getRosters(); let irTeams = 0, irRows = 0;
+    Object.keys(save.teams).forEach(t => {
+      T.setTeamParam("team=" + encodeURIComponent(t));
+      const tm = T.getRosters().teams[t].map(T.info), holders = tm.filter(p => p.ir || p.slot === "IR");
+      if (!holders.length) return; irTeams++;
+      const isIR = p => p && (p.ir || p.slot === "IR");
+      must(!T.dropOrder().some(isIR) && !T.ladderBench(tm).some(isIR), t + ": IR-slot holder (" + holders.map(p => p.name).join(", ") + ") is not on the drop ladder");
+      const ws = T.waiverSuggestions(), rows = ws.sugg.concat(ws.marginal || []);
+      must(rows.every(s => !isIR(s.drop) && !isIR(s.backup && s.backup.drop)), t + ": no claim row names the IR-slot holder as its drop");
+      must(T.waiverBoard().every(b => !isIR(b.drop)), t + ": no \"Drop for him\" cell names the IR-slot holder");
+      const wt = d.getElementById("tab-waivers").textContent.replace(/\s+/g, " ");
+      if (holders.every(p => rx(p.name).test(wt) && new RegExp(rx(p.name).source + "[^.]{0,40}holds your IR slot").test(wt))) irRows++;
+    });
+    assert(irTeams === 0 || irRows === irTeams, "every team with an IR holder shows the \"holds your IR slot — not on the ladder\" line under the drop order (" + irRows + "/" + irTeams + ")");
+    must(irTeams > 0 || !Object.values(save.teams).some(tm => tm.some(p => p.ir || p.slot === "IR")), "IR-slot oracle exercised on at least one team when the league has IR holders (" + irTeams + " teams)");
+    T.setRosters(save); T.setTeamParam("team=" + encodeURIComponent(rosters.me)); }
   assert(paid.concat(WS.marginal).filter(s => s.add.pos !== "QB").every(s => rightDrop(s.add, s.drop)), "every claim names the scarcity-aware top of the drop order (or the out-valued starter it replaces) — the ladder explains multi-add drops");
   const wtxt2 = d.getElementById("tab-waivers").textContent;
   assert(/Your drop order/.test(wtxt2) && ((WS.sugg.length || SC.length) ? /Your claim sheet — enter exactly this in ESPN/.test(wtxt2) : /Nothing on the wire is a clear season-long upgrade/.test(wtxt2)), "waiver tab shows the drop order plus the claim sheet (or the empty-wire note when there are no season-long OR weekly K/DST moves)");
@@ -622,7 +640,7 @@ const vr = p => p.rosEff != null ? p.rosEff : p.ros; // valuation rank — what 
     console.log("== Drop ladder: bye-week fill-ins are bench, bye starters are not drops ==");
     { let teams = 0;
       Object.keys(rosters.teams).forEach(t => { T.setTeamParam("team=" + encodeURIComponent(t)); const tm = T.getRosters().teams[t].map(T.info); const L = T.tradeLineup(tm); const DOt = T.dropOrder(); teams++;
-        const skillBench = L.bench.filter(p => !["K", "DST"].includes(p.pos));
+        const skillBench = L.bench.filter(p => !["K", "DST"].includes(p.pos) && !(p.ir || p.slot === "IR")); // IR-slot holders are off the ladder by rule (2026-11-21)
         assert(DOt.every(p => !L.used.has(p.n)), t + ": no rest-of-season starter (bye-present) is on the drop ladder (" + DOt.filter(p => L.used.has(p.n)).map(p => p.name).join(", ") + ")");
         assert(skillBench.every(p => DOt.some(q => q.n === p.n)) && DOt.length === skillBench.length, t + ": every rest-of-season bench skill player is on the ladder (" + DOt.length + "/" + skillBench.length + ")"); });
       console.log("  ladder lens checked on " + teams + " teams");
