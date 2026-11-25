@@ -1,7 +1,7 @@
 {
  "me": "ur done",
  "updated": "2026-11-24",
- "source": "ESPN league 882823976 sync 2026-11-24 19:00 CST",
+ "source": "ESPN league 882823976 sync 2026-11-24 19:30 CST",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -706,13 +706,6 @@
     "team": "CAR",
     "irOk": true,
     "slot": "TE"
-   },
-   {
-    "name": "Mark Andrews",
-    "pos": "TE",
-    "team": "BAL",
-    "irOk": true,
-    "slot": "BN"
    },
    {
     "name": "Caleb Williams",
