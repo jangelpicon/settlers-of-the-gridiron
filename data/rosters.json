@@ -1,7 +1,7 @@
 {
  "me": "ur done",
  "updated": "2026-11-24",
- "source": "ESPN league 882823976 sync 2026-11-24 02:00 CST",
+ "source": "ESPN league 882823976 sync 2026-11-24 18:00 CST",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -10,7 +10,7 @@
     "pos": "RB",
     "team": "IND",
     "irOk": true,
-    "slot": "RB"
+    "slot": "BN"
    },
    {
     "name": "James Cook III",
@@ -39,7 +39,7 @@
     "pos": "WR",
     "team": "DET",
     "irOk": true,
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Spencer Shrader",
@@ -53,21 +53,21 @@
     "pos": "WR",
     "team": "NYJ",
     "irOk": true,
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Bhayshul Tuten",
     "pos": "RB",
     "team": "JAX",
     "irOk": true,
-    "slot": "FLEX"
+    "slot": "RB"
    },
    {
     "name": "Kirk Cousins",
     "pos": "QB",
     "team": "MIN",
     "irOk": true,
-    "slot": "BN"
+    "slot": "QB"
    },
    {
     "name": "Denver Broncos",
@@ -81,14 +81,14 @@
     "pos": "RB",
     "team": "LAR",
     "irOk": true,
-    "slot": "BN"
+    "slot": "FLEX"
    },
    {
     "name": "Bo Nix",
     "pos": "QB",
     "team": "DEN",
     "irOk": true,
-    "slot": "QB"
+    "slot": "BN"
    },
    {
     "name": "Josh Downs",
@@ -102,7 +102,7 @@
     "pos": "TE",
     "team": "LV",
     "irOk": true,
-    "slot": "TE"
+    "slot": "BN"
    }
   ],
   "SACK OF WHEAT": [
@@ -219,7 +219,7 @@
     "pos": "RB",
     "team": "ATL",
     "irOk": true,
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Tee Higgins",
@@ -269,7 +269,7 @@
     "pos": "WR",
     "team": "GB",
     "irOk": true,
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Will Reichard",
@@ -297,21 +297,21 @@
     "pos": "RB",
     "team": "TEN",
     "irOk": true,
-    "slot": "RB"
+    "slot": "FLEX"
    },
    {
     "name": "Emeka Egbuka",
     "pos": "WR",
     "team": "TB",
     "irOk": true,
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Ryan Flournoy",
     "pos": "WR",
     "team": "DAL",
     "irOk": true,
-    "slot": "FLEX"
+    "slot": "BN"
    },
    {
     "name": "Ladd McConkey",
@@ -857,14 +857,14 @@
     "pos": "RB",
     "team": "KC",
     "irOk": true,
-    "slot": "BN"
+    "slot": "RB"
    },
    {
     "name": "Zay Flowers",
     "pos": "WR",
     "team": "BAL",
     "irOk": true,
-    "slot": "FLEX"
+    "slot": "WR"
    },
    {
     "name": "Lamar Jackson",
@@ -879,7 +879,7 @@
     "pos": "RB",
     "team": "NYG",
     "irOk": true,
-    "slot": "RB"
+    "slot": "FLEX"
    },
    {
     "name": "Christian Watson",
@@ -893,7 +893,7 @@
     "pos": "QB",
     "team": "WAS",
     "irOk": true,
-    "slot": "BN"
+    "slot": "QB"
    },
    {
     "name": "T.J. Hockenson",
@@ -907,7 +907,7 @@
     "pos": "QB",
     "team": "HOU",
     "irOk": true,
-    "slot": "QB"
+    "slot": "BN"
    },
    {
     "name": "Dominic Zvada",
@@ -921,7 +921,7 @@
     "pos": "WR",
     "team": "HOU",
     "irOk": true,
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Xavier Hutchinson",
