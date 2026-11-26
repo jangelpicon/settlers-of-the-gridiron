@@ -457,10 +457,16 @@
 
   // ================= Prediction model =================
   // Predicted points = average of (ESPN projection, Sleeper projection, points implied by the FantasyPros
-  // consensus rank) × Vegas adjustment (half-weight on the team's implied total vs league average) × chance
-  // he plays (from the live injury designation). Spread = position-typical week-to-week variance.
+  // consensus rank) × Vegas adjustment (half-weight on the team's implied total vs league average) × the
+  // injury multiplier below. Spread = position-typical week-to-week variance.
+  // Two injury numbers, on purpose (Jose 2026-11-26, Thanksgiving week: "everyone is Q this week and it's
+  // affecting projs"): PPLAY is the chance he plays and only FLAGS him (🤕 box, injury watch, the Q · 75% tag);
+  // PMULT is what actually scales the projection. Questionable and day-to-day keep their full number because
+  // ESPN and Sleeper already price the tag into their projections, so haircutting again double-counted it.
+  // Doubtful, Out, IR and suspended still get cut, since those designations really do mean no points.
   const CV = { QB:.35, RB:.50, WR:.55, TE:.60, K:.45, DST:.70 };
-  const PPLAY = { ACT:1, DTD:.9, Q:.75, D:.25, O:0, IR:0, SUSP:0 };
+  const PPLAY = { ACT:1, DTD:.9, Q:.75, D:.25, O:0, IR:0, SUSP:0 };   // chance he plays: flags and labels only
+  const PMULT = { ACT:1, DTD:1, Q:1, D:.25, O:0, IR:0, SUSP:0 };      // what the projection is multiplied by
   const INJ_RANK = { ACT:0, DTD:1, Q:2, D:3, O:4, SUSP:4, IR:5 };
   const Z80 = 0.8416;
   function phi(z){ const t = 1/(1+0.2316419*Math.abs(z)); const d = 0.3989423*Math.exp(-z*z/2); const p = d*t*(0.3193815+t*(-0.3565638+t*(1.781478+t*(-1.821256+t*1.330274)))); return z>=0 ? 1-p : p; }
@@ -513,7 +519,7 @@
     return Math.round(w*100)/100;
   }
   function predict(p){ // p = info() output; adds projection fields in place
-    p.mu = null; p.sd = null; p.floor = null; p.ceil = null; p.pPlay = null; p.srcs = [];
+    p.mu = null; p.sd = null; p.floor = null; p.ceil = null; p.pPlay = null; p.pMult = null; p.srcs = [];
     if (!P) return p;
     const q = P.players[p.n] || null;
     const tm = (q && q.team) || p.team; const g = tm==="FA" ? null : (P.games[teamCode(tm)] || null);
@@ -536,8 +542,9 @@
       const live = (q && q.injNote) || "", file = (p.inj && p.inj.note) || "", back = /back ~\d{1,2}\/\d{1,2}/.exec(file);
       p.injNote = live ? (back && !/back ~/.test(live) && p.injLive!=="ACT" ? live+" · "+back[0] : live) : file; }
     p.pPlay = PPLAY[p.injLive]!=null ? PPLAY[p.injLive] : 1;
-    if (p.onBye) p.pPlay = 0;
-    if (p.noTeam){ p.pPlay = 0; p.injNote = p.injNote || "no NFL team (released)"; } // unusable until someone signs him — never a stream, never a start
+    p.pMult = PMULT[p.injLive]!=null ? PMULT[p.injLive] : 1;
+    if (p.onBye) p.pPlay = p.pMult = 0;
+    if (p.noTeam){ p.pPlay = p.pMult = 0; p.injNote = p.injNote || "no NFL team (released)"; } // unusable until someone signs him — never a stream, never a start
     const srcs = [];
     p.rankVote = p.rankPts!=null ? rankVote(p) : null;
     if (p.espn!=null) srcs.push({k:"ESPN", v:p.espn, w:1}); if (p.sleeper!=null) srcs.push({k:"Sleeper", v:p.sleeper, w:1}); if (p.rankPts!=null) srcs.push({k:"rank #"+p.wkRank, v:p.rankPts, w:p.rankVote});
@@ -581,8 +588,7 @@
       mult = Math.min(1.15, Math.max(0.85, mult));
     }
     p.implied = implied; p.vegasMult = Math.round(mult*1000)/1000;
-    const eff = p.injLive==="Q" ? 0.95 : 1;
-    const m = blended*mult*eff;              // expected points IF he plays
+    const m = blended*mult;                  // expected points IF he plays (no Q sliver: the feeds already price the tag)
     // spread if he plays: fitted per position from this season's logged results (data/matchups.json sigma:
     // floor a plus a share cv of his projection), falling back to the hand-set CV table. Refit 2026-10-13:
     // the table alone caught the real score inside the 20-80 band only 24-47% of the time.
@@ -590,10 +596,10 @@
     const sc = sg ? Math.sqrt(sg.a*sg.a + (sg.cv*m)*(sg.cv*m)) : (CV[p.pos]||.5)*m;
     p.sdSrc = sg ? "fitted" : "default";
     p.base = Math.round(base*100)/100; p.ifPlays = Math.round(m*10)/10;
-    p.mu = Math.round(p.pPlay*m*10)/10;
-    const v = p.pPlay*(sc*sc + m*m) - (p.pPlay*m)*(p.pPlay*m);
+    p.mu = Math.round(p.pMult*m*10)/10;
+    const v = p.pMult*(sc*sc + m*m) - (p.pMult*m)*(p.pMult*m);
     p.sd = Math.round(Math.sqrt(Math.max(0, v))*10)/10;
-    p.floor = p.pPlay>=0.9 ? Math.round(Math.max(0, m - Z80*sc)*10)/10 : 0;
+    p.floor = p.pMult>=0.9 ? Math.round(Math.max(0, m - Z80*sc)*10)/10 : 0;
     p.ceil = Math.round((m + Z80*sc)*10)/10;
     p.locked = !!(g && g.kick && Date.parse(g.kick) <= Date.now());
     p.gameState = g ? g.state : null;
@@ -1327,8 +1333,7 @@
       h += " → <span title='"+(p.pos==="DST"?"their opponent":"his team")+" expected to score "+p.implied.toFixed(1)+(M.avgImplied?" vs league average "+M.avgImplied.toFixed(1):"")+" — capped at ±15%'>Vegas ×"+p.vegasMult.toFixed(2)+"</span> → <b>"+f1(run)+"</b>";
     }
     let tail = false; // steps after the last shown running number
-    if (p.injLive==="Q"){ tail = true; h += " → <span title='questionable tags cost a sliver even when he suits up'>Q ×0.95</span>"; }
-    if (p.pPlay<1 && p.pPlay>0){ tail = true; h += " → <span title='chance he plays, from the live injury designation'>×"+Math.round(p.pPlay*100)+"% to play</span>"; }
+    if (p.pMult<1 && p.pMult>0){ tail = true; h += " → <span title='doubtful: projection cut to the chance he plays'>×"+Math.round(p.pMult*100)+"%</span>"; }
     if (tail || f1(run)!==p.mu.toFixed(1)) h += " = <b>"+p.mu.toFixed(1)+"</b>";
     if (g) h += " · "+(g.home?"vs":"at")+" "+esc(g.opp)+" "+esc(kickText(g))+(g.weather?" · "+esc(g.weather):"");
     h += "</span>";
@@ -1432,7 +1437,7 @@
       }
     }
     h += "</div>";
-    if (P) h += "<details class='panel'><summary>How the prediction works (tap to open)</summary><div class='muted'>1) Average three independent views of the week: ESPN's projection, Sleeper's projection, and the points a player at his FantasyPros consensus rank usually projects for. 2) Blend in the <b>matchup view</b>"+(MU?"":" <span class='bad'>(unavailable — data/matchups.json missing, running consensus-only)</span>")+": from real box scores, how many points each defense actually gives up to each position; a player's own production is scaled by this week's opponent vs the defenses he already faced. How much say it gets is <b>measured, not guessed</b>: every refresh replays the season week by week — what would each view have predicted knowing only the prior weeks? — scores both against what actually happened, and fits the blend weight per position (shown in the data line below; so far the box-score view has earned a small vote, and it grows or shrinks automatically as the season accumulates evidence). A player also can't exceed his own evidence: fewer games played, smaller vote. Guardrails: small-sample defense numbers are regressed toward the league average, and the scaling is hard-capped between 0.5× and 1.6× so a fluky three-game stat can't run a projection away from reality. 3) Nudge by the betting market: teams expected to score more than the league average get up to +15%, less gets down to −15% (defenses use the opponent's total, inverted). 4) Multiply by the chance he plays from the live injury designation (Questionable 75%, Doubtful 25%, Out 0%). The floor–ceiling is the typical 20th–80th percentile week for his position. Data: <b>"+esc(P.generated)+"</b> · ESPN "+P.sources.espn+" players · Sleeper "+P.sources.sleeper+" · "+P.sources.games+" teams with lines"+(MU?" · matchups <b>"+esc(MU.generated)+"</b> (weeks "+MU.weeksSampled.join(", ")+")"+(MU.fittedW?" · fitted weights: "+Object.keys(MU.fittedW).map(k=>k+" "+Math.round(MU.fittedW[k].use*100)+"%").join(", ")+" (from "+Object.values(MU.fittedW).reduce((s,v)=>s+v.nRows,0)+" scored predictions)":""):"")+".</div></details>";
+    if (P) h += "<details class='panel'><summary>How the prediction works (tap to open)</summary><div class='muted'>1) Average three independent views of the week: ESPN's projection, Sleeper's projection, and the points a player at his FantasyPros consensus rank usually projects for. 2) Blend in the <b>matchup view</b>"+(MU?"":" <span class='bad'>(unavailable — data/matchups.json missing, running consensus-only)</span>")+": from real box scores, how many points each defense actually gives up to each position; a player's own production is scaled by this week's opponent vs the defenses he already faced. How much say it gets is <b>measured, not guessed</b>: every refresh replays the season week by week — what would each view have predicted knowing only the prior weeks? — scores both against what actually happened, and fits the blend weight per position (shown in the data line below; so far the box-score view has earned a small vote, and it grows or shrinks automatically as the season accumulates evidence). A player also can't exceed his own evidence: fewer games played, smaller vote. Guardrails: small-sample defense numbers are regressed toward the league average, and the scaling is hard-capped between 0.5× and 1.6× so a fluky three-game stat can't run a projection away from reality. 3) Nudge by the betting market: teams expected to score more than the league average get up to +15%, less gets down to −15% (defenses use the opponent's total, inverted). 4) Injury designation: Doubtful is cut to 25%, Out/IR to 0. Questionable and day-to-day players keep their full number (ESPN and Sleeper already price the tag in); they are still flagged in the 🤕 box and injury watch so you check the inactives. The floor–ceiling is the typical 20th–80th percentile week for his position. Data: <b>"+esc(P.generated)+"</b> · ESPN "+P.sources.espn+" players · Sleeper "+P.sources.sleeper+" · "+P.sources.games+" teams with lines"+(MU?" · matchups <b>"+esc(MU.generated)+"</b> (weeks "+MU.weeksSampled.join(", ")+")"+(MU.fittedW?" · fitted weights: "+Object.keys(MU.fittedW).map(k=>k+" "+Math.round(MU.fittedW[k].use*100)+"%").join(", ")+" (from "+Object.values(MU.fittedW).reduce((s,v)=>s+v.nRows,0)+" scored predictions)":""):"")+".</div></details>";
     document.getElementById("tab-lineup").innerHTML = h;
   }
 
@@ -1928,7 +1933,7 @@
   // ---- One-week rentals at RB/WR/TE/QB (Jose 2026-11-01, SACK OF WHEAT: Breece Hall questionable with no other RB) ----
   // The season-long rule never adds a player for one matchup, but a questionable starter is a real Sunday-morning
   // question: who on the wire would START for me this week, as things stand and if he sits? Same optimizer as the
-  // Lineup tab (mu is already weighted by his chance to play), so "starts over Hall" and "fills an empty RB2" are
+  // Lineup tab (a Q starter keeps his full number; only D/O/IR are cut), so "starts over Hall" and "fills an empty RB2" are
   // the lineup's own answer, not a rank lookup. Applies to every position the same way (Jose: "for all positions too").
   const STREAM_ROWS = 5;                                         // skill-position rows per table, best this-week projection first
   const shaky = p => !!P && p.pPlay>0 && p.pPlay<1 && !liveState(p);   // Q / D / DTD and not yet kicked off — on the field is a coin flip, not a given

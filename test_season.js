@@ -76,7 +76,9 @@ const vr = p => p.rosEff != null ? p.rosEff : p.ros; // valuation rank — what 
   assert(me.every(p => p.vegasMult >= 0.85 && p.vegasMult <= 1.15), "Vegas adjustment stays within ±15%");
   assert(me.every(p => typeof p.pPlay === "number" && p.pPlay >= 0 && p.pPlay <= 1), "chance-to-play is a probability for everyone");
   const qs = me.filter(p => p.injLive === "Q");
-  assert(qs.every(p => Math.abs(p.mu - Math.round(0.75 * p.ifPlays * 10) / 10) <= 0.11 && p.floor === 0), "Questionable players are discounted to 75% of their if-he-plays number and shown with a zero floor" + (qs.length ? " (" + qs.map(p => p.name).join(", ") + ")" : " (none Q this week)"));
+  assert(qs.every(p => Math.abs(p.mu - p.ifPlays) <= 0.11 && p.pPlay === 0.75 && p.pMult === 1), "Questionable players keep their full if-he-plays number and are only flagged (Jose 2026-11-26: the feeds already price the tag)" + (qs.length ? " (" + qs.map(p => p.name).join(", ") + ")" : " (none Q this week)"));
+  const ds = me.filter(p => p.injLive === "D");
+  assert(ds.every(p => Math.abs(p.mu - Math.round(0.25 * p.ifPlays * 10) / 10) <= 0.11 && p.floor === 0), "Doubtful players are still cut to 25% with a zero floor" + (ds.length ? " (" + ds.map(p => p.name).join(", ") + ")" : " (none D this week)"));
   const fake = T.predict({ name: "Nobody Real", n: "nobodyreal", pos: "WR", team: "CIN", wkRank: 5, inj: null });
   assert(fake.rankPts != null && fake.srcs.length === 1 && fake.mu > 10, "a player missing from both projection feeds still gets a rank-implied number from his consensus rank (" + fake.mu + ")");
   assert(T.rankPts("FLEX", 1) > T.rankPts("FLEX", 40) && T.rankPts("FLEX", 40) > T.rankPts("FLEX", 120), "rank→points curve is monotone (better rank, more points)");
