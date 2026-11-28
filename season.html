@@ -716,6 +716,12 @@
   function roleCheck(p){
     p.rosEff = p.ros; p.roleDoubt = null;
     if (!P || p.ros==null || !["QB","RB","WR","TE"].includes(p.pos)) return p;
+    // ESPN's season number is its live projection for the REST of the season: while a player is out it falls toward what he
+    // scores from the sideline — nothing. That is the absence, which the playoff lens prices from his return date, not a lost
+    // role. 2026-11-27 Loveland: TE5 by FantasyPros, "TE37" by ESPN while OUT with a return date one week off → valued #244,
+    // #169 after the lens, and the claim sheet dropped him. Only a player cleared to play this week can be in role doubt.
+    const rw = returnWeek(p);
+    if (["D","O","IR","SUSP"].includes(p.injLive) || (rw!=null && S && S.week!=null && rw > S.week)) return p;
     const m = /(\d+)$/.exec(p.posRank||""); const fpK = m ? +m[1] : null; const eK = idx.espnPos ? idx.espnPos[p.n] : null;
     if (fpK==null || eK==null) return p;
     const gap = eK - fpK;
@@ -875,7 +881,22 @@
   // Startability follows the LIVE designation (injLive = worst of ESPN/Sleeper feeds, which already
   // falls back to the weekly injury file only when he's in neither) — not the weekly file directly,
   // which goes stale mid-week (e.g. OUT on Monday, upgraded to Questionable by Saturday).
-  function undraftable(p){ const code = (P && p.injLive) ? p.injLive : (p.inj ? p.inj.code : null); return ["IR","O","SUSP"].includes(code) || (P && p.pPlay===0 && !p.onBye); }
+  // A sidelined player (OUT / IR / suspended, or no chance to play) is unusable THIS week. For a later week — next week's
+  // lineup, the rest-of-season lineups behind the drop ladder, trade talent and surplus — he is usable again once his return
+  // date (the "back ~M/D" on the injury note) is on or before that week. 2026-11-27 (Jose, SACK OF WHEAT: "Loveland can not
+  // be dropped and he's back next week"): Loveland (TE5, OUT W12, back ~12/6 = W13) was unusable in EVERY lineup, so the
+  // rest-of-season lineup had no TE, the W13 lineup showed a TE hole, and the claim sheet's Priority 1 spent him for Brenton
+  // Strange. wk: an NFL week number, "ros" for anywhere in the remaining season, or null/undefined for this week. An IR-slot
+  // holder stays out whatever the week: he frees no spot and needs a roster move before he can play (2026-11-21 IR-slot rule).
+  function returnWeek(p){ const b = backDate(p); return b!=null ? weekOfDate(b) : null; }
+  function undraftable(p, wk){
+    const code = (P && p.injLive) ? p.injLive : (p.inj ? p.inj.code : null);
+    const side = ["IR","O","SUSP"].includes(code) || (P && p.pPlay===0 && !p.onBye);
+    if (!side || wk==null) return side;
+    if (p.ir || p.slot==="IR") return true;
+    const rw = returnWeek(p), last = wk==="ros" ? lastNflWeek() : wk;
+    return !(rw!=null && rw <= last);
+  }
 
   // Optimal lineup by a scoring fn: "mu" (predicted points, higher is better), "wkRank"/"ros" (ranks, lower is better).
   // opts.byePresent: count a player on bye THIS week as rostered and present (trade math only — a bye is one
@@ -884,7 +905,8 @@
     const desc = key==="mu" || key==="muNext";
     const byeOk = !!(opts && opts.byePresent);
     const kv = key==="ros" ? rosR : (p=>p[key]);
-    const usable = players.filter(p=>(byeOk || !p.onBye) && !undraftable(p) && kv(p)!=null);
+    const wk = opts && opts.week!=null ? opts.week : key==="ros" ? "ros" : null;   // which week's availability counts (returnWeek)
+    const usable = players.filter(p=>(byeOk || !p.onBye) && !undraftable(p, wk) && kv(p)!=null);
     const sortBy = (arr)=>arr.slice().sort((a,b)=> desc ? kv(b)-kv(a) : kv(a)-kv(b));
     const by = {}; ["QB","RB","WR","TE","DST","K"].forEach(pos=>{ by[pos] = sortBy(usable.filter(p=>p.pos===pos)); });
     const slots = [];
@@ -2157,6 +2179,11 @@
       outs.forEach(p=>{
         const note = p.injNote ? " · "+esc(p.injNote) : "";
         if (moves.includes(p)){ ctx.push("🩹 <b>"+esc(p.name)+"</b> out"+note+" → <b>move him to your IR slot</b> (opens a spot, no drop — do this first)"); return; }
+        const line = "🩹 <b>"+esc(p.name)+"</b> out"+note+" · 0 pts this week (ROS #"+(p.ros!=null?p.ros:"–")+", back "+fmtBack(p)+")";
+        // His slot froze when his game kicked: the slot that scored his 0 cannot take anyone this week (2026-11-27 Loveland, CHI@DET
+        // final on Thursday — the sheet still sold Strange as "+11.3 this week"). Context line only; next week's lineup and the
+        // rest-of-season lens (returnWeek) decide whether he is a hole or a keep.
+        if (P && p.locked && p.slot && !["BN","IR"].includes(p.slot)){ const rw = returnWeek(p); ctx.push(line+" · his slot is locked (game kicked) — nothing fills it this week"+(rw!=null ? "; he is back W"+rw+", so he is a keep" : "")); return; }
         const L0 = optimalLineup(healthy, lineupKey());
         // Cover bar — the questionable-starter rule (Jose 2026-11-03) applied to an OUT starter too (2026-11-12, Tate): when the
         // bench already covers his slot a rental must beat the cover by STREAM_BAR; only an EMPTY slot makes any starter worth a row.
@@ -2164,7 +2191,6 @@
         const hole0 = L0.slots.some(s=>!s.p), minGain = hole0 ? 0.05 : STREAM_BAR;
         const rentals = fa.filter(f=>FLEX.includes(f.pos) && f.mu!=null && f.pPlay>0 && !f.onBye && !liveState(f)).map(f=>({ f, L: optimalLineup(healthy.concat([f]), lineupKey()) })).filter(x=>x.L.used.has(x.f.n))
           .map(x=>({ f:x.f, gain: Math.round((lineupPts(x.L)-lineupPts(L0))*10)/10, slot: (x.L.slots.find(y=>y.p && y.p.n===x.f.n)||{}).slot })).filter(x=>x.gain>=minGain).sort((a,b)=>b.gain-a.gain || b.f.mu-a.f.mu).slice(0,3);
-        const line = "🩹 <b>"+esc(p.name)+"</b> out"+note+" · 0 pts this week (ROS #"+(p.ros!=null?p.ros:"–")+", back "+fmtBack(p)+")";
         if (!rentals.length){ ctx.push(line+" · "+(hole0 ? "nothing on the wire would start for you — keep him" : "your bench covers his slot — nothing on the wire beats the cover by "+STREAM_BAR.toFixed(0)+"+ points, no move")); return; }
         holeRows.push({ why: esc(p.name)+" out", when: "this week", kick: true, ctxIndex: ctx.length, base: healthy, minGain, cands: rentals.map(x=>({ f:x.f, score:x.gain, note:"+"+x.gain.toFixed(1)+" to your lineup this week · starts "+x.slot })) });
         ctx.push(line);
@@ -2998,9 +3024,10 @@
   function nextWeekLineup(me){
     const nw = S && S.week!=null ? S.week+1 : null; if (nw==null) return null;
     const out = me.filter(p=>p.bye===nw);
-    const remaining = me.filter(p=>p.bye!==nw && !(p.inj && ["IR","O","SUSP"].includes(p.inj.code)));
+    // sidelined now but back by next week (returnWeek) = available next week; IR-slot holders stay out (2026-11-27 Loveland)
+    const remaining = me.filter(p=>p.bye!==nw && !undraftable(p, nw));
     const key = nextWeekKey(remaining);
-    const L = optimalLineup(remaining.map(p=>({...p, onBye:false, pPlay:1})), key);
+    const L = optimalLineup(remaining.map(p=>({...p, onBye:false, pPlay:1})), key, { week: nw });
     return { week: nw, out, remaining, key, L };
   }
   function nextWeekView(me, withCovers){
@@ -3283,7 +3310,7 @@
     waiverSuggestions:()=>{ const me = myTeam(); const bench = ladderBench(me); return waiverSuggestions(me, bench, freeAgents().filter(p=>!undraftable(p))); }, ROS_MARGIN,
     weeklyStreamClaims:()=>{ const me = myTeam(); return weeklyStreamClaims(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
     weeklyStreamStatus:()=>{ const me = myTeam(); return weeklyStreamStatus(me, freeAgents().filter(p=>!undraftable(p)), lineupKey()); },
-    streamStatusRaw:(me,fa,wkey)=>weeklyStreamStatus(me, fa, wkey||"mu"), ROSTER_ACTIVE, STREAM_BAR, STREAM_TIE, openSpots, activeCount, IR_SLOTS, isOut, irMoves, outSpots, parkable, backDate,
+    streamStatusRaw:(me,fa,wkey)=>weeklyStreamStatus(me, fa, wkey||"mu"), ROSTER_ACTIVE, STREAM_BAR, STREAM_TIE, openSpots, activeCount, IR_SLOTS, isOut, irMoves, outSpots, parkable, backDate, undraftable, returnWeek,
     dropOrder:()=>{ const me = myTeam(); const bench = ladderBench(me); return dropOrder(me, bench); }, fitNote, scarcityPool, ladderBench, irHolders, lineupImpact, dropCandidate, dropVerdict, opensHole, holeWeek, swapGain, thisWeekHoles, thisWeekLineup, weekLive, keptNote, keptForNextWeek,
     winProbAt, winProbSeries, winLogPoints, setWinLog:(w)=>{ WPL=w||null; }, wouldStartHealthy, rentalImpact, setWaiverSub:(sub,pos)=>{ if (sub) WSUB = sub; if (pos!=null) WALLPOS = pos; renderWaivers(); }, getWaiverSub:()=>({ sub:WSUB, pos:WALLPOS }), topScorersThisWeek:(qb)=>{ const me = myTeam(); return topScorersThisWeek(me, freeAgents().filter(p=>!undraftable(p)), lineupKey(), !!qb); }, TOP_WEEK, TOP_WEEK_QB, rentalRows:(pos)=>rentalRows(myTeam(), freeAgents().filter(p=>!undraftable(p)), pos, lineupKey()), shakyStarters:()=>weekStarters(myTeam(), lineupKey()).filter(s=>shaky(s.p) && !["K","DST"].includes(s.p.pos)), STREAM_ROWS,
     setTeamParam:(qs)=>{ applyTeamParam(qs); buildIndex(); renderAll(); },

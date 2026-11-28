@@ -2014,6 +2014,57 @@ const vr = p => p.rosEff != null ? p.rosEff : p.ros; // valuation rank — what 
     T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, histReal);
   }
 
+  // ======================= Return date: back next week = available, never a drop (Jose 2026-11-27, Loveland) =======================
+  // SACK OF WHEAT, W12: Loveland (TE5) OUT on Thanksgiving, "back ~12/6" (W13). ESPN's remaining-season number had collapsed to 31,
+  // the role check read that as a lost job (TE37, valued #244 → #169 after the lens), every lineup treated him as unusable, and the
+  // claim sheet's Priority 1 was "add Strange, drop Loveland" — for a TE slot that had already scored and was locked. Jose:
+  // "Loveland can not be dropped and he's back next week". General rules, every team: (1) the role check never fires on a sidelined
+  // player; (2) a return date makes him available for next week's and the rest-of-season lineups; (3) an OUT starter whose slot is
+  // locked is not a this-week hole.
+  console.log("== Return date: an OUT player who is back next week is a keep, not a drop (Jose 2026-11-27, Loveland) ==");
+  {
+    T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, histReal);
+    const all = [].concat(...Object.values(rosters.teams)).map(T.info).filter(p => ["QB","RB","WR","TE"].includes(p.pos) && p.ros != null);
+    const side = all.filter(p => ["D","O","IR","SUSP"].includes(p.injLive));
+    must(side.every(p => !p.roleDoubt), "role check never fires on a sidelined player, league-wide — ESPN's remaining-season number prices the absence, the lens does (" + side.filter(p => p.roleDoubt).map(p => p.name).join(", ") + ")");
+    const nw = season.week + 1;
+    const ks = Object.values(projections.games || {}).map(g => Date.parse(g && g.kick)).filter(x => !isNaN(x));
+    const tue = new Date(Math.min(...ks)); tue.setHours(0, 0, 0, 0); while (tue.getDay() !== 2) tue.setDate(tue.getDate() - 1);
+    const sun = new Date(tue.getTime() + 12 * 86400000); // the Sunday of NEXT week
+    const back = "Knee · back ~" + (sun.getMonth() + 1) + "/" + sun.getDate();
+    const outBack = { injLive: "O", injNote: back, pPlay: 0, pos: "TE" };
+    must(T.returnWeek(outBack) === nw, "the return date maps to the NFL week it falls in (W" + nw + ", got W" + T.returnWeek(outBack) + ")");
+    must(T.undraftable(outBack) === true && T.undraftable(outBack, nw) === false && T.undraftable(outBack, "ros") === false, "OUT with a return date next week: unusable this week, usable next week and for the rest of the season");
+    must(T.undraftable({ injLive: "O", injNote: "Knee", pPlay: 0 }, nw) === true && T.undraftable(Object.assign({ slot: "IR", ir: true }, outBack), nw) === true, "OUT with no return date stays out; an IR-slot holder stays out even with a return date (he needs a roster move first)");
+    // Synthetic Loveland on MY roster: my best TE goes OUT, back next Sunday, ESPN's season number collapses.
+    const me0 = rosters.teams[rosters.me].map(T.info);
+    const te = me0.filter(p => p.pos === "TE" && p.ros != null && !p.ir && p.slot !== "IR" && p.slot).sort((a, b) => a.ros - b.ros)[0];
+    if (te){
+      const hurt = (pj, actual) => { const c = JSON.parse(JSON.stringify(pj)); const q = c.players[te.n] = c.players[te.n] || { name: te.name, pos: te.pos, team: te.team }; q.injE = "O"; q.injS = "O"; q.injNote = back; q.espnSeason = 20; q.espn = 0; q.sleeper = 0; if (actual != null) q.actual = actual; return c; };
+      const pjL = hurt(unlockedProjections);
+      T.inject(season, rosters, exclusions, tradeLog, pjL, espnPool, matchups, histReal);
+      const me2 = rosters.teams[rosters.me].map(T.info), t2 = me2.find(p => p.n === te.n);
+      must(t2.injLive === "O" && !t2.roleDoubt && (!t2.horizon || t2.horizon.from === t2.ros), te.name + " OUT, back W" + nw + ", ESPN season number collapsed → no role? flag, valuation starts from his consensus rank #" + t2.ros + " (valued #" + vr(t2) + ")");
+      const r2 = T.nextWeekLineup(me2);
+      must(r2 && r2.remaining.some(p => p.n === te.n), te.name + " is available in next week's lineup (W" + nw + ")");
+      if (me2.filter(p => p.pos === "TE" && !p.ir && p.slot !== "IR").length === 1) must(r2.L.used.has(te.n), te.name + " starts TE next week as my only TE");
+      const LS = T.lastSheet(); const dropsHim = [].concat(LS.holeRows.map(r => r.drop), LS.sugg.map(x => x.drop), LS.marginal.map(x => x.drop)).filter(Boolean).some(p => p.n === te.n);
+      must(!dropsHim && !new RegExp("Drop " + rx(te.name).source).test(d.getElementById("tab-waivers").textContent), "the claim sheet never names " + te.name + " as a drop while he is out with a return date");
+      // His slot already scored (game final): no this-week hole row, the context line says the slot is locked and he is a keep.
+      const pjK = hurt(projections, 0); /* his game is final and he scored 0 */ const g = pjK.games && pjK.games[te.team]; let kicked = false;
+      if (g){ g.kick = new Date(Date.now() - 3 * 3600000).toISOString().replace(/\.\d+Z?$/, "Z"); g.state = "post"; g.status = "Final"; kicked = true; Object.values(pjK.players).forEach(q => { if (q && q.team === te.team && q.actual == null) q.actual = 0; }); } // a final game has a score for everyone who played it
+      if (kicked){
+        T.inject(season, rosters, exclusions, tradeLog, pjK, espnPool, matchups, histReal);
+        const t3 = rosters.teams[rosters.me].map(T.info).find(p => p.n === te.n), LS3 = T.lastSheet(), wt = d.getElementById("tab-waivers").textContent.replace(/\s+/g, " ");
+        if (t3.locked && t3.slot === "TE"){
+          must(!LS3.holeRows.some(r => r.when === "this week" && new RegExp(rx(te.name).source).test(r.why)), "an OUT starter whose slot is locked is not a this-week hole (" + te.name + ", game final)");
+          must(new RegExp(rx(te.name).source + " out.*his slot is locked.*back W" + nw + ", so he is a keep").test(wt), "the context line says his slot is locked and he is back next week, a keep");
+        } else console.log("  ok - locked-slot case skipped (" + te.name + " not locked in TE: locked=" + t3.locked + " slot=" + t3.slot + ")");
+      } else console.log("  ok - locked-slot case skipped (no game entry for " + te.team + ")");
+    } else console.log("  ok - synthetic return-date case skipped (no active TE with a slot on my roster)");
+    T.inject(season, rosters, exclusions, tradeLog, projections, espnPool, matchups, histReal);
+  }
+
   // ======================= DEPLOY-BLOCKING smoke: every team view renders every tab =======================
   console.log("== Smoke (deploy-blocking) ==");
   {
