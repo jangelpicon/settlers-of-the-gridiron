@@ -1,7 +1,7 @@
 {
  "me": "ur done",
  "updated": "2026-11-27",
- "source": "ESPN league 882823976 sync 2026-11-27 02:00 CST",
+ "source": "ESPN league 882823976 sync 2026-11-27 18:24 CST",
  "leagueName": "I got sheep FF",
  "teams": {
   "Bad Hombres": [
@@ -17,8 +17,7 @@
     "pos": "TE",
     "team": "LV",
     "irOk": true,
-    "ir": true,
-    "slot": "IR"
+    "slot": "TE"
    },
    {
     "name": "DeVonta Smith",
@@ -46,7 +45,8 @@
     "pos": "RB",
     "team": "JAX",
     "irOk": true,
-    "slot": "FLEX"
+    "ir": true,
+    "slot": "IR"
    },
    {
     "name": "Kirk Cousins",
@@ -91,18 +91,18 @@
     "slot": "K"
    },
    {
-    "name": "Brenton Strange",
-    "pos": "TE",
-    "team": "JAX",
-    "irOk": true,
-    "slot": "TE"
-   },
-   {
     "name": "Javonte Williams",
     "pos": "RB",
     "team": "DAL",
     "irOk": true,
     "slot": "RB"
+   },
+   {
+    "name": "Chris Rodriguez Jr.",
+    "pos": "RB",
+    "team": "JAX",
+    "irOk": true,
+    "slot": "FLEX"
    }
   ],
   "SACK OF WHEAT": [
@@ -690,7 +690,7 @@
     "pos": "TE",
     "team": "CAR",
     "irOk": true,
-    "slot": "TE"
+    "slot": "BN"
    },
    {
     "name": "Caleb Williams",
@@ -711,7 +711,7 @@
     "pos": "TE",
     "team": "CIN",
     "irOk": true,
-    "slot": "BN"
+    "slot": "TE"
    }
   ],
   "ur done": [
@@ -727,7 +727,7 @@
     "pos": "WR",
     "team": "ATL",
     "irOk": true,
-    "slot": "BN"
+    "slot": "WR"
    },
    {
     "name": "Trey McBride",
@@ -763,7 +763,7 @@
     "pos": "WR",
     "team": "JAX",
     "irOk": true,
-    "slot": "WR"
+    "slot": "BN"
    },
    {
     "name": "Jared Goff",
